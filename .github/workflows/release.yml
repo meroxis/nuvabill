@@ -1,0 +1,65 @@
+name: Release
+
+# Push a tag like v0.1.0 (matching config/nuvabill.php) to build, sign and publish a release.
+# Installs find it through the GitHub API and update themselves.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: intl, zip, sodium, bcmath, gd, pdo_sqlite
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Check the tag matches config/nuvabill.php
+        run: |
+          VERSION=$(grep -oP "'version' => '\K[^']+" config/nuvabill.php)
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match version $VERSION in config/nuvabill.php"
+            exit 1
+          fi
+
+      - name: Install production dependencies
+        run: |
+          composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+          npm ci
+          npm run build
+
+      - name: Build and sign the release zip
+        env:
+          NUVABILL_SIGNING_KEY: ${{ secrets.NUVABILL_SIGNING_KEY }}
+        run: |
+          if [ -z "$NUVABILL_SIGNING_KEY" ]; then
+            echo "Add the NUVABILL_SIGNING_KEY secret (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+          cp .env.example .env
+          php artisan key:generate --force
+          php artisan nuvabill:package
+
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE=""
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then PRERELEASE="--prerelease"; fi
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "Nuvabill ${GITHUB_REF_NAME#v}" \
+            --generate-notes $PRERELEASE

@@ -1,58 +1,151 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Nuvabill
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+**Billing, automation and support for hosting companies. Free to run.**
 
-## About Laravel
+Nuvabill sells your hosting plans, bills clients every month, sets up their accounts automatically,
+suspends late payers, and handles support tickets. It is a modern, open alternative to WHMCS,
+written from scratch.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+[![Tests](https://github.com/nuvabill/nuvabill/actions/workflows/tests.yml/badge.svg)](https://github.com/nuvabill/nuvabill/actions/workflows/tests.yml)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+> Status: **v0.1** (first release). Good for small hosting companies and for testing.
+> See the [roadmap](#roadmap) for what comes next.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## What you get in v0.1
 
-## Learning Laravel
+- **Store and checkout.** Product groups, plans with monthly to three-yearly prices, setup fees, domain field, cart and checkout.
+- **Billing.** Invoices with PDF, recurring renewals, partial payments, account credit for overpayments, manual invoices and drafts.
+- **Payments.** Stripe Checkout, PayPal Checkout and bank transfer. Webhooks are signature-checked and each payment is recorded once.
+- **Automation.** Every night: renewal invoices, overdue reminders, automatic suspension, optional termination. Paying unsuspends automatically.
+- **cPanel & WHM.** Accounts are created when the first invoice is paid. Suspend, unsuspend, terminate, change package, and one-click login for clients.
+- **Support tickets.** Departments, priorities, email notifications to clients and staff.
+- **Client area.** Services, invoices, payments, tickets and account details, built for phones first. Light and dark mode.
+- **Staff.** Roles with permissions, two-factor login (authenticator apps), activity log.
+- **Editable emails.** Every email is a template with `{{ placeholders }}`.
+- **Extensions and themes.** Payment gateways and server modules are drop-in folders in `extensions/`. Client themes live in `themes/`.
+- **Web installer.** Upload, open the site, answer three screens.
+- **Signed one-click updates.** Every release is signed. The updater verifies the signature, backs up files and database, and rolls back if anything fails.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## Requirements
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- PHP 8.3 or newer with `pdo`, `openssl`, `mbstring`, `intl`, `curl`, `zip`, `sodium`, `bcmath`, `fileinfo`
+- MySQL 8 / MariaDB 10.6 or newer (SQLite works for small sites and testing)
+- A cron job that runs every minute
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+Most cPanel, DirectAdmin and Plesk hosting accounts meet these requirements.
 
-## Agentic Development
+## Install
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+1. Download `nuvabill-x.y.z.zip` from the [latest release](https://github.com/nuvabill/nuvabill/releases/latest).
+2. Upload it to your hosting account and unzip it. Point your domain (or subdomain) to the `public` folder.
+3. Create an empty MySQL database and user in your hosting panel.
+4. Open your domain in a browser. The installer checks your server, connects the database and creates your owner account.
+5. Add the cron job shown in **Settings → Automation**:
 
-```bash
-composer require laravel/boost --dev
+   ```
+   * * * * * cd /path/to/nuvabill && php artisan schedule:run >> /dev/null 2>&1
+   ```
 
-php artisan boost:install
+6. In the admin area, add your cPanel server (**Servers**), turn on a payment gateway (**Settings → Payment gateways**) and set up outgoing email (**Settings → Sending email**).
+
+The admin area is at `/admin`.
+
+## Updating
+
+Nuvabill checks GitHub for new releases every day. Go to **Updates** in the admin area and press **Update now**.
+You can also let security fixes (or every update) install automatically at 03:00.
+
+From the command line:
+
+```
+php artisan nuvabill:update
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+## Development
 
-## Contributing
+```
+git clone https://github.com/nuvabill/nuvabill.git
+cd nuvabill
+composer install
+npm install && npm run build
+cp .env.example .env
+php artisan key:generate
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Set `NUVABILL_INSTALLED=true` and `APP_ENV=local` in `.env`, then load the demo data:
 
-## Code of Conduct
+```
+php artisan migrate:fresh --seed
+php artisan serve
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Demo sign-ins: staff `admin@nuvabill.test`, client `client@nuvabill.test`, both with password `nuvabill-demo`.
 
-## Security Vulnerabilities
+Run the tests and the code style check:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```
+php artisan test
+vendor/bin/pint
+```
+
+### Writing an extension
+
+An extension is a folder with an `extension.json` manifest and PHP classes in `src/`:
+
+```
+extensions/gateways/mygateway/
+├── extension.json
+└── src/MyGateway.php
+```
+
+```json
+{
+    "slug": "mygateway",
+    "type": "gateway",
+    "name": "My Gateway",
+    "version": "1.0.0",
+    "namespace": "Acme\\MyGateway\\",
+    "class": "Acme\\MyGateway\\MyGateway",
+    "requires": ">=0.1.0"
+}
+```
+
+Payment gateways extend `App\Extensions\Gateways\Gateway`. Server modules extend `App\Extensions\Servers\Module`.
+The built-in Stripe, PayPal, bank transfer and cPanel extensions are complete examples.
+
+### Writing a theme
+
+Copy `themes/nova` to `themes/yourtheme`, change `theme.json`, and edit the views. Any view your theme does not
+include falls back to Nova. Choose the theme in **Settings → Look and feel**.
+
+### Releasing (maintainers)
+
+1. Set the new version in `config/nuvabill.php`.
+2. Commit, then push a tag with the same version: `git tag v0.1.1 && git push origin v0.1.1`.
+3. The release workflow builds the zip, signs it with the `NUVABILL_SIGNING_KEY` secret and publishes the GitHub release.
+4. For security releases, add `[security]` to the release notes so installs can apply them automatically.
+
+The public half of the signing key is in `config/nuvabill.php`. Never commit the secret half.
+
+## Roadmap
+
+| Version | Focus |
+|---|---|
+| **v0.1** | First sale: store, billing, Stripe/PayPal/bank transfer, cPanel, tickets, 2FA, updater |
+| v0.2 | DirectAdmin, Plesk, Proxmox, Virtualizor, domains and registrars, WHMCS importer, fraud checks |
+| v0.3 | Taxes, multi-currency, promo codes, quotes, client wallet, affiliates, REST API |
+| v0.4 | White-label licenses, marketplace, extension SDK, right-to-left languages, passkeys |
+| v0.5 | Automation builder, AI ticket replies, WhatsApp and Telegram bot, admin phone app |
+| v1.0 | Security audit, theme editor, status page, multi-brand, cloud edition |
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Nuvabill is free software under the **GNU Affero General Public License v3.0 or later**, with one additional term:
+the **"Powered by Nuvabill"** credit in the client area, invoices and emails must stay visible. See [NOTICE](NOTICE).
+
+Want your own brand only? A **White-label License** that removes the credit is available at [nuvabill.com](https://nuvabill.com).
+
+## Contributing
+
+Bug reports and pull requests are welcome. By sending a pull request you agree that your contribution may be
+distributed under the AGPL-3.0 license and under the Nuvabill commercial White-label License.
