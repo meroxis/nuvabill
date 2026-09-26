@@ -1,0 +1,13 @@
+# Nuvabill: the website is the public/ folder. Point your domain at public/ when you can.
+# If your host serves this folder instead (for example you unzipped into public_html),
+# every request is sent into public/, so .env, the database and the code are never served.
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(.*)$ public/$1 [L]
+</IfModule>
+
+<IfModule !mod_rewrite.c>
+    Require all denied
+</IfModule>

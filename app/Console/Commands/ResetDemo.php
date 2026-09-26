@@ -39,22 +39,32 @@ class ResetDemo extends Command
 
     /**
      * Build the new database in a side file, then swap it in with one rename,
-     * so visitors never see a half-filled demo.
+     * so visitors never see a half-filled demo. Nobody reads the side file while
+     * it is built, so it skips disk syncs, which are slow on shared hosting.
      */
     private function replaceSqliteFile(string $connection, string $database): void
     {
         $next = $database.'.next';
+        $original = config("database.connections.{$connection}");
 
-        File::delete($next);
+        File::delete([$next, $next.'-journal']);
         File::put($next, '');
 
-        config(["database.connections.{$connection}.database" => $next]);
+        config(["database.connections.{$connection}" => [
+            ...$original,
+            'database' => $next,
+            'journal_mode' => 'memory',
+            'synchronous' => 'off',
+        ]]);
         DB::purge($connection);
 
-        $this->call('migrate', ['--seed' => true, '--force' => true]);
+        try {
+            $this->call('migrate', ['--seed' => true, '--force' => true]);
+        } finally {
+            DB::purge($connection);
+            config(["database.connections.{$connection}" => $original]);
+        }
 
-        DB::purge($connection);
         File::move($next, $database);
-        config(["database.connections.{$connection}.database" => $database]);
     }
 }

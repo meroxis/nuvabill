@@ -13,6 +13,7 @@
 
 <p align="center">
   <a href="https://nuvabill.com">Website</a> ·
+  <a href="https://demo.nuvabill.com/admin/login">Live demo</a> ·
   <a href="#getting-started">Getting started</a> ·
   <a href="#whats-in-nuvabill">What's in Nuvabill</a> ·
   <a href="#license">License</a>
@@ -25,6 +26,8 @@ suspends late payers, and answers support tickets. It is a modern, open alternat
 There is **no per-client pricing** and no license fee to run it.
 
 > **Status: v0.1.** Ready for small hosting companies and testing. See the [roadmap](#roadmap).
+>
+> **Try it:** the [live demo](https://demo.nuvabill.com/admin/login) has sample clients, invoices and tickets. One click signs you in, and the data resets every hour.
 
 ---
 
@@ -44,6 +47,8 @@ Most cPanel, DirectAdmin and Plesk hosting accounts already have all of this.
 2. Upload it to your hosting account and unzip it. Point your domain or subdomain (for example `billing.yourhost.com`) to the `public` folder.
 3. Create an empty MySQL database and user in your hosting panel.
 4. Open your domain in a browser. The installer checks your server, connects the database and creates your owner account.
+
+Using **Cloudflare**? Add `NUVABILL_TRUSTED_PROXIES=cloudflare` to `.env`, so sign-in limits and logs see your visitors' real IP addresses.
 
 ### 3. Turn on automation
 
@@ -125,6 +130,7 @@ failed setups, pending orders, overdue invoices, and a warning if the cron job s
 - Staff **roles and permissions** (Owner, Billing, Support, or your own)
 - **Two-factor login** with any authenticator app, plus recovery codes
 - Activity log of everything that happens
+- Security headers on every page (content security policy, no framing, strict HTTPS) and a safe setup for Cloudflare
 
 ![Clients](.github/screenshots/clients.png)
 
@@ -150,7 +156,7 @@ Nuvabill is free software under the **[GNU Affero General Public License v3.0 or
 the **"Powered by Nuvabill"** credit in the client area, invoices and emails must stay visible. See [NOTICE](NOTICE).
 
 **Want only your own brand?** A **White-label License** that removes the credit, plus priority support,
-is available at [nuvabill.com](https://nuvabill.com).
+is coming soon. Watch [nuvabill.com](https://nuvabill.com) or star this project to hear first.
 
 Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 
