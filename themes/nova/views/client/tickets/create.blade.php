@@ -16,6 +16,7 @@
             <x-input name="subject" :label="__('Subject')" required class="span-2" />
             <x-textarea name="message" :label="__('Message')" rows="8" required class="span-2" />
         </div>
+        <x-captcha form="tickets" />
         <div class="form-actions">
             <button class="btn btn-primary" type="submit">{{ __('Send ticket') }}</button>
             <a class="btn" href="{{ route('client.tickets.index') }}">{{ __('Cancel') }}</a>

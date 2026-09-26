@@ -18,6 +18,7 @@ use App\Http\Controllers\Admin\ProductGroupController;
 use App\Http\Controllers\Admin\ProfileController;
 use App\Http\Controllers\Admin\RegistrarController;
 use App\Http\Controllers\Admin\RoleController;
+use App\Http\Controllers\Admin\SecurityController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServiceController;
 use App\Http\Controllers\Admin\SettingsController;
@@ -39,16 +40,16 @@ use Illuminate\Support\Facades\Route;
 
 Route::middleware('guest:admin')->group(function (): void {
     Route::get('login', [LoginController::class, 'create'])->name('login');
-    Route::post('login', [LoginController::class, 'store'])->middleware('throttle:6,1');
+    Route::post('login', [LoginController::class, 'store'])->middleware(['throttle:6,1', 'captcha:admin_login']);
     Route::get('two-factor', [TwoFactorChallengeController::class, 'create'])->name('two-factor.challenge');
     Route::post('two-factor', [TwoFactorChallengeController::class, 'store'])->middleware('throttle:6,1');
     Route::get('forgot-password', [PasswordResetController::class, 'request'])->name('password.request');
-    Route::post('forgot-password', [PasswordResetController::class, 'email'])->middleware('throttle:3,1')->name('password.email');
+    Route::post('forgot-password', [PasswordResetController::class, 'email'])->middleware(['throttle:3,1', 'captcha:password_reset'])->name('password.email');
     Route::get('reset-password/{token}', [PasswordResetController::class, 'edit'])->name('password.reset');
     Route::post('reset-password', [PasswordResetController::class, 'update'])->name('password.update');
 });
 
-Route::middleware(['auth:admin', 'admin.can'])->group(function (): void {
+Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(function (): void {
     Route::post('logout', [LoginController::class, 'destroy'])->name('logout');
 
     Route::get('/', DashboardController::class)->name('dashboard');
@@ -69,6 +70,7 @@ Route::middleware(['auth:admin', 'admin.can'])->group(function (): void {
         Route::post('clients', [ClientController::class, 'store'])->name('clients.store');
         Route::get('clients/{client}/edit', [ClientController::class, 'edit'])->name('clients.edit');
         Route::put('clients/{client}', [ClientController::class, 'update'])->name('clients.update');
+        Route::delete('clients/{client}/two-factor', [ClientController::class, 'resetTwoFactor'])->name('clients.two-factor.destroy');
     });
 
     Route::middleware('admin.can:orders.manage')->group(function (): void {
@@ -164,6 +166,10 @@ Route::middleware(['auth:admin', 'admin.can'])->group(function (): void {
 
         Route::get('social-login', [SocialLoginController::class, 'edit'])->name('social.edit');
         Route::put('social-login', [SocialLoginController::class, 'update'])->name('social.update');
+
+        Route::get('security', [SecurityController::class, 'edit'])->name('security.edit');
+        Route::put('security', [SecurityController::class, 'update'])->name('security.update');
+        Route::post('security/captcha-check', [SecurityController::class, 'checkCaptcha'])->middleware('throttle:10,1')->name('security.captcha-check');
     });
 
     Route::middleware('admin.can:staff.manage')->prefix('settings')->name('settings.')->group(function (): void {

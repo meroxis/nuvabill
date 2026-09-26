@@ -3,10 +3,13 @@
 use App\Http\Controllers\WebhookController;
 use App\Http\Middleware\EnsureAdminPermission;
 use App\Http\Middleware\EnsureClientIsActive;
+use App\Http\Middleware\EnsureClientTwoFactor;
+use App\Http\Middleware\EnsureStaffTwoFactor;
 use App\Http\Middleware\PreventRequestsDuringMaintenance;
 use App\Http\Middleware\ProtectDemo;
 use App\Http\Middleware\RedirectToInstaller;
 use App\Http\Middleware\SecurityHeaders;
+use App\Http\Middleware\VerifyCaptcha;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -50,7 +53,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'admin.can' => EnsureAdminPermission::class,
+            'admin.two-factor' => EnsureStaffTwoFactor::class,
             'client.active' => EnsureClientIsActive::class,
+            'client.two-factor' => EnsureClientTwoFactor::class,
+            'captcha' => VerifyCaptcha::class,
         ]);
 
         $middleware->redirectGuestsTo(fn (Request $request): string => $request->routeIs('admin.*')

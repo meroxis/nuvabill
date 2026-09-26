@@ -40,9 +40,15 @@ class Client extends Authenticatable
         'notes',
     ];
 
+    public const TWO_FACTOR_APP = 'totp';
+
+    public const TWO_FACTOR_EMAIL = 'email';
+
     protected $hidden = [
         'password',
         'remember_token',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
     ];
 
     /**
@@ -61,6 +67,9 @@ class Client extends Authenticatable
             'status' => ClientStatus::class,
             'credit' => 'integer',
             'has_password' => 'boolean',
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'two_factor_confirmed_at' => 'datetime',
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
         ];
@@ -128,6 +137,16 @@ class Client extends Authenticatable
     public function transactions(): HasMany
     {
         return $this->hasMany(Transaction::class);
+    }
+
+    /**
+     * Two-factor sign-in is set up and confirmed (with an authenticator app or email codes).
+     */
+    public function hasTwoFactorEnabled(): bool
+    {
+        return in_array($this->two_factor_method, [self::TWO_FACTOR_APP, self::TWO_FACTOR_EMAIL], true)
+            && $this->two_factor_confirmed_at !== null
+            && ($this->two_factor_method === self::TWO_FACTOR_EMAIL || $this->two_factor_secret !== null);
     }
 
     public function unpaidInvoicesTotal(): int

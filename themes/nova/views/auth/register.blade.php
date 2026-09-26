@@ -19,6 +19,7 @@
                     <x-input name="password" type="password" :label="__('Password')" :help="__('At least 8 characters.')" required autocomplete="new-password" />
                     <x-input name="password_confirmation" type="password" :label="__('Type it again')" required autocomplete="new-password" />
                 </div>
+                <x-captcha form="client_register" />
                 <button class="btn btn-primary btn-block" type="submit">{{ __('Create account') }}</button>
             </form>
             <p class="muted" style="text-align:center;margin:0">{{ __('Already have an account?') }} <a href="{{ route('client.login') }}">{{ __('Sign in') }}</a></p>

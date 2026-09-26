@@ -11,6 +11,13 @@
                 <a class="btn" href="{{ route('admin.invoices.create', ['client' => $client->id]) }}"><x-icon name="receipt" />{{ __('New invoice') }}</a>
             @endif
             @if ($admin->hasPermission('clients.manage'))
+                @if ($client->hasTwoFactorEnabled())
+                    <form method="POST" action="{{ route('admin.clients.two-factor.destroy', $client) }}" data-confirm="{{ __('Turn off two-factor sign-in for this client? Only do this after you checked it is really them, for example when they lost their phone.') }}">
+                        @csrf
+                        @method('DELETE')
+                        <button class="btn" type="submit"><x-icon name="shield" />{{ __('Reset two-factor') }}</button>
+                    </form>
+                @endif
                 <a class="btn btn-primary" href="{{ route('admin.clients.edit', $client) }}">{{ __('Edit client') }}</a>
             @endif
         </div>

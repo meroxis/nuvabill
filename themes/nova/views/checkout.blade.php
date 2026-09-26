@@ -18,6 +18,7 @@
                         <x-checkbox name="accept_terms" :label="__('I agree to the terms of service')" />
                         <p class="muted" style="margin:0;font-size:.85rem"><a href="{{ $termsUrl }}" target="_blank" rel="noopener">{{ __('Read the terms of service') }}</a></p>
                     @endif
+                    <x-captcha form="checkout" />
                     <button class="btn btn-primary" type="submit">{{ __('Place order') }}</button>
                     <p class="muted" style="margin:0;font-size:.85rem">{{ __('Next you choose how to pay. Your service is set up as soon as the payment arrives.') }}</p>
                 </form>
@@ -33,6 +34,7 @@
                         @csrf
                         <x-input name="email" type="email" :label="__('Email')" required autocomplete="username" />
                         <x-input name="password" type="password" :label="__('Password')" required autocomplete="current-password" />
+                        <x-captcha form="client_login" />
                         <button class="btn" type="submit">{{ __('Sign in and continue') }}</button>
                     </form>
                 </section>

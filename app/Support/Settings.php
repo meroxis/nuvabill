@@ -72,6 +72,15 @@ class Settings
         'social.google' => null,
         'social.github' => null,
         'social.facebook' => null,
+
+        'security.staff_two_factor' => 'optional',
+        'security.client_two_factor' => 'optional',
+        'security.client_two_factor_methods' => ['totp', 'email'],
+        'security.captcha_provider' => 'off',
+        'security.captcha_site_key' => '',
+        'security.captcha_secret' => '',
+        'security.captcha_forms' => ['client_login', 'client_register', 'password_reset'],
+        'security.captcha_checked_key' => null,
     ];
 
     /**
@@ -79,7 +88,7 @@ class Settings
      *
      * @var list<string>
      */
-    public const SECRET_KEYS = ['mail.password', 'import.whmcs', 'social.google', 'social.github', 'social.facebook'];
+    public const SECRET_KEYS = ['mail.password', 'import.whmcs', 'social.google', 'social.github', 'social.facebook', 'security.captcha_secret'];
 
     /**
      * @var array<string, mixed>|null

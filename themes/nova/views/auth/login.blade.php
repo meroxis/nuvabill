@@ -13,6 +13,7 @@
                 <x-input name="email" type="email" :label="__('Email')" required autofocus autocomplete="username" />
                 <x-input name="password" type="password" :label="__('Password')" required autocomplete="current-password" />
                 <x-checkbox name="remember" :label="__('Keep me signed in')" />
+                <x-captcha form="client_login" />
                 <button class="btn btn-primary btn-block" type="submit">{{ __('Sign in') }}</button>
                 <a href="{{ route('client.password.request') }}" style="font-size:.88rem">{{ __('Forgot your password?') }}</a>
             </form>

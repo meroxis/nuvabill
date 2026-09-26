@@ -13,7 +13,6 @@ use App\Models\SocialAccount;
 use App\Support\Activity;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -155,17 +154,15 @@ class SocialLoginController extends Controller
             return $this->failed($request, __('This account is closed. Contact support if you need help.'));
         }
 
-        Auth::guard('web')->login($client);
-        $request->session()->regenerate();
-        $client->forceFill(['last_login_at' => now(), 'last_login_ip' => $request->ip()])->save();
         $account->forceFill(['last_used_at' => now()])->save();
-        Activity::log('client.login', "{$client->name} signed in with {$driver->name()}", $client, $client, $client);
 
         if ($isNew) {
-            return redirect()->intended(route('client.account.edit'))->with('status', __('Welcome! Please add your country and address on your Account page. They appear on your invoices.'));
+            return LoginController::completeLogin($request, $client, false, 'with '.$driver->name(), route('client.account.edit'))
+                ->with('status', __('Welcome! Please add your country and address on your Account page. They appear on your invoices.'));
         }
 
-        return redirect()->intended(route('client.dashboard'));
+        // Clients with two-factor sign-in still enter their code after Google, GitHub or Facebook.
+        return LoginController::signIn($request, $client, false, 'with '.$driver->name());
     }
 
     private function failed(Request $request, string $message): RedirectResponse

@@ -10,6 +10,7 @@
                 @csrf
                 <p class="muted" style="margin:0">{{ __('Enter your email. We will send you a link to choose a new password.') }}</p>
                 <x-input name="email" type="email" :label="__('Email')" required autofocus autocomplete="username" />
+                <x-captcha form="password_reset" />
                 <button class="btn btn-primary btn-block" type="submit">{{ __('Send reset link') }}</button>
             </form>
             <p class="muted" style="text-align:center;margin:0"><a href="{{ route('client.login') }}">{{ __('Back to sign in') }}</a></p>

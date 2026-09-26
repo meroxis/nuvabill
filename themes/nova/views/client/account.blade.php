@@ -43,6 +43,75 @@
                 <div class="form-actions"><button class="btn btn-primary" type="submit">{{ $client->has_password ? __('Change password') : __('Set password') }}</button></div>
             </form>
 
+            @if ($twoFactor['mode'] !== 'off' || $client->hasTwoFactorEnabled())
+                <section class="card" id="two-factor" style="display:grid;gap:.9rem;scroll-margin-top:90px">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
+                        <h2 style="font-size:1.05rem">{{ __('Two-factor sign-in') }}</h2>
+                        @if ($client->hasTwoFactorEnabled())<x-pill tone="good">{{ __('On') }}</x-pill>@else<x-pill :tone="$twoFactor['mode'] === 'required' ? 'crit' : 'warn'">{{ __('Off') }}</x-pill>@endif
+                    </div>
+
+                    @if ($twoFactor['recoveryCodes'])
+                        <div class="flash" data-tone="warn" style="display:grid;gap:.6rem">
+                            <b>{{ __('Save these recovery codes now. They are shown only once.') }}</b>
+                            <span>{{ __('Each code works once if you lose your phone.') }}</span>
+                            <code class="mono" style="display:grid;grid-template-columns:repeat(2,max-content);gap:.3rem 1.5rem">
+                                @foreach ($twoFactor['recoveryCodes'] as $code)<span>{{ $code }}</span>@endforeach
+                            </code>
+                            <span><button type="button" class="btn btn-sm" data-copy="{{ implode("\n", $twoFactor['recoveryCodes']) }}">{{ __('Copy codes') }}</button></span>
+                        </div>
+                    @endif
+
+                    @if ($client->hasTwoFactorEnabled())
+                        <p class="muted" style="margin:0">
+                            {{ $client->two_factor_method === \App\Models\Client::TWO_FACTOR_EMAIL
+                                ? __('When you sign in, we email you a code to enter after your password.')
+                                : __('When you sign in, you enter a code from your authenticator app after your password.') }}
+                        </p>
+                        @if ($twoFactor['mode'] !== 'required')
+                            <form method="POST" action="{{ route('client.account.two-factor.destroy') }}" style="display:grid;gap:.8rem" data-confirm="{{ __('Turn off two-factor sign-in? Your account will be easier to break into.') }}">
+                                @csrf
+                                @method('DELETE')
+                                @if ($client->has_password)
+                                    <x-input name="current_password" type="password" id="two-factor-password" :label="__('Your password')" required autocomplete="current-password" />
+                                @endif
+                                <div><button class="btn btn-sm btn-danger" type="submit">{{ __('Turn off') }}</button></div>
+                            </form>
+                        @endif
+                    @elseif ($twoFactor['settingUpApp'])
+                        <ol class="muted" style="margin:0;padding-inline-start:1.2rem;display:grid;gap:.3rem">
+                            <li>{{ __('Open an authenticator app (Google Authenticator, Microsoft Authenticator, Authy).') }}</li>
+                            <li>{{ __('Scan this QR code.') }}</li>
+                            <li>{{ __('Type the 6-digit code the app shows.') }}</li>
+                        </ol>
+                        <div style="background:#fff;padding:12px;border-radius:10px;justify-self:start;line-height:0">{!! $twoFactor['qrCode'] !!}</div>
+                        <p class="muted" style="margin:0;font-size:.85rem">{{ __('Cannot scan? Enter this key:') }} <code class="mono" style="overflow-wrap:anywhere">{{ $client->two_factor_secret }}</code></p>
+                        <form method="POST" action="{{ route('client.account.two-factor.app.confirm') }}" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+                            @csrf
+                            <x-input name="code" id="two-factor-app-code" :label="__('Code from the app')" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
+                            <button class="btn btn-primary" type="submit">{{ __('Turn on') }}</button>
+                        </form>
+                        <form method="POST" action="{{ route('client.account.two-factor.destroy') }}">@csrf @method('DELETE')<button class="btn btn-sm" type="submit">{{ __('Cancel') }}</button></form>
+                    @elseif ($twoFactor['emailPending'])
+                        <form method="POST" action="{{ route('client.account.two-factor.email.confirm') }}" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+                            @csrf
+                            <x-input name="code" id="two-factor-email-code" :label="__('Code from the email')" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
+                            <button class="btn btn-primary" type="submit">{{ __('Turn on') }}</button>
+                        </form>
+                        <form method="POST" action="{{ route('client.account.two-factor.email') }}">@csrf<button class="btn btn-sm" type="submit">{{ __('Send a new code') }}</button></form>
+                    @else
+                        <p class="muted" style="margin:0">{{ __('Protect your account: after your password, you also enter a short code. Choose how you want to get it.') }}</p>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap">
+                            @if (in_array(\App\Models\Client::TWO_FACTOR_APP, $twoFactor['methods'], true))
+                                <form method="POST" action="{{ route('client.account.two-factor.app') }}">@csrf<button class="btn btn-primary" type="submit"><x-icon name="shield" />{{ __('Use an authenticator app') }}</button></form>
+                            @endif
+                            @if (in_array(\App\Models\Client::TWO_FACTOR_EMAIL, $twoFactor['methods'], true))
+                                <form method="POST" action="{{ route('client.account.two-factor.email') }}">@csrf<button class="btn" type="submit"><x-icon name="mail" />{{ __('Get codes by email') }}</button></form>
+                            @endif
+                        </div>
+                    @endif
+                </section>
+            @endif
+
             @if ($socialProviders || $socialAccounts->isNotEmpty())
                 <section class="card" style="display:grid;gap:.8rem">
                     <div>

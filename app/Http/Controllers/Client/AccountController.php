@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Client;
 
 use App\Auth\Social\SocialLogin;
 use App\Http\Controllers\Controller;
+use App\Models\Client;
+use App\Security\EmailCode;
+use App\Security\Totp;
 use App\Support\Activity;
 use App\Support\Countries;
 use Illuminate\Http\RedirectResponse;
@@ -14,15 +17,24 @@ use Illuminate\View\View;
 
 class AccountController extends Controller
 {
-    public function edit(Request $request, SocialLogin $social): View
+    public function edit(Request $request, SocialLogin $social, EmailCode $codes): View
     {
         $client = $request->user('web');
+        $settingUpApp = $client->two_factor_method === Client::TWO_FACTOR_APP && $client->two_factor_confirmed_at === null && $client->two_factor_secret !== null;
 
         return view('theme::client.account', [
             'client' => $client,
             'countries' => Countries::all(),
             'socialProviders' => $social->enabled(),
             'socialAccounts' => $client->socialAccounts()->get()->keyBy('provider'),
+            'twoFactor' => [
+                'mode' => (string) setting('security.client_two_factor'),
+                'methods' => (array) setting('security.client_two_factor_methods'),
+                'settingUpApp' => $settingUpApp,
+                'qrCode' => $settingUpApp ? Totp::qrCodeSvg(Totp::provisioningUri((string) $client->two_factor_secret, $client->email, (string) setting('company.name'))) : null,
+                'emailPending' => ! $client->hasTwoFactorEnabled() && $codes->isPending($client, 'setup'),
+                'recoveryCodes' => session('recovery_codes'),
+            ],
         ]);
     }
 

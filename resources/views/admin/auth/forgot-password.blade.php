@@ -2,6 +2,7 @@
     <form method="POST" action="{{ route('admin.password.email') }}" style="display:grid;gap:1rem">
         @csrf
         <x-input name="email" type="email" :label="__('Email')" required autofocus autocomplete="username" />
+        <x-captcha form="password_reset" />
         <button class="btn btn-primary btn-block" type="submit">{{ __('Send reset link') }}</button>
     </form>
     <x-slot:footer>

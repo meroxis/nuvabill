@@ -5,6 +5,7 @@
         <x-input name="email" type="email" :label="__('Email')" required autofocus autocomplete="username" />
         <x-input name="password" type="password" :label="__('Password')" required autocomplete="current-password" />
         <x-checkbox name="remember" :label="__('Keep me signed in on this device')" />
+        <x-captcha form="admin_login" />
         <button class="btn btn-primary btn-block" type="submit">{{ __('Sign in') }}</button>
     </form>
     <x-slot:footer>

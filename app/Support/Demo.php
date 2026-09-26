@@ -38,6 +38,8 @@ class Demo
         'admin.settings.registrars.*',
         'admin.settings.import.update',
         'admin.settings.social.update',
+        'admin.settings.security.update',
+        'admin.settings.security.captcha-check',
         'admin.settings.import.start',
         'admin.settings.import.cancel',
         'admin.domains.action',

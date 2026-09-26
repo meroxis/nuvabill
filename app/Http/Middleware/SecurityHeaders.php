@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Security\Captcha;
 use Closure;
 use Illuminate\Foundation\Vite;
 use Illuminate\Http\Request;
@@ -48,17 +49,21 @@ class SecurityHeaders
 
     /**
      * Alpine.js evaluates its attributes and pages use small inline scripts and styles, so those
-     * stay allowed. Everything else loads from this site only. Forms may post to payment pages.
+     * stay allowed. Everything else loads from this site only, except the CAPTCHA provider staff
+     * chose in Settings → Security. Forms may post to payment pages.
      */
     private function contentSecurityPolicy(Request $request): string
     {
+        $captcha = implode(' ', app(Captcha::class)->details((string) setting('security.captcha_provider'))['hosts'] ?? []);
+
         return implode('; ', array_filter([
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+            trim("script-src 'self' 'unsafe-inline' 'unsafe-eval' {$captcha}"),
             "style-src 'self' 'unsafe-inline'",
             "img-src 'self' data: https:",
             "font-src 'self' data:",
-            "connect-src 'self'",
+            trim("connect-src 'self' {$captcha}"),
+            $captcha !== '' ? "frame-src 'self' {$captcha}" : null,
             "object-src 'none'",
             "base-uri 'self'",
             "form-action 'self' https:",

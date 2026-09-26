@@ -80,6 +80,21 @@ class DefaultDataSeeder extends Seeder
                 {{ company.name }}
                 MD,
             ],
+            'client.two_factor_code' => [
+                'Sign-in code',
+                'Your sign-in code for {{ company.name }}',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                Your sign-in code is: **{{ code }}**
+
+                It works for 10 minutes. Never share this code: our staff will never ask for it.
+
+                If you did not try to sign in, change your password now.
+
+                {{ company.name }}
+                MD,
+            ],
             'order.confirmation' => [
                 'Order confirmation',
                 'Order #{{ order.number }} received',

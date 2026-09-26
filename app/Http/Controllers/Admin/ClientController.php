@@ -92,4 +92,21 @@ class ClientController extends Controller
 
         return redirect()->route('admin.clients.show', $client)->with('status', __('Client saved.'));
     }
+
+    /**
+     * For clients who lost their phone: they sign in with the password only and can set up two-factor again.
+     */
+    public function resetTwoFactor(Client $client): RedirectResponse
+    {
+        $client->forceFill([
+            'two_factor_method' => null,
+            'two_factor_secret' => null,
+            'two_factor_recovery_codes' => null,
+            'two_factor_confirmed_at' => null,
+        ])->save();
+
+        Activity::log('client.two_factor_reset', "Two-factor sign-in turned off for client #{$client->id} {$client->name} by staff", $client);
+
+        return back()->with('status', __('Two-factor sign-in is off for this client.'));
+    }
 }

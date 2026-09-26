@@ -6,12 +6,14 @@ use App\Http\Controllers\Client\Auth\LoginController;
 use App\Http\Controllers\Client\Auth\PasswordResetController;
 use App\Http\Controllers\Client\Auth\RegisterController;
 use App\Http\Controllers\Client\Auth\SocialLoginController;
+use App\Http\Controllers\Client\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\Client\DashboardController;
 use App\Http\Controllers\Client\DomainController;
 use App\Http\Controllers\Client\InvoiceController;
 use App\Http\Controllers\Client\PaymentController;
 use App\Http\Controllers\Client\ServiceController;
 use App\Http\Controllers\Client\TicketController;
+use App\Http\Controllers\Client\TwoFactorController;
 use App\Http\Controllers\Store\CartController;
 use App\Http\Controllers\Store\CheckoutController;
 use App\Http\Controllers\Store\DomainSearchController;
@@ -36,7 +38,7 @@ Route::post('cart/domains', [CartController::class, 'storeDomain'])->middleware(
 Route::delete('cart/{index}', [CartController::class, 'destroy'])->whereNumber('index')->name('cart.destroy');
 
 Route::get('checkout', [CheckoutController::class, 'show'])->name('checkout.show');
-Route::post('checkout', [CheckoutController::class, 'store'])->middleware(['auth:web', 'client.active'])->name('checkout.store');
+Route::post('checkout', [CheckoutController::class, 'store'])->middleware(['auth:web', 'client.active', 'client.two-factor', 'captcha:checkout'])->name('checkout.store');
 
 /*
 |--------------------------------------------------------------------------
@@ -46,11 +48,14 @@ Route::post('checkout', [CheckoutController::class, 'store'])->middleware(['auth
 
 Route::middleware('guest:web')->group(function (): void {
     Route::get('login', [LoginController::class, 'create'])->name('client.login');
-    Route::post('login', [LoginController::class, 'store'])->middleware('throttle:10,1');
+    Route::post('login', [LoginController::class, 'store'])->middleware(['throttle:10,1', 'captcha:client_login']);
+    Route::get('two-factor', [TwoFactorChallengeController::class, 'create'])->name('client.two-factor.challenge');
+    Route::post('two-factor', [TwoFactorChallengeController::class, 'store'])->middleware('throttle:6,1');
+    Route::post('two-factor/resend', [TwoFactorChallengeController::class, 'resend'])->middleware('throttle:3,1')->name('client.two-factor.resend');
     Route::get('register', [RegisterController::class, 'create'])->name('client.register');
-    Route::post('register', [RegisterController::class, 'store'])->middleware('throttle:5,1');
+    Route::post('register', [RegisterController::class, 'store'])->middleware(['throttle:5,1', 'captcha:client_register']);
     Route::get('forgot-password', [PasswordResetController::class, 'request'])->name('client.password.request');
-    Route::post('forgot-password', [PasswordResetController::class, 'email'])->middleware('throttle:5,1')->name('client.password.email');
+    Route::post('forgot-password', [PasswordResetController::class, 'email'])->middleware(['throttle:5,1', 'captcha:password_reset'])->name('client.password.email');
     Route::get('reset-password/{token}', [PasswordResetController::class, 'edit'])->name('client.password.reset');
     Route::post('reset-password', [PasswordResetController::class, 'update'])->name('client.password.update');
 });
@@ -68,7 +73,7 @@ Route::middleware('throttle:20,1')->whereIn('provider', array_keys(SocialLogin::
 |--------------------------------------------------------------------------
 */
 
-Route::middleware(['auth:web', 'client.active'])->prefix('client')->name('client.')->group(function (): void {
+Route::middleware(['auth:web', 'client.active', 'client.two-factor'])->prefix('client')->name('client.')->group(function (): void {
     Route::get('/', DashboardController::class)->name('dashboard');
 
     Route::get('services', [ServiceController::class, 'index'])->name('services.index');
@@ -91,7 +96,7 @@ Route::middleware(['auth:web', 'client.active'])->prefix('client')->name('client
 
     Route::get('tickets', [TicketController::class, 'index'])->name('tickets.index');
     Route::get('tickets/new', [TicketController::class, 'create'])->name('tickets.create');
-    Route::post('tickets', [TicketController::class, 'store'])->middleware('throttle:10,1')->name('tickets.store');
+    Route::post('tickets', [TicketController::class, 'store'])->middleware(['throttle:10,1', 'captcha:tickets'])->name('tickets.store');
     Route::get('tickets/{ticket}', [TicketController::class, 'show'])->name('tickets.show');
     Route::post('tickets/{ticket}/reply', [TicketController::class, 'reply'])->middleware('throttle:20,1')->name('tickets.reply');
     Route::post('tickets/{ticket}/close', [TicketController::class, 'close'])->name('tickets.close');
@@ -99,5 +104,10 @@ Route::middleware(['auth:web', 'client.active'])->prefix('client')->name('client
     Route::get('account', [AccountController::class, 'edit'])->name('account.edit');
     Route::put('account', [AccountController::class, 'update'])->name('account.update');
     Route::put('account/password', [AccountController::class, 'password'])->name('account.password');
+    Route::post('account/two-factor/app', [TwoFactorController::class, 'startApp'])->name('account.two-factor.app');
+    Route::post('account/two-factor/app/confirm', [TwoFactorController::class, 'confirmApp'])->middleware('throttle:6,1')->name('account.two-factor.app.confirm');
+    Route::post('account/two-factor/email', [TwoFactorController::class, 'startEmail'])->middleware('throttle:3,1')->name('account.two-factor.email');
+    Route::post('account/two-factor/email/confirm', [TwoFactorController::class, 'confirmEmail'])->middleware('throttle:6,1')->name('account.two-factor.email.confirm');
+    Route::delete('account/two-factor', [TwoFactorController::class, 'destroy'])->name('account.two-factor.destroy');
     Route::delete('account/social/{provider}', [SocialLoginController::class, 'destroy'])->whereIn('provider', array_keys(SocialLogin::PROVIDERS))->name('account.social.destroy');
 });

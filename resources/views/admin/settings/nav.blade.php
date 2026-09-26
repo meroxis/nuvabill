@@ -6,6 +6,7 @@
         <a class="chip" href="{{ route('admin.settings.tlds.index') }}" @if (request()->routeIs('admin.settings.tlds.*')) aria-current="true" @endif>{{ __('Domains') }}</a>
         <a class="chip" href="{{ route('admin.settings.registrars.index') }}" @if (request()->routeIs('admin.settings.registrars.*')) aria-current="true" @endif>{{ __('Registrars') }}</a>
         <a class="chip" href="{{ route('admin.settings.social.edit') }}" @if (request()->routeIs('admin.settings.social.*')) aria-current="true" @endif>{{ __('Social login') }}</a>
+        <a class="chip" href="{{ route('admin.settings.security.edit') }}" @if (request()->routeIs('admin.settings.security.*')) aria-current="true" @endif>{{ __('Security') }}</a>
         <a class="chip" href="{{ route('admin.settings.email-templates.index') }}" @if (request()->routeIs('admin.settings.email-templates.*')) aria-current="true" @endif>{{ __('Email templates') }}</a>
         <a class="chip" href="{{ route('admin.settings.departments.index') }}" @if (request()->routeIs('admin.settings.departments.*')) aria-current="true" @endif>{{ __('Support departments') }}</a>
     @endif
