@@ -53,7 +53,7 @@ class UpdaterTest extends TestCase
     {
         config(['nuvabill.version' => '0.1.0']);
 
-        Http::fake(['api.github.com/repos/nuvabill/nuvabill/releases*' => Http::response([
+        Http::fake(['api.github.com/repos/meroxis/nuvabill/releases*' => Http::response([
             $this->release('v0.3.0-beta.1', prerelease: true),
             $this->release('v0.2.1', notes: "Fixes\n\n[security] Login rate limit"),
             $this->release('v0.2.0'),

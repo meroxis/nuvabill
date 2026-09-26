@@ -7,6 +7,7 @@ use App\Models\Admin;
 use App\Support\Settings;
 use Database\Seeders\DefaultDataSeeder;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
+use Illuminate\Support\Facades\Http;
 
 abstract class TestCase extends BaseTestCase
 {
@@ -16,6 +17,13 @@ abstract class TestCase extends BaseTestCase
     protected string $seeder = DefaultDataSeeder::class;
 
     protected bool $seed = true;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Http::preventStrayRequests();
+    }
 
     protected function signInAdmin(?Admin $admin = null): Admin
     {
