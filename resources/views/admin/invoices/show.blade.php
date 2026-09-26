@@ -74,12 +74,29 @@
                 </section>
             @endif
 
+            @if ($canManage && $status === \App\Enums\InvoiceStatus::Paid)
+                <section class="card">
+                    <div class="card-header"><h2>{{ __('Refund') }}</h2></div>
+                    <form method="POST" action="{{ route('admin.invoices.refund', $invoice) }}" data-confirm="{{ __('Refund this invoice? This cannot be undone.') }}" style="display:grid;gap:.9rem">
+                        @csrf
+                        <p class="muted" style="margin:0">{{ __('Marks the invoice Refunded and records a refund for each payment. Services on the invoice are not changed.') }}</p>
+                        @if ($canRefundThroughGateway)
+                            <x-checkbox name="through_gateway" :label="__('Send the money back through the payment gateway')" :help="__('Payments made another way are only recorded. Refund those yourself.')" checked />
+                        @else
+                            <p class="faint" style="margin:0;font-size:.85rem">{{ __('No payment here can be refunded through a gateway. Send the money back yourself.') }}</p>
+                        @endif
+                        <button class="btn btn-danger" type="submit">{{ __('Refund invoice') }}</button>
+                    </form>
+                </section>
+            @endif
+
             <section class="card">
                 <div class="card-header"><h2>{{ __('Payments') }}</h2></div>
                 <ul class="list-plain">
                     @forelse ($invoice->transactions as $transaction)
                         <li class="feed-item">
                             <span><b class="num">{{ money($transaction->amount, $transaction->currency) }}</b> · {{ $transaction->gateway }}
+                                @if ($transaction->type === 'refund')<x-pill>{{ __('Refund') }}</x-pill>@endif
                                 @if ($transaction->reference)<br><span class="mono faint">{{ $transaction->reference }}</span>@endif
                             </span>
                             <time>{{ $transaction->paid_at->format('d M Y') }}</time>
