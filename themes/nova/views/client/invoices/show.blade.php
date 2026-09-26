@@ -83,13 +83,15 @@
                 @endif
             @elseif ($invoice->status === \App\Enums\InvoiceStatus::Paid)
                 <div class="flash"><span>{{ __('Paid on :date. Thank you!', ['date' => $invoice->paid_at?->format('d M Y')]) }}</span></div>
+            @elseif ($invoice->status === \App\Enums\InvoiceStatus::Refunded)
+                <div class="flash"><span>{{ __('This invoice was refunded.') }}</span></div>
             @endif
 
             @if ($invoice->transactions->isNotEmpty())
                 <div style="display:grid;gap:.4rem">
                     <span class="label">{{ __('Payments') }}</span>
                     @foreach ($invoice->transactions as $transaction)
-                        <div class="summary-row"><span>{{ $transaction->paid_at->format('d M Y') }}</span><span class="num">{{ money($transaction->amount, $transaction->currency) }}</span></div>
+                        <div class="summary-row"><span>{{ $transaction->paid_at->format('d M Y') }}@if ($transaction->type === 'refund') · {{ __('Refund') }}@endif</span><span class="num">{{ money($transaction->amount, $transaction->currency) }}</span></div>
                     @endforeach
                 </div>
             @endif

@@ -4,8 +4,10 @@ namespace App\Contracts;
 
 use App\Extensions\Gateways\PaymentResult;
 use App\Extensions\Gateways\PaymentStart;
+use App\Extensions\Gateways\RefundResult;
 use App\Extensions\Gateways\WebhookResult;
 use App\Models\Invoice;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
 
 /**
@@ -45,4 +47,18 @@ interface PaymentGateway
      * Handle a server-to-server notification from the gateway.
      */
     public function handleWebhook(Request $request): WebhookResult;
+
+    /**
+     * Whether this gateway can send money back to the client through its API.
+     */
+    public function supportsRefunds(): bool;
+
+    /**
+     * Send part or all of a payment back to the client.
+     *
+     * @param  int  $amount  Amount to refund, in minor units.
+     *
+     * @throws \RuntimeException When the gateway refuses the refund.
+     */
+    public function refund(Transaction $payment, int $amount): RefundResult;
 }

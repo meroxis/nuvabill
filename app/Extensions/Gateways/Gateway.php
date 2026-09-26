@@ -5,7 +5,9 @@ namespace App\Extensions\Gateways;
 use App\Contracts\PaymentGateway;
 use App\Extensions\ExtensionManifest;
 use App\Models\Invoice;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
+use RuntimeException;
 
 /**
  * Base class for payment gateway extensions. Holds the manifest and the saved settings.
@@ -70,6 +72,16 @@ abstract class Gateway implements PaymentGateway
     public function checksWhileWaiting(): bool
     {
         return false;
+    }
+
+    public function supportsRefunds(): bool
+    {
+        return false;
+    }
+
+    public function refund(Transaction $payment, int $amount): RefundResult
+    {
+        throw new RuntimeException("{$this->name()} cannot send refunds. Refund the client another way.");
     }
 
     /**

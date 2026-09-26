@@ -7,11 +7,13 @@ use App\Extensions\Servers\ModuleResult;
 use App\Models\Server;
 use App\Models\Service;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 /**
- * DirectAdmin through its API (CMD_API_*), signed in as an admin or reseller with a login key or password.
+ * DirectAdmin through its CMD_API commands, signed in as an admin or reseller with a login key.
  */
 class DirectAdminModule extends Module
 {
@@ -22,19 +24,14 @@ class DirectAdminModule extends Module
                 'label' => 'DirectAdmin package',
                 'type' => 'text',
                 'required' => true,
-                'help' => 'The exact user package name in DirectAdmin, for example "starter".',
-            ],
-            'ip' => [
-                'label' => 'IP address',
-                'type' => 'text',
-                'help' => 'The shared IP for new accounts. Empty uses the server\'s IP address.',
+                'help' => 'The exact user package name in DirectAdmin → Manage User Packages, for example "starter".',
             ],
         ];
     }
 
     public function serverHelp(): string
     {
-        return 'Username: an admin or reseller. Create a login key in DirectAdmin → Login Keys and paste it in "API token" (or enter the password). Also fill in the server\'s IP address.';
+        return 'Username is your admin or reseller name, for example "admin". Create a login key in DirectAdmin → Login Keys and paste it in "API token". You can use the account password instead, but a login key is safer. Set "IP address" to the shared IP for new accounts.';
     }
 
     public function defaultPort(): int
@@ -44,17 +41,11 @@ class DirectAdminModule extends Module
 
     public function testConnection(Server $server): ModuleResult
     {
-        $response = $this->call($server, 'CMD_API_PACKAGES_USER', method: 'get');
+        $response = $this->call($server, 'CMD_API_LOGIN_TEST');
 
-        if (! $response['ok']) {
-            return ModuleResult::fail($response['reason']);
-        }
-
-        $packages = array_values(array_filter((array) ($response['data']['list'] ?? [])));
-
-        return ModuleResult::ok($packages === []
-            ? __('Connected to DirectAdmin. No user packages found yet.')
-            : __('Connected to DirectAdmin. Packages: :list', ['list' => implode(', ', $packages)]));
+        return $response['ok']
+            ? ModuleResult::ok(__('Connected to DirectAdmin.'))
+            : ModuleResult::fail($response['reason']);
     }
 
     public function create(Service $service): ModuleResult
@@ -63,10 +54,10 @@ class DirectAdminModule extends Module
             return ModuleResult::fail(__('A DirectAdmin account needs a domain name.'));
         }
 
-        $ip = (string) ($this->productSetting($service, 'ip') ?: $service->server?->ip_address);
+        $ip = $this->accountIp($service->server);
 
-        if ($ip === '') {
-            return ModuleResult::fail(__('Set the server\'s IP address, or an IP on the product.'));
+        if ($ip === null) {
+            return ModuleResult::fail(__('Set the server’s IP address, or add an IP to the DirectAdmin account, so new accounts can be created.'));
         }
 
         $username = $service->username ?: $this->makeUsername((string) $service->domain);
@@ -83,7 +74,7 @@ class DirectAdminModule extends Module
             'package' => (string) $this->productSetting($service, 'package', ''),
             'ip' => $ip,
             'notify' => 'no',
-        ], timeout: 120);
+        ], post: true, timeout: 120);
 
         return $response['ok']
             ? ModuleResult::ok(__('Account :username created.', ['username' => $username]), ['username' => $username, 'password' => $password])
@@ -96,7 +87,7 @@ class DirectAdminModule extends Module
             'location' => 'CMD_SELECT_USERS',
             'suspend' => 'Suspend',
             'select0' => $service->username,
-        ]), __('Account suspended.'));
+        ], post: true));
     }
 
     public function unsuspend(Service $service): ModuleResult
@@ -105,7 +96,7 @@ class DirectAdminModule extends Module
             'location' => 'CMD_SELECT_USERS',
             'suspend' => 'Unsuspend',
             'select0' => $service->username,
-        ]), __('Account unsuspended.'));
+        ], post: true));
     }
 
     public function terminate(Service $service): ModuleResult
@@ -114,7 +105,7 @@ class DirectAdminModule extends Module
             'confirmed' => 'Confirm',
             'delete' => 'yes',
             'select0' => $service->username,
-        ]), __('Account removed.'));
+        ], post: true, timeout: 120));
     }
 
     public function changePackage(Service $service): ModuleResult
@@ -123,88 +114,153 @@ class DirectAdminModule extends Module
             'action' => 'package',
             'user' => $service->username,
             'package' => (string) $this->productSetting($service, 'package', ''),
-        ]), __('Package changed.'));
+        ], post: true));
     }
 
     /**
-     * DirectAdmin has no one-time login for users, so this opens the sign-in page.
+     * A one-time login link from DirectAdmin's JSON API, created while logged in as the client ("admin|client").
      */
     public function loginUrl(Service $service): ?string
     {
         $server = $service->server;
 
-        if ($server === null) {
+        if ($server === null || blank($service->username)) {
             return null;
         }
 
-        return ($server->use_ssl ? 'https' : 'http').'://'.$server->hostname.':'.($server->port ?: $this->defaultPort()).'/';
+        try {
+            $response = $this->request($server, $this->adminUsername($server).'|'.$service->username)
+                ->asJson()
+                ->post($this->baseUrl($server).'/api/login/url', ['redirectURL' => '/']);
+        } catch (ConnectionException) {
+            return null;
+        }
+
+        $url = $response->successful() ? $response->json('url') : null;
+
+        return is_string($url) && $url !== '' ? $url : null;
     }
 
     /**
-     * DirectAdmin usernames: lowercase letters and digits, start with a letter, at most 10 characters.
+     * DirectAdmin usernames: lowercase letters and digits, start with a letter, at most 10 characters by default.
      */
     public function makeUsername(string $domain): string
     {
         $base = preg_replace('/[^a-z0-9]/', '', Str::lower(Str::before($domain, '.')));
         $base = ltrim((string) $base, '0123456789');
 
-        return substr($base === '' ? 'u' : $base, 0, 5).Str::lower(Str::random(3));
+        if ($base === '' || in_array($base, ['admin', 'root', 'mail', 'test'], true)) {
+            $base = 'u'.$base;
+        }
+
+        return substr($base, 0, 7).Str::lower(Str::random(3));
     }
 
     private function makePassword(): string
     {
-        return Str::password(14, symbols: false).'a7';
+        return Str::password(16, symbols: false).'!9a';
+    }
+
+    /**
+     * The server's IP address, or the first IP the admin or reseller owns in DirectAdmin.
+     */
+    private function accountIp(?Server $server): ?string
+    {
+        if ($server === null) {
+            return null;
+        }
+
+        if (filled($server->ip_address)) {
+            return $server->ip_address;
+        }
+
+        $response = $this->call($server, 'CMD_API_SHOW_RESELLER_IPS');
+        $ips = $response['data']['list'] ?? [];
+
+        return $response['ok'] && is_array($ips) && filled($ips[0] ?? null) ? (string) $ips[0] : null;
     }
 
     /**
      * @param  array{ok: bool, reason: string, data: array<string, mixed>}  $response
      */
-    private function result(array $response, string $message): ModuleResult
+    private function result(array $response): ModuleResult
     {
-        return $response['ok'] ? ModuleResult::ok($message) : ModuleResult::fail($response['reason']);
+        return $response['ok'] ? ModuleResult::ok($response['reason']) : ModuleResult::fail($response['reason']);
     }
 
     /**
-     * DirectAdmin answers with a URL-encoded body: "error=0&text=...&details=...".
+     * Call a CMD_API command. DirectAdmin answers with URL-encoded text such as "error=0&text=...&details=...".
      *
      * @param  array<string, mixed>  $params
      * @return array{ok: bool, reason: string, data: array<string, mixed>}
      */
-    private function call(?Server $server, string $command, array $params = [], string $method = 'post', int $timeout = 30): array
+    private function call(?Server $server, string $command, array $params = [], bool $post = false, int $timeout = 30): array
     {
         if ($server === null) {
             return ['ok' => false, 'reason' => __('No server is assigned.'), 'data' => []];
         }
 
-        $url = ($server->use_ssl ? 'https' : 'http').'://'.$server->hostname.':'.($server->port ?: $this->defaultPort()).'/'.$command;
+        $url = $this->baseUrl($server).'/'.$command;
 
         try {
-            $request = Http::withBasicAuth((string) ($server->username ?: 'admin'), (string) ($server->api_token ?: $server->password))
-                ->timeout($timeout)
-                ->asForm();
-            $response = $method === 'get' ? $request->get($url, $params) : $request->post($url, $params);
+            $request = $this->request($server, $this->adminUsername($server))->timeout($timeout);
+            $response = $post ? $request->asForm()->post($url, $params) : $request->get($url, $params);
         } catch (ConnectionException $exception) {
             return ['ok' => false, 'reason' => __('Could not connect to :host: :error', ['host' => $server->hostname, 'error' => $exception->getMessage()]), 'data' => []];
         }
 
-        if ($response->status() === 401 || $response->status() === 403) {
+        if ($response->status() === 401 || $response->status() === 403 || $this->isLoginPage($response)) {
             return ['ok' => false, 'reason' => __('DirectAdmin rejected the username or login key.'), 'data' => []];
         }
 
-        $body = trim($response->body());
+        parse_str(trim($response->body()), $data);
 
-        if (! $response->successful() || str_starts_with($body, '<')) {
-            return ['ok' => false, 'reason' => __('DirectAdmin returned HTTP :status. Check the port and that the user may use the API.', ['status' => $response->status()]), 'data' => []];
+        if (! $response->successful() || ! array_key_exists('error', $data) && ! array_key_exists('list', $data)) {
+            return ['ok' => false, 'reason' => __('DirectAdmin returned HTTP :status.', ['status' => $response->status()]), 'data' => []];
         }
 
-        parse_str($body, $data);
+        $ok = (string) ($data['error'] ?? '0') === '0';
+        $reason = trim(implode(': ', array_filter([
+            $this->plainText($data['text'] ?? ''),
+            $ok ? '' : $this->plainText($data['details'] ?? ''),
+        ])));
 
-        if ((string) ($data['error'] ?? '0') !== '0') {
-            $reason = trim(implode(' ', array_filter([(string) ($data['text'] ?? ''), strip_tags((string) ($data['details'] ?? ''))])));
+        return [
+            'ok' => $ok,
+            'reason' => $reason !== '' ? $reason : ($ok ? 'OK' : __('DirectAdmin reported an error.')),
+            'data' => $data,
+        ];
+    }
 
-            return ['ok' => false, 'reason' => 'DirectAdmin: '.($reason !== '' ? $reason : __('unknown error')), 'data' => $data];
-        }
+    private function request(Server $server, string $username): PendingRequest
+    {
+        return Http::withBasicAuth($username, (string) ($server->api_token ?: $server->password));
+    }
 
-        return ['ok' => true, 'reason' => (string) ($data['text'] ?? 'OK'), 'data' => $data];
+    private function baseUrl(Server $server): string
+    {
+        $scheme = $server->use_ssl ? 'https' : 'http';
+        $port = $server->port ?: $this->defaultPort();
+
+        return "{$scheme}://{$server->hostname}:{$port}";
+    }
+
+    private function adminUsername(Server $server): string
+    {
+        return $server->username ?: 'admin';
+    }
+
+    /**
+     * Older DirectAdmin versions answer a bad login with the HTML login page and HTTP 200.
+     */
+    private function isLoginPage(Response $response): bool
+    {
+        return str_contains(Str::lower((string) $response->header('Content-Type')), 'text/html')
+            && str_contains(Str::lower($response->body()), '<form');
+    }
+
+    private function plainText(mixed $value): string
+    {
+        return trim(preg_replace('/\s+/', ' ', strip_tags(str_replace(['<br>', '<br/>', '<br />'], ' ', (string) $value))) ?? '');
     }
 }

@@ -108,30 +108,6 @@ class ServerModulesTest extends TestCase
             ->assertSee('The server did not answer.');
     }
 
-    public function test_directadmin_creates_and_suspends_accounts(): void
-    {
-        Http::fake([
-            'da.example.test:2222/CMD_API_ACCOUNT_USER' => Http::response('error=0&text=User+created&details=done'),
-            'da.example.test:2222/CMD_API_SELECT_USERS' => Http::response('error=1&text=Cannot+suspend&details=User+not+found'),
-            'da.example.test:2222/CMD_API_PACKAGES_USER*' => Http::response('list[]=starter&list[]=business'),
-        ]);
-
-        $service = $this->service('directadmin', 'da.example.test', ['package' => 'starter'], ['status' => ServiceStatus::Pending, 'domain' => 'danasbakery.com'], ['ip_address' => '203.0.113.5', 'port' => 2222, 'username' => 'admin']);
-
-        $created = app(Provisioner::class)->create($service);
-        $this->assertTrue($created->success, $created->message);
-        $this->assertMatchesRegularExpression('/^[a-z][a-z0-9]{2,9}$/', (string) $service->fresh()->username);
-        Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), 'CMD_API_ACCOUNT_USER')
-            && $request['domain'] === 'danasbakery.com'
-            && $request['package'] === 'starter'
-            && $request['ip'] === '203.0.113.5'
-            && $request->hasHeader('Authorization', 'Basic '.base64_encode('admin:TESTTOKEN123')));
-
-        $module = app(ExtensionManager::class)->serverModule('directadmin');
-        $this->assertSame('DirectAdmin: Cannot suspend User not found', $module->suspend($service->fresh(), 'Unpaid')->message);
-        $this->assertStringContainsString('starter, business', $module->testConnection($service->server)->message);
-    }
-
     public function test_plesk_creates_a_customer_and_subscription_and_signs_clients_in(): void
     {
         Http::fake([

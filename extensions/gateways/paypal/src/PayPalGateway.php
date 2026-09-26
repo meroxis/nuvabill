@@ -5,8 +5,10 @@ namespace Nuvabill\Extensions\PayPal;
 use App\Extensions\Gateways\Gateway;
 use App\Extensions\Gateways\PaymentResult;
 use App\Extensions\Gateways\PaymentStart;
+use App\Extensions\Gateways\RefundResult;
 use App\Extensions\Gateways\WebhookResult;
 use App\Models\Invoice;
+use App\Models\Transaction;
 use App\Support\Money;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Request;
@@ -147,6 +149,38 @@ class PayPalGateway extends Gateway
         }
 
         return WebhookResult::paid($this->resultFromCapture($capture, $invoiceId));
+    }
+
+    public function supportsRefunds(): bool
+    {
+        return true;
+    }
+
+    public function refund(Transaction $payment, int $amount): RefundResult
+    {
+        $captureId = (string) $payment->reference;
+
+        if (! preg_match('/^[A-Z0-9]+$/', $captureId)) {
+            throw new RuntimeException('This payment has no PayPal capture ID, so PayPal cannot refund it.');
+        }
+
+        $response = $this->api()->post($this->baseUrl().'/v2/payments/captures/'.$captureId.'/refund', [
+            'amount' => [
+                'currency_code' => $payment->currency,
+                'value' => Money::toDecimal($amount),
+            ],
+            'custom_id' => (string) $payment->invoice_id,
+        ]);
+
+        if ($response->failed() || ! in_array($response->json('status'), ['COMPLETED', 'PENDING'], true)) {
+            throw new RuntimeException('PayPal could not refund the payment: '.($response->json('details.0.description') ?? $response->json('message') ?? $response->status()));
+        }
+
+        return new RefundResult(
+            amount: $amount,
+            reference: (string) $response->json('id'),
+            meta: ['status' => $response->json('status')],
+        );
     }
 
     /**

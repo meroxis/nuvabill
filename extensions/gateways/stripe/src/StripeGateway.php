@@ -5,8 +5,10 @@ namespace Nuvabill\Extensions\Stripe;
 use App\Extensions\Gateways\Gateway;
 use App\Extensions\Gateways\PaymentResult;
 use App\Extensions\Gateways\PaymentStart;
+use App\Extensions\Gateways\RefundResult;
 use App\Extensions\Gateways\WebhookResult;
 use App\Models\Invoice;
+use App\Models\Transaction;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -126,6 +128,34 @@ class StripeGateway extends Gateway
         $result = $this->resultFromSession($event['data']['object'] ?? []);
 
         return $result ? WebhookResult::paid($result) : WebhookResult::ignored('Session not paid yet.');
+    }
+
+    public function supportsRefunds(): bool
+    {
+        return true;
+    }
+
+    public function refund(Transaction $payment, int $amount): RefundResult
+    {
+        if (! str_starts_with((string) $payment->reference, 'pi_')) {
+            throw new RuntimeException('This payment has no Stripe payment ID, so Stripe cannot refund it.');
+        }
+
+        $response = $this->api()->asForm()->post(self::API.'/refunds', [
+            'payment_intent' => $payment->reference,
+            'amount' => $amount,
+            'metadata' => ['invoice_id' => (string) $payment->invoice_id],
+        ]);
+
+        if ($response->failed() || ! in_array($response->json('status'), ['succeeded', 'pending'], true)) {
+            throw new RuntimeException('Stripe could not refund the payment: '.($response->json('error.message') ?? $response->json('status') ?? $response->status()));
+        }
+
+        return new RefundResult(
+            amount: (int) $response->json('amount', $amount),
+            reference: (string) $response->json('id'),
+            meta: ['status' => $response->json('status')],
+        );
     }
 
     public function hasValidSignature(string $payload, string $header): bool
