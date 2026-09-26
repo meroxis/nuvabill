@@ -396,6 +396,24 @@
         border-color: var(--nb-info);
     }
 
+    .demo-banner {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.35rem 0.9rem;
+        padding: 0.45rem 1rem;
+        background: var(--nb-accent);
+        color: var(--nb-accent-ink);
+        font-size: 0.82rem;
+        font-weight: 600;
+        text-align: center;
+    }
+
+    .demo-banner a {
+        color: inherit;
+        text-decoration: underline;
+    }
+
     .empty {
         text-align: center;
         padding: 2.2rem 1rem;

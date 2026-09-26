@@ -62,6 +62,7 @@
     </aside>
 
     <div class="admin-main">
+        <x-demo-banner />
         <header class="admin-topbar">
             <button class="icon-btn mobile-only" type="button" @click="menu = true" aria-label="{{ __('Open menu') }}"><x-icon name="menu" /></button>
             @if ($can('clients.view'))

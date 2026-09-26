@@ -1,4 +1,5 @@
 <x-layouts.guest :title="__('Staff sign in')" :subtitle="setting('company.name')">
+    <x-demo-sign-in :action="route('admin.login')" :email="\App\Support\Demo::ADMIN_EMAIL" />
     <form method="POST" action="{{ route('admin.login') }}" style="display:grid;gap:1rem">
         @csrf
         <x-input name="email" type="email" :label="__('Email')" required autofocus autocomplete="username" />

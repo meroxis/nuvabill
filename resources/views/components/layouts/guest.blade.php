@@ -8,6 +8,7 @@
     @include('partials.head', ['assets' => ['resources/css/admin.css', 'resources/js/app.js']])
 </head>
 <body>
+<x-demo-banner />
 <main class="auth-page">
     <div class="auth-card" @if ($wide) style="width:min(640px,100%)" @endif>
         <div style="display:flex;align-items:center;gap:10px">

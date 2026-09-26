@@ -12,6 +12,12 @@ by RapidNet Ltd, licensed AGPL-3.0 with an attribution term (see NOTICE).
 - The nightly run is `App\Automation\DailyAutomation` (`php artisan nuvabill:cron`).
 - Read settings with the `setting('key')` helper (`App\Support\Settings`: JSON values, cached, secrets encrypted). Add every new key with its default to `Settings::DEFAULTS`.
 
+## Security and demo mode
+
+- `App\Http\Middleware\SecurityHeaders` sets the CSP and other headers on every response. Load scripts, styles and fonts from this site only (built by Vite), never from a CDN.
+- Proxies are trusted through `NUVABILL_TRUSTED_PROXIES` (`config/trustedproxy.php`). Only the forwarded IP and protocol headers are read.
+- The public demo runs with `NUVABILL_DEMO=true` (`App\Support\Demo`). Add every new route that changes settings, sign-ins or calls another server to `Demo::LOCKED_ROUTES`.
+
 ## Money
 
 - Store money as integer minor units (cents) with a currency code. Never use floats.

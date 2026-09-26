@@ -36,11 +36,11 @@ class Installation
 
     /**
      * A fresh upload has no .env or app key yet. Create them before anything needs encryption,
-     * so the installer's first page can load.
+     * so the installer's first page can load. Demo sites skip the installer, so they get a key too.
      */
     public static function ensureAppKey(): void
     {
-        if (filled(config('app.key')) || self::isInstalled()) {
+        if (filled(config('app.key')) || (self::isInstalled() && ! Demo::isEnabled())) {
             return;
         }
 

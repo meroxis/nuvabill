@@ -11,6 +11,7 @@
     @include('theme::partials.brand-style')
 </head>
 <body>
+<x-demo-banner />
 <header class="site-header" x-data="{ open: false }" @keydown.escape.window="open = false">
     <div class="container" style="position:relative">
         <a class="brand" href="{{ route('store.index') }}"><span class="brand-mark"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ setting('company.name') }}</span></a>

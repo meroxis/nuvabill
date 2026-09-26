@@ -13,6 +13,7 @@ use App\Models\Server;
 use App\Models\Service;
 use App\Models\Ticket;
 use App\Models\Transaction;
+use App\Support\Demo;
 use App\Support\Installation;
 use App\Support\Settings;
 use App\Support\Themes;
@@ -20,6 +21,7 @@ use App\View\Composers\AdminLayoutComposer;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Pagination\Paginator;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -67,6 +69,12 @@ class AppServiceProvider extends ServiceProvider
 
         if (Installation::isInstalled()) {
             $this->applySettingsToConfig();
+        }
+
+        if (Demo::isEnabled()) {
+            // The demo never sends email or calls payment, server or update APIs.
+            config(['mail.default' => 'log']);
+            Http::preventStrayRequests();
         }
     }
 

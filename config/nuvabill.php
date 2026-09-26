@@ -12,7 +12,7 @@ return [
     |
     */
 
-    'version' => '0.1.0',
+    'version' => '0.1.1',
 
     /*
     |--------------------------------------------------------------------------
@@ -33,6 +33,19 @@ return [
     */
 
     'admin_path' => env('NUVABILL_ADMIN_PATH', 'admin'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Demo mode
+    |--------------------------------------------------------------------------
+    |
+    | For public demo sites only. Shows the demo sign-ins, locks settings that
+    | could lock visitors out or reach other servers, sends no email, and
+    | replaces all data with fresh demo data every hour.
+    |
+    */
+
+    'demo' => (bool) env('NUVABILL_DEMO', false),
 
     /*
     |--------------------------------------------------------------------------

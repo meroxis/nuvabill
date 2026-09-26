@@ -4,7 +4,9 @@ use App\Http\Controllers\WebhookController;
 use App\Http\Middleware\EnsureAdminPermission;
 use App\Http\Middleware\EnsureClientIsActive;
 use App\Http\Middleware\PreventRequestsDuringMaintenance;
+use App\Http\Middleware\ProtectDemo;
 use App\Http\Middleware\RedirectToInstaller;
+use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -33,7 +35,13 @@ return Application::configure(basePath: dirname(__DIR__))
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->web(append: [RedirectToInstaller::class]);
+        $middleware->append(SecurityHeaders::class);
+
+        $middleware->web(append: [RedirectToInstaller::class, ProtectDemo::class]);
+
+        // The proxy list comes from config/trustedproxy.php. Only the visitor IP and HTTPS
+        // headers are read, so a visitor cannot fake the host name in links and emails.
+        $middleware->trustProxies(headers: Request::HEADER_X_FORWARDED_FOR | Request::HEADER_X_FORWARDED_PROTO);
 
         $middleware->replace(
             Illuminate\Foundation\Http\Middleware\PreventRequestsDuringMaintenance::class,

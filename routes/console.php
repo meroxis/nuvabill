@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\Demo;
 use App\Support\Installation;
 use Illuminate\Support\Facades\Schedule;
 
@@ -14,11 +15,17 @@ use Illuminate\Support\Facades\Schedule;
 */
 
 if (Installation::isInstalled()) {
-    Schedule::command('nuvabill:update --finish-pending')->everyMinute()->withoutOverlapping();
-
     Schedule::command('nuvabill:cron')->dailyAt('00:15')->withoutOverlapping();
 
     Schedule::command('queue:work --stop-when-empty --max-time=50 --tries=1')->everyMinute()->withoutOverlapping();
 
-    Schedule::command('nuvabill:update --auto')->dailyAt('03:00')->withoutOverlapping();
+    if (Demo::isEnabled()) {
+        // Every hour, and within a minute on a new demo site with an empty database.
+        Schedule::command('nuvabill:demo-reset')->everyMinute()->withoutOverlapping()
+            ->when(fn (): bool => now()->minute === 0 || ! Demo::hasData());
+    } else {
+        Schedule::command('nuvabill:update --finish-pending')->everyMinute()->withoutOverlapping();
+
+        Schedule::command('nuvabill:update --auto')->dailyAt('03:00')->withoutOverlapping();
+    }
 }

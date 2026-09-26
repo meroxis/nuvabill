@@ -20,13 +20,14 @@ use App\Models\Service;
 use App\Models\Ticket;
 use App\Models\TicketDepartment;
 use App\Support\Activity;
+use App\Support\Demo;
 use App\Support\Settings;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Collection;
 
 /**
- * Demo data for local development and screenshots: php artisan migrate:fresh --seed
+ * Demo data for local development, screenshots and the public demo: php artisan migrate:fresh --seed
  *
  * Staff sign-in: admin@nuvabill.test / nuvabill-demo
  * Client sign-in: client@nuvabill.test / nuvabill-demo
@@ -46,9 +47,9 @@ class DatabaseSeeder extends Seeder
             'automation.last_run_at' => now()->toIso8601String(),
         ]);
 
-        $admin = Admin::query()->firstOrCreate(['email' => 'admin@nuvabill.test'], [
+        $admin = Admin::query()->firstOrCreate(['email' => Demo::ADMIN_EMAIL], [
             'name' => 'Aram Rostami',
-            'password' => 'nuvabill-demo',
+            'password' => Demo::PASSWORD,
             'role_id' => Role::query()->where('name', 'Owner')->value('id'),
             'is_active' => true,
         ]);
@@ -59,8 +60,8 @@ class DatabaseSeeder extends Seeder
         $demo = Client::factory()->create([
             'first_name' => 'Dana',
             'last_name' => 'Baker',
-            'email' => 'client@nuvabill.test',
-            'password' => 'nuvabill-demo',
+            'email' => Demo::CLIENT_EMAIL,
+            'password' => Demo::PASSWORD,
             'company_name' => 'Dana\'s Bakery',
         ]);
 
