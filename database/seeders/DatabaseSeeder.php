@@ -11,14 +11,17 @@ use App\Enums\TicketStatus;
 use App\Extensions\ExtensionManager;
 use App\Models\Admin;
 use App\Models\Client;
+use App\Models\Domain;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductGroup;
 use App\Models\Role;
+use App\Models\Server;
 use App\Models\Service;
 use App\Models\Ticket;
 use App\Models\TicketDepartment;
+use App\Models\TldPrice;
 use App\Support\Activity;
 use App\Support\Demo;
 use App\Support\Settings;
@@ -108,6 +111,15 @@ class DatabaseSeeder extends Seeder
             'next_due_date' => $today,
         ]);
 
+        Service::query()
+            ->whereHas('product', fn ($query) => $query->where('server_module', 'virtualizor'))
+            ->each(fn (Service $service) => $service->update([
+                'server_id' => Server::query()->where('hostname', Demo::VPS_HOST)->value('id'),
+                'username' => 'root',
+                'module_data' => ['vpsid' => (string) (100 + $service->id)],
+            ]));
+
+        $this->domains($clients);
         $this->tickets($clients->slice(1, 3)->values(), $admin);
 
         Invoice::query()->orderBy('id')->each(fn (Invoice $invoice) => $invoice->forceFill(['number' => 'INV-'.str_pad((string) $invoice->id, 4, '0', STR_PAD_LEFT)])->save());
@@ -150,8 +162,22 @@ class DatabaseSeeder extends Seeder
         }
     }
 
+    /**
+     * VPS plans on the demo Virtualizor node (answered by Demo::fakeServers()), so clients see the VPS panel.
+     */
     private function vpsPlans(): void
     {
+        $server = Server::query()->firstOrCreate(['hostname' => Demo::VPS_HOST], [
+            'name' => 'VPS node 1',
+            'module' => 'virtualizor',
+            'port' => 4085,
+            'use_ssl' => true,
+            'username' => 'admin',
+            'api_token' => 'demo-api-key',
+            'password' => 'demo-api-pass',
+            'is_active' => true,
+        ]);
+
         $group = ProductGroup::query()->firstOrCreate(['slug' => 'cloud-vps'], [
             'name' => 'Cloud VPS',
             'description' => 'NVMe virtual servers with full root access.',
@@ -167,12 +193,86 @@ class DatabaseSeeder extends Seeder
                 'description' => $features,
                 'is_visible' => true,
                 'requires_domain' => false,
+                'server_module' => 'virtualizor',
+                'server_id' => $server->id,
+                'module_config' => ['virt' => 'kvm', 'os_id' => '100', 'plan_id' => (string) ($order + 1)],
                 'auto_setup' => AutoSetup::Manual,
                 'sort_order' => $order,
             ]);
 
             $product->prices()->firstOrCreate(['currency' => 'USD', 'billing_cycle' => BillingCycle::Monthly], ['price' => $price, 'setup_fee' => 0]);
             $product->prices()->firstOrCreate(['currency' => 'USD', 'billing_cycle' => BillingCycle::Annually], ['price' => $price * 10, 'setup_fee' => 0]);
+        }
+    }
+
+    /**
+     * Domain prices for the store's domain search, and domains for some clients.
+     *
+     * @param  Collection<int, Client>  $clients
+     */
+    private function domains($clients): void
+    {
+        $prices = [
+            ['com', 1199, 1199, 1499, true],
+            ['net', 1399, 1399, 1699, true],
+            ['org', 1299, 1299, 1599, true],
+            ['io', 3999, 3999, 4499, true],
+            ['co', 2499, 2499, 2999, false],
+            ['dev', 1599, 1599, 1799, false],
+            ['app', 1799, 1799, 1999, false],
+            ['xyz', 299, 1299, 1499, false],
+        ];
+
+        foreach ($prices as $order => [$tld, $register, $transfer, $renew, $featured]) {
+            TldPrice::query()->firstOrCreate(['tld' => $tld, 'currency' => 'USD'], [
+                'register_price' => $register,
+                'transfer_price' => $transfer,
+                'renew_price' => $renew,
+                'epp_required' => $tld !== 'xyz',
+                'is_featured' => $featured,
+                'is_enabled' => true,
+                'sort_order' => $order,
+            ]);
+        }
+
+        $today = CarbonImmutable::today();
+
+        Domain::factory()->create([
+            'client_id' => $clients[0]->id,
+            'name' => 'danasbakery.com',
+            'tld' => 'com',
+            'registered_at' => $today->subMonths(10),
+            'expires_at' => $today->addMonths(2),
+            'next_due_date' => $today->addMonths(2),
+            'recurring_amount' => 1499,
+            'nameservers' => ['ns1.yourhost.net', 'ns2.yourhost.net'],
+        ]);
+
+        Domain::factory()->create([
+            'client_id' => $clients[0]->id,
+            'name' => 'danasbakery.net',
+            'tld' => 'net',
+            'registered_at' => $today->subYears(2)->addDays(20),
+            'expires_at' => $today->addDays(20),
+            'next_due_date' => $today->addDays(20),
+            'recurring_amount' => 1699,
+            'nameservers' => ['ns1.yourhost.net', 'ns2.yourhost.net'],
+        ]);
+
+        foreach ($clients->slice(1, 12)->values() as $index => $client) {
+            $tld = ['com', 'net', 'org', 'io'][$index % 4];
+            $expires = $today->addDays(15 + $index * 23);
+
+            Domain::factory()->create([
+                'client_id' => $client->id,
+                'name' => fake()->unique()->domainWord().'.'.$tld,
+                'tld' => $tld,
+                'registered_at' => $expires->subYear(),
+                'expires_at' => $expires,
+                'next_due_date' => $expires,
+                'recurring_amount' => collect($prices)->firstWhere(0, $tld)[3],
+                'nameservers' => ['ns1.yourhost.net', 'ns2.yourhost.net'],
+            ]);
         }
     }
 

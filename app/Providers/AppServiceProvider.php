@@ -79,6 +79,7 @@ class AppServiceProvider extends ServiceProvider
             config(['mail.default' => 'log']);
             Http::preventStrayRequests();
             Http::allowStrayRequests([Rdap::BOOTSTRAP_URL, 'https://rdap.*', 'https://*.rdap.*', 'https://*/rdap/*']);
+            Demo::fakeServers();
         }
     }
 

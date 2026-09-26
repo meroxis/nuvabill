@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use Throwable;
 
@@ -16,6 +18,11 @@ class Demo
     public const CLIENT_EMAIL = 'client@nuvabill.test';
 
     public const PASSWORD = 'nuvabill-demo';
+
+    /**
+     * The demo's Virtualizor node. It does not exist: fakeServers() answers for it.
+     */
+    public const VPS_HOST = 'vps.demo.nuvabill.test';
 
     /**
      * Routes visitors can open but not save in the demo.
@@ -49,6 +56,44 @@ class Demo
     public static function isEnabled(): bool
     {
         return (bool) config('nuvabill.demo');
+    }
+
+    /**
+     * Made-up answers from the demo Virtualizor node, so visitors see the VPS panel working.
+     * Panel buttons stay locked in the demo, so only reads reach this.
+     */
+    public static function fakeServers(): void
+    {
+        Http::fake(['https://'.self::VPS_HOST.':4085/*' => function (Request $request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+            $vpsId = (string) ($query['vpsid'] ?? $query['vs_status'][0] ?? '101');
+            $seed = crc32($vpsId);
+
+            return match (true) {
+                ($query['act'] ?? '') === 'ostemplates' => Http::response(['ostemplates' => [
+                    '100' => ['osid' => 100, 'type' => 'kvm', 'name' => 'Ubuntu 24.04'],
+                    '101' => ['osid' => 101, 'type' => 'kvm', 'name' => 'Debian 12'],
+                    '102' => ['osid' => 102, 'type' => 'kvm', 'name' => 'AlmaLinux 9'],
+                    '103' => ['osid' => 103, 'type' => 'kvm', 'name' => 'Windows Server 2022'],
+                ]]),
+                isset($query['vs_status']) => Http::response(['status' => [$vpsId => [
+                    'status' => 1,
+                    'used_cpu' => 4 + $seed % 30 + (int) date('s') / 10,
+                    'used_ram' => 900 + $seed % 1800,
+                    'ram' => 4096,
+                    'used_disk' => 12 + $seed % 40,
+                    'disk' => 80,
+                    'used_bandwidth' => 120 + $seed % 900,
+                    'bandwidth' => 2048,
+                ]]]),
+                default => Http::response(['vs' => [$vpsId => [
+                    'hostname' => 'vps'.$vpsId.'.yourhost.net',
+                    'os_name' => 'Ubuntu 24.04',
+                    'virt' => 'kvm',
+                    'ips' => ['203.0.113.'.(10 + $seed % 200)],
+                ]]]),
+            };
+        }]);
     }
 
     /**
