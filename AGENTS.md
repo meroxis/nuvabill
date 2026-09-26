@@ -1,4 +1,53 @@
 <laravel-boost-guidelines>
+=== .ai/nuvabill rules ===
+
+# Nuvabill project rules
+
+Nuvabill is a billing, automation and support platform for hosting companies (a from-scratch WHMCS alternative)
+by RapidNet Ltd, licensed AGPL-3.0 with an attribution term (see NOTICE).
+
+## Architecture
+
+- Staff (`App\Models\Admin`, guard `admin`, `routes/admin.php` under `/admin`) and clients (`App\Models\Client`, guard `web`) are separate models and guards. Never let one sign in as the other.
+- Staff permissions are listed in `Role::PERMISSIONS`. Protect admin routes with the `admin.can:{permission}` middleware.
+- Billing lives in `app/Billing`: `OrderPlacer`, `InvoiceManager`, `PaymentRecorder`, `InvoicePaidHandler`, `RenewalGenerator`. Record every payment through `PaymentRecorder` with the gateway's reference so duplicates are ignored and services, invoices and emails stay in step.
+- Control panel actions go through `App\Provisioning\Provisioner`. Never call server modules directly from controllers.
+- The nightly run is `App\Automation\DailyAutomation` (`php artisan nuvabill:cron`).
+- Read settings with the `setting('key')` helper (`App\Support\Settings`: JSON values, cached, secrets encrypted). Add every new key with its default to `Settings::DEFAULTS`.
+
+## Money
+
+- Store money as integer minor units (cents) with a currency code. Never use floats.
+- Format with the `money()` helper and convert input with `App\Support\Money`.
+
+## Extensions and themes
+
+- Payment gateways and server modules are extensions in `extensions/{gateways|servers}/{slug}` with an `extension.json` manifest. Built-in ones use the same mechanism as marketplace ones.
+- Gateways extend `App\Extensions\Gateways\Gateway`. Server modules extend `App\Extensions\Servers\Module`.
+- Client-area views render through the `theme::` namespace from `themes/{active}/views`, falling back to `themes/nova`. Admin views live in `resources/views/admin`.
+- Shared UI classes are in `resources/css/components.css`. Colors are CSS variables in `resources/css/tokens.css` with light and dark values.
+
+## Email
+
+- Email templates are rows in `email_templates` with `{{ dotted.placeholders }}` replaced by `TemplateMailer::render()`. Never compile templates with Blade.
+
+## Updates and releases
+
+- The version is in `config/nuvabill.php`. Releases are signed zips built by `php artisan nuvabill:package`, and the updater verifies the Ed25519 signature before installing. Never commit the signing secret key.
+- Migrations must work on MySQL/MariaDB and SQLite and must be safe to run during an automatic update.
+
+## Branding
+
+- Keep the "Powered by Nuvabill" credit (`App\Support\Branding`) in the client area, invoice PDFs and emails. It is a license requirement.
+
+## Tests
+
+- Feature tests use factories and the `DefaultDataSeeder`. Real HTTP calls are blocked with `Http::preventStrayRequests()`, so fake gateway and cPanel APIs with `Http::fake()`.
+
+## Writing
+
+- Write user-facing text in plain, short English. Many users read English as a second language.
+
 === foundation rules ===
 
 # Laravel Boost Guidelines
@@ -77,6 +126,16 @@ Before relying on a package's API, confirm its installed version:
 
 - Laravel can be deployed using [Laravel Cloud](https://cloud.laravel.com/), which is the fastest way to deploy and scale production Laravel applications.
 - Activate the `deploying-to-cloud` skill whenever deploying to Laravel Cloud, configuring Cloud environments or resources, using the Cloud CLI, or troubleshooting Cloud deployments.
+
+=== tests rules ===
+
+# Test Enforcement
+
+- Add or update tests for behavior and logic changes when a test provides meaningful regression coverage.
+- Pure copy, styling, and layout-only changes do not require new or updated tests.
+- When test coverage applies, run the affected tests and ensure they pass.
+- Test the changed behavior and its important failure modes, but do not add tests beyond them.
+- Read the `testing-best-practices` skill before writing tests.
 
 === laravel/core rules ===
 
