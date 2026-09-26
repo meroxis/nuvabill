@@ -24,4 +24,14 @@ class ServerFactory extends Factory
             'is_active' => true,
         ];
     }
+
+    public function directadmin(): static
+    {
+        return $this->state([
+            'module' => 'directadmin',
+            'port' => 2222,
+            'username' => 'admin',
+            'ip_address' => '203.0.113.10',
+        ]);
+    }
 }
