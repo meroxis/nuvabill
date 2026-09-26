@@ -6,7 +6,7 @@ Nuvabill sells your hosting plans, bills clients every month, sets up their acco
 suspends late payers, and handles support tickets. It is a modern, open alternative to WHMCS,
 written from scratch.
 
-[![Tests](https://github.com/nuvabill/nuvabill/actions/workflows/tests.yml/badge.svg)](https://github.com/nuvabill/nuvabill/actions/workflows/tests.yml)
+[![Tests](https://github.com/meroxis/nuvabill/actions/workflows/tests.yml/badge.svg)](https://github.com/meroxis/nuvabill/actions/workflows/tests.yml)
 
 > Status: **v0.1** (first release). Good for small hosting companies and for testing.
 > See the [roadmap](#roadmap) for what comes next.
@@ -36,7 +36,7 @@ Most cPanel, DirectAdmin and Plesk hosting accounts meet these requirements.
 
 ## Install
 
-1. Download `nuvabill-x.y.z.zip` from the [latest release](https://github.com/nuvabill/nuvabill/releases/latest).
+1. Download `nuvabill-x.y.z.zip` from the [latest release](https://github.com/meroxis/nuvabill/releases/latest).
 2. Upload it to your hosting account and unzip it. Point your domain (or subdomain) to the `public` folder.
 3. Create an empty MySQL database and user in your hosting panel.
 4. Open your domain in a browser. The installer checks your server, connects the database and creates your owner account.
@@ -64,7 +64,7 @@ php artisan nuvabill:update
 ## Development
 
 ```
-git clone https://github.com/nuvabill/nuvabill.git
+git clone https://github.com/meroxis/nuvabill.git
 cd nuvabill
 composer install
 npm install && npm run build
@@ -145,7 +145,9 @@ the **"Powered by Nuvabill"** credit in the client area, invoices and emails mus
 
 Want your own brand only? A **White-label License** that removes the credit is available at [nuvabill.com](https://nuvabill.com).
 
+Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
+
 ## Contributing
 
 Bug reports and pull requests are welcome. By sending a pull request you agree that your contribution may be
-distributed under the AGPL-3.0 license and under the Nuvabill commercial White-label License.
+distributed by RapidNet Ltd under the AGPL-3.0 license and under the Nuvabill commercial White-label License.

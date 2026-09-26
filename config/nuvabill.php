@@ -45,7 +45,7 @@ return [
     */
 
     'updates' => [
-        'repository' => env('NUVABILL_UPDATE_REPOSITORY', 'nuvabill/nuvabill'),
+        'repository' => env('NUVABILL_UPDATE_REPOSITORY', 'meroxis/nuvabill'),
         'api_url' => env('NUVABILL_UPDATE_API_URL', 'https://api.github.com'),
         'public_key' => env('NUVABILL_UPDATE_PUBLIC_KEY', 'vH3YQXmgUOPpSb5UCWOWn0PT43HrQ76RQUFUnw8Emgw='),
     ],

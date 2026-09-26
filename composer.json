@@ -6,6 +6,12 @@
     "keywords": ["billing", "hosting", "whmcs-alternative", "invoicing", "cpanel"],
     "homepage": "https://nuvabill.com",
     "license": "AGPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "RapidNet Ltd",
+            "homepage": "https://nuvabill.com"
+        }
+    ],
     "require": {
         "php": "^8.3",
         "bacon/bacon-qr-code": "^3.1",
