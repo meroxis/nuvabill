@@ -1,0 +1,11 @@
+{
+    "slug": "resellerclub",
+    "type": "registrar",
+    "name": "ResellerClub",
+    "version": "1.0.0",
+    "namespace": "Nuvabill\\Extensions\\ResellerClub\\",
+    "class": "Nuvabill\\Extensions\\ResellerClub\\ResellerClubRegistrar",
+    "description": "ResellerClub and other LogicBoxes brands (NetEarthOne, ResellerCamp, ...).",
+    "author": "RapidNet Ltd",
+    "requires": ">=0.2.0"
+}

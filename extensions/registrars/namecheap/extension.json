@@ -1,0 +1,11 @@
+{
+    "slug": "namecheap",
+    "type": "registrar",
+    "name": "Namecheap",
+    "version": "1.0.0",
+    "namespace": "Nuvabill\\Extensions\\Namecheap\\",
+    "class": "Nuvabill\\Extensions\\Namecheap\\NamecheapRegistrar",
+    "description": "Namecheap reseller API, with free WhoisGuard privacy.",
+    "author": "RapidNet Ltd",
+    "requires": ">=0.2.0"
+}

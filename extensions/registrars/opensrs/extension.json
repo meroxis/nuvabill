@@ -1,0 +1,11 @@
+{
+    "slug": "opensrs",
+    "type": "registrar",
+    "name": "OpenSRS",
+    "version": "1.0.0",
+    "namespace": "Nuvabill\\Extensions\\OpenSrs\\",
+    "class": "Nuvabill\\Extensions\\OpenSrs\\OpenSrsRegistrar",
+    "description": "OpenSRS (Tucows) reseller API.",
+    "author": "RapidNet Ltd",
+    "requires": ">=0.2.0"
+}

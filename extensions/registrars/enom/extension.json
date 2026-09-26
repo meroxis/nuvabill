@@ -1,0 +1,11 @@
+{
+    "slug": "enom",
+    "type": "registrar",
+    "name": "Enom",
+    "version": "1.0.0",
+    "namespace": "Nuvabill\\Extensions\\Enom\\",
+    "class": "Nuvabill\\Extensions\\Enom\\EnomRegistrar",
+    "description": "Enom (Tucows) reseller API.",
+    "author": "RapidNet Ltd",
+    "requires": ">=0.2.0"
+}
