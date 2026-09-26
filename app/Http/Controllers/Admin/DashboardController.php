@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\DomainStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\OrderStatus;
 use App\Enums\ServiceStatus;
 use App\Enums\TicketStatus;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\Domain;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Service;
@@ -131,6 +133,31 @@ class DashboardController extends Controller
                 'tone' => 'crit',
                 'text' => trans_choice(':count paid service is still waiting to be set up.|:count paid services are still waiting to be set up.', $stuck, ['count' => $stuck]),
                 'url' => route('admin.services.index', ['status' => 'pending']),
+                'action' => __('Review'),
+            ];
+        }
+
+        $waitingDomains = Domain::query()
+            ->where('status', DomainStatus::Pending)
+            ->whereHas('invoiceItems.invoice', fn ($query) => $query->where('status', InvoiceStatus::Paid))
+            ->count();
+
+        if ($waitingDomains > 0) {
+            $items[] = [
+                'tone' => 'crit',
+                'text' => trans_choice(':count paid domain is still waiting to be registered.|:count paid domains are still waiting to be registered.', $waitingDomains, ['count' => $waitingDomains]),
+                'url' => route('admin.domains.index', ['status' => 'pending']),
+                'action' => __('Review'),
+            ];
+        }
+
+        $toReview = Order::query()->where('status', OrderStatus::Pending)->where('needs_review', true)->count();
+
+        if ($toReview > 0) {
+            $items[] = [
+                'tone' => 'warn',
+                'text' => trans_choice(':count order looks risky and needs your review.|:count orders look risky and need your review.', $toReview, ['count' => $toReview]),
+                'url' => route('admin.orders.index', ['status' => 'pending']),
                 'action' => __('Review'),
             ];
         }

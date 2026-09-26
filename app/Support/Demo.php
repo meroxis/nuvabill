@@ -28,6 +28,8 @@ class Demo
         'admin.settings.mail',
         'admin.settings.mail.test',
         'admin.settings.gateways.update',
+        'admin.settings.registrars.*',
+        'admin.domains.action',
         'admin.settings.staff.*',
         'admin.settings.roles.*',
         'admin.updates.*',
@@ -35,6 +37,7 @@ class Demo
         'admin.services.module',
         'client.account.*',
         'client.services.login',
+        'client.domains.nameservers',
         'client.invoices.pay',
     ];
 

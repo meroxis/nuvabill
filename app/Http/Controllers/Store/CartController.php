@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Store;
 
 use App\Billing\Cart;
+use App\Domains\AvailabilityChecker;
+use App\Domains\DomainName;
 use App\Enums\BillingCycle;
 use App\Http\Controllers\Controller;
+use App\Models\Domain;
 use App\Models\Product;
+use App\Models\TldPrice;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -26,16 +29,16 @@ class CartController extends Controller
         ]);
     }
 
-    public function store(Request $request, Cart $cart): RedirectResponse
+    public function store(Request $request, Cart $cart, AvailabilityChecker $checker): RedirectResponse
     {
-        $request->merge(['domain' => Str::lower(trim((string) $request->input('domain'), " \t\n\r\0\x0B/"))]);
-        $request->merge(['domain' => preg_replace('#^(https?://)?(www\.)?#', '', (string) $request->input('domain')) ?: null]);
+        $request->merge(['domain' => DomainName::normalize((string) $request->input('domain')) ?? (filled($request->input('domain')) ? '!' : null)]);
 
         $data = $request->validate([
             'product_id' => ['required', 'integer', 'exists:products,id'],
             'billing_cycle' => ['required', Rule::enum(BillingCycle::class)],
-            'domain' => ['nullable', 'string', 'max:190', 'regex:/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.[a-z0-9-]{1,63})*\.[a-z]{2,63}$/'],
-        ], ['domain.regex' => __('Enter a domain like example.com.')]);
+            'domain' => ['nullable', 'string', 'max:190', 'not_in:!'],
+            'register_domain' => ['sometimes', 'boolean'],
+        ], ['domain.not_in' => __('Enter a domain like example.com.')]);
 
         $product = Product::query()->with('prices')->findOrFail($data['product_id']);
         $cycle = BillingCycle::from($data['billing_cycle']);
@@ -52,9 +55,46 @@ class CartController extends Controller
             throw ValidationException::withMessages(['domain' => __('Enter the domain name for this service.')]);
         }
 
-        $cart->add($product, $cycle, $product->requires_domain ? $data['domain'] : null);
+        $domain = $product->requires_domain ? $data['domain'] : null;
+
+        if ($domain !== null && $request->boolean('register_domain')) {
+            $this->addRegistration($cart, $checker, $domain, 1);
+        }
+
+        $cart->add($product, $cycle, $domain);
 
         return redirect()->route('cart.show')->with('status', __(':product added to your cart.', ['product' => $product->name]));
+    }
+
+    /**
+     * Add a domain registration or transfer from the domain search.
+     */
+    public function storeDomain(Request $request, Cart $cart, AvailabilityChecker $checker): RedirectResponse
+    {
+        $request->merge(['domain' => DomainName::normalize((string) $request->input('domain')) ?? '!']);
+
+        $data = $request->validate([
+            'domain' => ['required', 'string', 'max:190', 'not_in:!'],
+            'action' => ['required', Rule::in([Domain::TYPE_REGISTER, Domain::TYPE_TRANSFER])],
+            'years' => ['nullable', 'integer', 'between:1,10'],
+            'epp_code' => ['nullable', 'string', 'max:128'],
+        ], ['domain.not_in' => __('Enter a domain like example.com.')]);
+
+        $years = (int) ($data['years'] ?? 1);
+
+        if ($data['action'] === Domain::TYPE_TRANSFER) {
+            $price = $this->priceFor($data['domain']);
+
+            if ($price->epp_required && blank($data['epp_code'] ?? null)) {
+                throw ValidationException::withMessages(['epp_code' => __('Enter the authorization (EPP) code. Your current registrar gives it to you.')]);
+            }
+
+            $cart->addDomain($data['domain'], Domain::TYPE_TRANSFER, $years, $data['epp_code'] ?? null);
+        } else {
+            $this->addRegistration($cart, $checker, $data['domain'], $years);
+        }
+
+        return redirect()->route('cart.show')->with('status', __(':domain added to your cart.', ['domain' => $data['domain']]));
     }
 
     public function destroy(int $index, Cart $cart): RedirectResponse
@@ -62,6 +102,26 @@ class CartController extends Controller
         $cart->remove($index);
 
         return redirect()->route('cart.show');
+    }
+
+    private function addRegistration(Cart $cart, AvailabilityChecker $checker, string $domain, int $years): void
+    {
+        $price = $this->priceFor($domain);
+
+        if ($checker->isAvailable($domain, $this->currency()) === false) {
+            throw ValidationException::withMessages(['domain' => __(':domain is already taken. Choose another name, or say you already own it.', ['domain' => $domain])]);
+        }
+
+        $cart->addDomain($domain, Domain::TYPE_REGISTER, min(max($years, $price->min_years), $price->max_years));
+    }
+
+    private function priceFor(string $domain): TldPrice
+    {
+        $prices = TldPrice::query()->enabled($this->currency())->get();
+        [, $tld] = DomainName::split($domain, $prices->pluck('tld'));
+
+        return $prices->firstWhere('tld', $tld)
+            ?? throw ValidationException::withMessages(['domain' => __('We do not sell .:tld domains.', ['tld' => $tld])]);
     }
 
     private function currency(): string

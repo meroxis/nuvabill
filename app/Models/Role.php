@@ -25,6 +25,7 @@ class Role extends Model
         'Billing' => [
             'orders.manage' => 'Manage orders',
             'services.manage' => 'Manage services and run module actions',
+            'domains.manage' => 'Manage domains and registrar actions',
             'billing.view' => 'View invoices and payments',
             'billing.manage' => 'Create invoices and record payments',
         ],

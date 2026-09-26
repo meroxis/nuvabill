@@ -2,6 +2,7 @@
 
 namespace App\Extensions;
 
+use App\Contracts\DomainRegistrar;
 use App\Contracts\PaymentGateway;
 use App\Contracts\ServerModule;
 use App\Models\Extension;
@@ -15,7 +16,7 @@ use Throwable;
 /**
  * Finds extensions in the extensions folder, loads their classes and creates gateway and module instances.
  *
- * Layout: extensions/{gateways|servers}/{slug}/extension.json with PHP classes in src/.
+ * Layout: extensions/{gateways|servers|registrars}/{slug}/extension.json with PHP classes in src/.
  */
 class ExtensionManager
 {
@@ -192,6 +193,46 @@ class ExtensionManager
     public function serverModuleNames(): Collection
     {
         return $this->ofType(ExtensionManifest::TYPE_SERVER)->map(fn (ExtensionManifest $manifest): string => $manifest->name);
+    }
+
+    public function registrar(string $slug): DomainRegistrar
+    {
+        $manifest = $this->find($slug);
+
+        if ($manifest === null || $manifest->type !== ExtensionManifest::TYPE_REGISTRAR) {
+            throw new InvalidArgumentException("Registrar [{$slug}] was not found.");
+        }
+
+        $registrar = new ($manifest->class)($manifest, $this->settings($slug));
+
+        if (! $registrar instanceof DomainRegistrar) {
+            throw new InvalidArgumentException("[{$manifest->class}] must implement ".DomainRegistrar::class.'.');
+        }
+
+        return $registrar;
+    }
+
+    /**
+     * Registrars that are switched on and fully set up, keyed by slug.
+     *
+     * @return Collection<string, DomainRegistrar>
+     */
+    public function activeRegistrars(): Collection
+    {
+        return $this->ofType(ExtensionManifest::TYPE_REGISTRAR)
+            ->filter(fn (ExtensionManifest $manifest): bool => $this->isEnabled($manifest->slug))
+            ->map(fn (ExtensionManifest $manifest): ?DomainRegistrar => $this->tryMake(fn () => $this->registrar($manifest->slug)))
+            ->filter(fn (?DomainRegistrar $registrar): bool => $registrar !== null && $registrar->isConfigured());
+    }
+
+    /**
+     * Registrars keyed by slug, with their display names.
+     *
+     * @return Collection<string, string>
+     */
+    public function registrarNames(): Collection
+    {
+        return $this->ofType(ExtensionManifest::TYPE_REGISTRAR)->map(fn (ExtensionManifest $manifest): string => $manifest->name);
     }
 
     /**

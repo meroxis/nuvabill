@@ -2,8 +2,11 @@
 
 namespace App\Billing;
 
+use App\Domains\DomainName;
 use App\Enums\BillingCycle;
+use App\Models\Domain;
 use App\Models\Product;
+use App\Models\TldPrice;
 use Illuminate\Contracts\Session\Session;
 use Illuminate\Support\Collection;
 
@@ -20,12 +23,39 @@ class Cart
     {
         $items = $this->rawItems();
         $items[] = [
+            'kind' => CartLine::KIND_PRODUCT,
             'product_id' => $product->id,
             'billing_cycle' => $cycle->value,
             'domain' => $domain,
         ];
 
         $this->session->put(self::SESSION_KEY, $items);
+    }
+
+    /**
+     * Add a domain registration or transfer. Adding the same domain again replaces it.
+     */
+    public function addDomain(string $domain, string $action, int $years, ?string $eppCode = null): void
+    {
+        $items = array_values(array_filter(
+            $this->rawItems(),
+            fn (array $item): bool => ($item['kind'] ?? CartLine::KIND_PRODUCT) !== CartLine::KIND_DOMAIN || $item['domain'] !== $domain,
+        ));
+
+        $items[] = [
+            'kind' => CartLine::KIND_DOMAIN,
+            'domain' => $domain,
+            'action' => $action === Domain::TYPE_TRANSFER ? Domain::TYPE_TRANSFER : Domain::TYPE_REGISTER,
+            'years' => max(1, $years),
+            'epp_code' => $eppCode,
+        ];
+
+        $this->session->put(self::SESSION_KEY, $items);
+    }
+
+    public function hasDomain(string $domain): bool
+    {
+        return collect($this->rawItems())->contains(fn (array $item): bool => ($item['kind'] ?? null) === CartLine::KIND_DOMAIN && $item['domain'] === $domain);
     }
 
     public function remove(int $index): void
@@ -52,19 +82,24 @@ class Cart
     }
 
     /**
-     * Cart lines with current prices. Lines for hidden, sold-out or unpriced products are dropped.
+     * Cart lines with current prices. Lines for hidden, sold-out or unpriced products and extensions are dropped.
      *
      * @return Collection<int, CartLine>
      */
     public function lines(string $currency): Collection
     {
         $items = $this->rawItems();
-        $products = Product::query()->with('prices')->whereIn('id', array_column($items, 'product_id'))->get()->keyBy('id');
+        $products = Product::query()->with('prices', 'server')->whereIn('id', array_filter(array_column($items, 'product_id')))->get()->keyBy('id');
+        $tlds = TldPrice::query()->enabled($currency)->get();
 
         return collect($items)
-            ->map(function (array $item, int $index) use ($products, $currency): ?CartLine {
-                $product = $products->get($item['product_id']);
-                $cycle = BillingCycle::tryFrom($item['billing_cycle']);
+            ->map(function (array $item, int $index) use ($products, $tlds, $currency): ?CartLine {
+                if (($item['kind'] ?? CartLine::KIND_PRODUCT) === CartLine::KIND_DOMAIN) {
+                    return $this->domainLine($index, $item, $tlds);
+                }
+
+                $product = $products->get($item['product_id'] ?? 0);
+                $cycle = BillingCycle::tryFrom((string) ($item['billing_cycle'] ?? ''));
 
                 if ($product === null || $cycle === null || ! $product->is_visible || ! $product->isInStock()) {
                     return null;
@@ -88,7 +123,31 @@ class Cart
     }
 
     /**
-     * @return list<array{product_id: int, billing_cycle: string, domain: string|null}>
+     * @param  array<string, mixed>  $item
+     * @param  Collection<int, TldPrice>  $tlds
+     */
+    private function domainLine(int $index, array $item, Collection $tlds): ?CartLine
+    {
+        $domain = DomainName::normalize((string) ($item['domain'] ?? ''));
+
+        if ($domain === null) {
+            return null;
+        }
+
+        [, $tld] = DomainName::split($domain, $tlds->pluck('tld'));
+        $price = $tlds->firstWhere('tld', $tld);
+
+        if ($price === null) {
+            return null;
+        }
+
+        $years = min(max((int) ($item['years'] ?? 1), $price->min_years), $price->max_years);
+
+        return CartLine::forDomain($index, $domain, (string) ($item['action'] ?? Domain::TYPE_REGISTER), $years, $price, $item['epp_code'] ?? null);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
      */
     private function rawItems(): array
     {

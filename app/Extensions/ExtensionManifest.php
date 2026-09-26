@@ -13,6 +13,8 @@ final readonly class ExtensionManifest
 
     public const TYPE_SERVER = 'server';
 
+    public const TYPE_REGISTRAR = 'registrar';
+
     public function __construct(
         public string $slug,
         public string $type,
@@ -44,7 +46,7 @@ final readonly class ExtensionManifest
             throw new InvalidArgumentException("Extension slug [{$data['slug']}] may only use lowercase letters, numbers, dashes and underscores.");
         }
 
-        if (! in_array($data['type'], [self::TYPE_GATEWAY, self::TYPE_SERVER], true)) {
+        if (! in_array($data['type'], [self::TYPE_GATEWAY, self::TYPE_SERVER, self::TYPE_REGISTRAR], true)) {
             throw new InvalidArgumentException("Extension [{$data['slug']}] has an unknown type [{$data['type']}].");
         }
 

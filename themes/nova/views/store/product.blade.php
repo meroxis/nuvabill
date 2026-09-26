@@ -41,6 +41,9 @@
 
             @if ($product->requires_domain)
                 <x-input name="domain" :label="__('Your domain name')" placeholder="example.com" :help="__('The website address this hosting is for. You can use a domain you already own.')" required autocomplete="off" />
+                @if ($sellsDomains)
+                    <x-checkbox name="register_domain" :label="__('Also register this domain for me')" :checked="(bool) old('register_domain')" />
+                @endif
             @endif
 
             @error('product_id')<div class="flash" data-tone="crit">{{ $message }}</div>@enderror

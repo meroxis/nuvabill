@@ -7,6 +7,7 @@
         ['route' => 'admin.clients.index', 'match' => 'admin.clients.*', 'icon' => 'users', 'label' => __('Clients'), 'show' => $can('clients.view')],
         ['route' => 'admin.orders.index', 'match' => 'admin.orders.*', 'icon' => 'cart', 'label' => __('Orders'), 'show' => $can('orders.manage'), 'count' => $pendingOrders],
         ['route' => 'admin.services.index', 'match' => 'admin.services.*', 'icon' => 'box', 'label' => __('Services'), 'show' => $can('services.manage')],
+        ['route' => 'admin.domains.index', 'match' => 'admin.domains.*', 'icon' => 'globe', 'label' => __('Domains'), 'show' => $can('domains.manage')],
         ['route' => 'admin.invoices.index', 'match' => 'admin.invoices.*', 'icon' => 'receipt', 'label' => __('Invoices'), 'show' => $can('billing.view')],
         ['route' => 'admin.tickets.index', 'match' => 'admin.tickets.*', 'icon' => 'ticket', 'label' => __('Support'), 'show' => $can('support.manage'), 'count' => $ticketsAwaitingReply],
     ], fn (array $item): bool => $item['show']);

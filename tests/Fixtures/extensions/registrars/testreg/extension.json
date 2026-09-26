@@ -1,0 +1,9 @@
+{
+    "slug": "testreg",
+    "type": "registrar",
+    "name": "Test Registrar",
+    "version": "1.0.0",
+    "namespace": "Tests\\Fixtures\\Registrars\\",
+    "class": "Tests\\Fixtures\\Registrars\\TestRegistrar",
+    "description": "A registrar that only exists in the test suite."
+}

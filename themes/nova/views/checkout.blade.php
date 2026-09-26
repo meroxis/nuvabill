@@ -43,7 +43,7 @@
             <h2 style="font-size:1.05rem">{{ __('Order summary') }}</h2>
             @foreach ($lines as $line)
                 <div class="summary-row">
-                    <span>{{ $line->product->name }}<br><span class="muted" style="font-size:.82rem">{{ $line->domain ? $line->domain.' · ' : '' }}{{ $line->cycle->label() }}</span></span>
+                    <span>{{ $line->title() }}<br><span class="muted" style="font-size:.82rem">{{ $line->summary() }}</span></span>
                     <span class="num">{{ money($line->dueToday(), $currency) }}</span>
                 </div>
             @endforeach

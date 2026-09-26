@@ -19,15 +19,15 @@
                     @foreach ($lines as $line)
                         <tr>
                             <td>
-                                <b>{{ $line->product->name }}</b>
-                                <div class="muted" style="font-size:.85rem">{{ $line->domain ? $line->domain.' · ' : '' }}{{ $line->cycle->label() }}@if ($line->setupFee) · {{ __('includes :fee setup', ['fee' => money($line->setupFee, $currency)]) }}@endif</div>
+                                <b>{{ $line->title() }}</b>
+                                <div class="muted" style="font-size:.85rem">{{ $line->summary() }}@if ($line->setupFee) · {{ __('includes :fee setup', ['fee' => money($line->setupFee, $currency)]) }}@endif</div>
                             </td>
                             <td class="end num">{{ money($line->dueToday(), $currency) }}</td>
                             <td class="end">
                                 <form method="POST" action="{{ route('cart.destroy', $line->index) }}">
                                     @csrf
                                     @method('DELETE')
-                                    <button class="btn btn-sm btn-ghost" type="submit" aria-label="{{ __('Remove :item', ['item' => $line->product->name]) }}"><x-icon name="x" /></button>
+                                    <button class="btn btn-sm btn-ghost" type="submit" aria-label="{{ __('Remove :item', ['item' => trim($line->title().' '.$line->domain)]) }}"><x-icon name="x" /></button>
                                 </form>
                             </td>
                         </tr>

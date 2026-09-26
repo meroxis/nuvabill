@@ -24,7 +24,7 @@ class DefaultDataSeeder extends Seeder
     {
         $roles = [
             'Owner' => ['*'],
-            'Billing' => ['clients.view', 'clients.manage', 'orders.manage', 'services.manage', 'billing.manage'],
+            'Billing' => ['clients.view', 'clients.manage', 'orders.manage', 'services.manage', 'domains.manage', 'billing.manage'],
             'Support' => ['clients.view', 'support.manage'],
         ];
 
@@ -180,6 +180,66 @@ class DefaultDataSeeder extends Seeder
                 Hi {{ client.first_name }},
 
                 Good news: your **{{ service.product }}** for **{{ service.domain }}** is active again.
+
+                {{ company.name }}
+                MD,
+            ],
+            'domain.registered' => [
+                'Domain registered',
+                'Your domain {{ domain.name }} is registered',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                Good news: **{{ domain.name }}** is now registered to you until **{{ domain.expires_at }}**.
+
+                Nameservers: {{ domain.nameservers }}
+
+                It can take a few hours until the domain works everywhere on the internet.
+
+                [Manage your domain]({{ domain.url }})
+
+                {{ company.name }}
+                MD,
+            ],
+            'domain.transfer_started' => [
+                'Domain transfer started',
+                'Transfer of {{ domain.name }} has started',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                We started the transfer of **{{ domain.name }}** to us. Transfers usually take 5 to 7 days.
+
+                Your current registrar may email you to approve the transfer. Approving it makes the transfer faster.
+
+                [Follow the transfer]({{ domain.url }})
+
+                {{ company.name }}
+                MD,
+            ],
+            'domain.renewed' => [
+                'Domain renewed',
+                'Your domain {{ domain.name }} is renewed',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                Thank you! **{{ domain.name }}** is renewed. It now expires on **{{ domain.expires_at }}**.
+
+                [Manage your domain]({{ domain.url }})
+
+                {{ company.name }}
+                MD,
+            ],
+            'domain.expiring' => [
+                'Domain expiring soon',
+                '{{ domain.name }} expires in {{ days_left }} days',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                Your domain **{{ domain.name }}** expires on **{{ domain.expires_at }}**, and it will not renew by itself.
+
+                If you want to keep it, renew it now. An expired domain stops working, and someone else may register it.
+
+                [Renew {{ domain.name }}]({{ domain.url }})
 
                 {{ company.name }}
                 MD,

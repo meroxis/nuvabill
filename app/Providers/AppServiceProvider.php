@@ -2,10 +2,12 @@
 
 namespace App\Providers;
 
+use App\Domains\Rdap;
 use App\Extensions\ExtensionManager;
 use App\Models\ActivityLog;
 use App\Models\Admin;
 use App\Models\Client;
+use App\Models\Domain;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Product;
@@ -47,6 +49,7 @@ class AppServiceProvider extends ServiceProvider
         Relation::enforceMorphMap([
             'admin' => Admin::class,
             'client' => Client::class,
+            'domain' => Domain::class,
             'invoice' => Invoice::class,
             'order' => Order::class,
             'product' => Product::class,
@@ -72,9 +75,10 @@ class AppServiceProvider extends ServiceProvider
         }
 
         if (Demo::isEnabled()) {
-            // The demo never sends email or calls payment, server or update APIs.
+            // The demo never sends email or calls payment, server or update APIs. Free RDAP lookups for domain search are allowed.
             config(['mail.default' => 'log']);
             Http::preventStrayRequests();
+            Http::allowStrayRequests([Rdap::BOOTSTRAP_URL, 'https://rdap.*', 'https://*.rdap.*', 'https://*/rdap/*']);
         }
     }
 

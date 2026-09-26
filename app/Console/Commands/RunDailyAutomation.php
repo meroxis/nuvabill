@@ -24,7 +24,7 @@ class RunDailyAutomation extends Command
         $summary = $automation->run();
         $settings->set('automation.last_run_at', now()->toIso8601String());
 
-        $line = "Invoices created: {$summary['invoices']}, reminders: {$summary['reminders']}, suspended: {$summary['suspended']}, terminated: {$summary['terminated']}, failed: {$summary['failed']}";
+        $line = "Invoices created: {$summary['invoices']}, reminders: {$summary['reminders']}, suspended: {$summary['suspended']}, terminated: {$summary['terminated']}, failed: {$summary['failed']}, domains expired: {$summary['domains_expired']}";
 
         Activity::log('automation.run', 'Daily automation: '.$line);
         $this->components->info($line);

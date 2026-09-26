@@ -5,12 +5,14 @@ use App\Http\Controllers\Client\Auth\LoginController;
 use App\Http\Controllers\Client\Auth\PasswordResetController;
 use App\Http\Controllers\Client\Auth\RegisterController;
 use App\Http\Controllers\Client\DashboardController;
+use App\Http\Controllers\Client\DomainController;
 use App\Http\Controllers\Client\InvoiceController;
 use App\Http\Controllers\Client\PaymentController;
 use App\Http\Controllers\Client\ServiceController;
 use App\Http\Controllers\Client\TicketController;
 use App\Http\Controllers\Store\CartController;
 use App\Http\Controllers\Store\CheckoutController;
+use App\Http\Controllers\Store\DomainSearchController;
 use App\Http\Controllers\Store\StoreController;
 use Illuminate\Support\Facades\Route;
 
@@ -24,8 +26,11 @@ Route::get('/', [StoreController::class, 'index'])->name('store.index');
 Route::get('store/{group}', [StoreController::class, 'group'])->name('store.group');
 Route::get('store/{group}/{product}', [StoreController::class, 'product'])->name('store.product')->scopeBindings();
 
+Route::get('domains', DomainSearchController::class)->middleware('throttle:30,1')->name('store.domains');
+
 Route::get('cart', [CartController::class, 'show'])->name('cart.show');
-Route::post('cart', [CartController::class, 'store'])->name('cart.store');
+Route::post('cart', [CartController::class, 'store'])->middleware('throttle:30,1')->name('cart.store');
+Route::post('cart/domains', [CartController::class, 'storeDomain'])->middleware('throttle:30,1')->name('cart.domains.store');
 Route::delete('cart/{index}', [CartController::class, 'destroy'])->whereNumber('index')->name('cart.destroy');
 
 Route::get('checkout', [CheckoutController::class, 'show'])->name('checkout.show');
@@ -62,6 +67,12 @@ Route::middleware(['auth:web', 'client.active'])->prefix('client')->name('client
     Route::get('services', [ServiceController::class, 'index'])->name('services.index');
     Route::get('services/{service}', [ServiceController::class, 'show'])->name('services.show');
     Route::post('services/{service}/login', [ServiceController::class, 'login'])->name('services.login');
+
+    Route::get('domains', [DomainController::class, 'index'])->name('domains.index');
+    Route::get('domains/{domain}', [DomainController::class, 'show'])->name('domains.show');
+    Route::put('domains/{domain}/nameservers', [DomainController::class, 'nameservers'])->middleware('throttle:10,1')->name('domains.nameservers');
+    Route::put('domains/{domain}/auto-renew', [DomainController::class, 'autoRenew'])->name('domains.auto-renew');
+    Route::post('domains/{domain}/renew', [DomainController::class, 'renew'])->name('domains.renew');
 
     Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
     Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');

@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\DB;
 class InvoiceManager
 {
     /**
-     * @param  list<array{type?: string, description: string, amount: int, service_id?: int|null, period_start?: CarbonInterface|string|null, period_end?: CarbonInterface|string|null}>  $items
+     * @param  list<array{type?: string, description: string, amount: int, service_id?: int|null, domain_id?: int|null, period_start?: CarbonInterface|string|null, period_end?: CarbonInterface|string|null}>  $items
      */
     public function create(
         Client $client,
@@ -41,6 +41,7 @@ class InvoiceManager
                     'description' => $item['description'],
                     'amount' => $item['amount'],
                     'service_id' => $item['service_id'] ?? null,
+                    'domain_id' => $item['domain_id'] ?? null,
                     'period_start' => $item['period_start'] ?? null,
                     'period_end' => $item['period_end'] ?? null,
                 ]);

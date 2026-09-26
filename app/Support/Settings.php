@@ -35,6 +35,16 @@ class Settings
         'automation.terminate_days' => 0,
         'automation.last_run_at' => null,
 
+        'domains.nameservers' => [],
+        'domains.auto_register' => true,
+        'domains.renewal_days_before' => 30,
+        'domains.expiry_notice_days' => [30, 7],
+
+        'fraud.enabled' => true,
+        'fraud.block_disposable_email' => true,
+        'fraud.max_orders_per_ip' => 3,
+        'fraud.check_country' => true,
+
         'branding.accent' => '#0B7A70',
 
         'theme.active' => 'nova',

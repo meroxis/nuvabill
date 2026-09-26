@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\Admin\ClientController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DepartmentController;
+use App\Http\Controllers\Admin\DomainController;
 use App\Http\Controllers\Admin\EmailTemplateController;
 use App\Http\Controllers\Admin\GatewayController;
 use App\Http\Controllers\Admin\InvoiceController;
@@ -14,12 +15,14 @@ use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ProductGroupController;
 use App\Http\Controllers\Admin\ProfileController;
+use App\Http\Controllers\Admin\RegistrarController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServiceController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\StaffController;
 use App\Http\Controllers\Admin\TicketController;
+use App\Http\Controllers\Admin\TldPriceController;
 use App\Http\Controllers\Admin\UpdateController;
 use Illuminate\Support\Facades\Route;
 
@@ -82,6 +85,15 @@ Route::middleware(['auth:admin', 'admin.can'])->group(function (): void {
             ->name('services.module');
     });
 
+    Route::middleware('admin.can:domains.manage')->group(function (): void {
+        Route::get('domains', [DomainController::class, 'index'])->name('domains.index');
+        Route::get('domains/{domain}', [DomainController::class, 'show'])->name('domains.show');
+        Route::put('domains/{domain}', [DomainController::class, 'update'])->name('domains.update');
+        Route::post('domains/{domain}/{action}', [DomainController::class, 'action'])
+            ->whereIn('action', ['register', 'renew', 'sync', 'nameservers', 'invoice'])
+            ->name('domains.action');
+    });
+
     Route::middleware('admin.can:billing.view')->group(function (): void {
         Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
         Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->whereNumber('invoice')->name('invoices.show');
@@ -120,6 +132,18 @@ Route::middleware(['auth:admin', 'admin.can'])->group(function (): void {
         Route::get('gateways', [GatewayController::class, 'index'])->name('gateways.index');
         Route::get('gateways/{gateway}', [GatewayController::class, 'edit'])->name('gateways.edit');
         Route::put('gateways/{gateway}', [GatewayController::class, 'update'])->name('gateways.update');
+
+        Route::get('domains', [TldPriceController::class, 'index'])->name('tlds.index');
+        Route::post('domains', [TldPriceController::class, 'store'])->name('tlds.store');
+        Route::put('domains/settings', [TldPriceController::class, 'settings'])->name('tlds.settings');
+        Route::get('domains/{tldPrice}/edit', [TldPriceController::class, 'edit'])->name('tlds.edit');
+        Route::put('domains/{tldPrice}', [TldPriceController::class, 'update'])->name('tlds.update');
+        Route::delete('domains/{tldPrice}', [TldPriceController::class, 'destroy'])->name('tlds.destroy');
+
+        Route::get('registrars', [RegistrarController::class, 'index'])->name('registrars.index');
+        Route::get('registrars/{registrar}', [RegistrarController::class, 'edit'])->name('registrars.edit');
+        Route::put('registrars/{registrar}', [RegistrarController::class, 'update'])->name('registrars.update');
+        Route::post('registrars/{registrar}/test', [RegistrarController::class, 'test'])->middleware('throttle:10,1')->name('registrars.test');
 
         Route::get('email-templates', [EmailTemplateController::class, 'index'])->name('email-templates.index');
         Route::get('email-templates/{emailTemplate}', [EmailTemplateController::class, 'edit'])->name('email-templates.edit');

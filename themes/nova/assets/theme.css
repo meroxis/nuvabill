@@ -493,4 +493,84 @@
         width: 19px;
         height: 19px;
     }
+
+    /* Domain search */
+    .domain-search {
+        display: flex;
+        gap: 8px;
+        max-width: 640px;
+    }
+
+    .domain-search .input {
+        font-size: 1.05rem;
+        padding: 0.75rem 0.9rem;
+    }
+
+    .domain-results {
+        display: grid;
+    }
+
+    .domain-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px 16px;
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--nb-line);
+    }
+
+    .domain-row:last-child {
+        border-bottom: 0;
+    }
+
+    .domain-row .name {
+        font-weight: 700;
+        font-size: 1.02rem;
+        overflow-wrap: anywhere;
+        flex: 1 1 220px;
+    }
+
+    .domain-row .price {
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+    }
+
+    .domain-row form {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .domain-row.is-exact {
+        background: var(--nb-accent-soft);
+    }
+
+    .tld-list {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+
+    .tld-chip {
+        display: grid;
+        gap: 2px;
+        padding: 10px 12px;
+        border: 1px solid var(--nb-line);
+        border-radius: 10px;
+        background: var(--nb-surface);
+        font-size: 0.85rem;
+        color: var(--nb-muted);
+    }
+
+    .tld-chip b {
+        font-size: 1.05rem;
+        color: var(--nb-ink);
+    }
+
+    @media (max-width: 560px) {
+        .domain-search {
+            flex-direction: column;
+        }
+    }
 }

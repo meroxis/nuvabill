@@ -2,12 +2,13 @@
 
 namespace App\Billing;
 
+use App\Models\Domain;
 use App\Models\InvoiceItem;
 use App\Models\Service;
 use Carbon\CarbonImmutable;
 
 /**
- * Builds invoice lines for services so orders and renewals describe periods the same way.
+ * Builds invoice lines for services and domains so orders and renewals describe periods the same way.
  */
 class LineItems
 {
@@ -30,6 +31,34 @@ class LineItems
             'description' => $description,
             'amount' => $amount,
             'service_id' => $service->id,
+            'period_start' => $start,
+            'period_end' => $end,
+        ];
+    }
+
+    /**
+     * A domain registration, transfer or renewal for the given years from the start date.
+     *
+     * @param  string  $type  One of the InvoiceItem::TYPE_DOMAIN_* constants.
+     * @return array{type: string, description: string, amount: int, domain_id: int, period_start: CarbonImmutable, period_end: CarbonImmutable}
+     */
+    public static function domainPeriod(Domain $domain, string $type, int $years, int $amount, CarbonImmutable $start): array
+    {
+        $end = $start->addYearsNoOverflow($years)->subDay();
+
+        $label = match ($type) {
+            InvoiceItem::TYPE_DOMAIN_TRANSFER => __('Domain transfer'),
+            InvoiceItem::TYPE_DOMAIN_RENEW => __('Domain renewal'),
+            default => __('Domain registration'),
+        };
+
+        $period = trans_choice(':count year|:count years', $years, ['count' => $years]);
+
+        return [
+            'type' => $type,
+            'description' => $label.' - '.$domain->name.' ('.$period.($type === InvoiceItem::TYPE_DOMAIN_RENEW ? ', '.$start->format('d M Y').' - '.$end->format('d M Y') : '').')',
+            'amount' => $amount,
+            'domain_id' => $domain->id,
             'period_start' => $start,
             'period_end' => $end,
         ];

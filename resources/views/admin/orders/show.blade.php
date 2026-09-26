@@ -13,6 +13,15 @@
         @endif
     </div>
 
+    @if ($order->needs_review)
+        <div class="flash" data-tone="warn" style="display:grid;gap:.4rem">
+            <strong>{{ __('This order needs a review. Nothing is set up automatically until you accept it.') }}</strong>
+            @foreach ((array) $order->fraud_reasons as $reason)
+                <span>· {{ $reason }}</span>
+            @endforeach
+        </div>
+    @endif
+
     <div class="grid-2">
         <section class="card card-flush">
             <div class="card-header"><h2>{{ __('Items') }}</h2></div>
@@ -25,6 +34,14 @@
                         <td class="num" style="white-space:nowrap">{{ money($service->first_payment_amount, $service->currency) }} · {{ $service->billing_cycle->label() }}</td>
                         <td>{{ $service->server?->name ?? '—' }}</td>
                         <td><x-status :value="$service->status" /></td>
+                    </tr>
+                @endforeach
+                @foreach ($order->domains as $domain)
+                    <tr>
+                        <td><a class="row-link" href="{{ route('admin.domains.show', $domain) }}">{{ $domain->name }}</a><div class="faint" style="font-size:.8rem">{{ $domain->isTransfer() ? __('Domain transfer') : __('Domain registration') }}</div></td>
+                        <td class="num" style="white-space:nowrap">{{ money($domain->first_payment_amount, $domain->currency) }} · {{ trans_choice(':count year|:count years', $domain->years, ['count' => $domain->years]) }}</td>
+                        <td>{{ $domain->registrar ?: __('By hand') }}</td>
+                        <td><x-status :value="$domain->status" /></td>
                     </tr>
                 @endforeach
                 </tbody>

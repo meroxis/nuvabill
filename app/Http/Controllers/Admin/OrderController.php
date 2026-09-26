@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Billing\InvoiceManager;
+use App\Domains\DomainProvisioner;
+use App\Enums\DomainStatus;
 use App\Enums\OrderStatus;
 use App\Enums\ServiceStatus;
 use App\Http\Controllers\Controller;
@@ -33,23 +35,33 @@ class OrderController extends Controller
 
     public function show(Order $order): View
     {
-        $order->load('client', 'invoice', 'services.product', 'services.server');
+        $order->load('client', 'invoice', 'services.product', 'services.server', 'domains');
 
         return view('admin.orders.show', ['order' => $order]);
     }
 
     /**
-     * Set up every pending service now, even if the invoice is not paid yet.
+     * Set up every pending service and register every pending domain now, even if the invoice is not
+     * paid yet. Also clears a fraud review, so later payments set things up automatically again.
      */
-    public function accept(Order $order, Provisioner $provisioner): RedirectResponse
+    public function accept(Order $order, Provisioner $provisioner, DomainProvisioner $domains): RedirectResponse
     {
         $failures = [];
+        $order->update(['needs_review' => false]);
 
         foreach ($order->services()->with('product', 'client', 'server')->where('status', ServiceStatus::Pending)->get() as $service) {
             $result = $provisioner->create($service);
 
             if (! $result->success) {
                 $failures[] = $service->label().': '.$result->message;
+            }
+        }
+
+        foreach ($order->domains()->with('client')->where('status', DomainStatus::Pending)->whereNotNull('registrar')->get() as $domain) {
+            $result = $domains->register($domain);
+
+            if (! $result->success) {
+                $failures[] = $domain->name.': '.$result->message;
             }
         }
 
@@ -65,6 +77,8 @@ class OrderController extends Controller
 
     public function cancel(Order $order, InvoiceManager $invoices): RedirectResponse
     {
+        $order->domains()->where('status', DomainStatus::Pending)->update(['status' => DomainStatus::Cancelled]);
+
         $order->services()
             ->where('status', ServiceStatus::Pending)
             ->update(['status' => ServiceStatus::Cancelled, 'cancelled_at' => now(), 'next_due_date' => null]);

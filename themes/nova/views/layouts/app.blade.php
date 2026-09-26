@@ -1,6 +1,7 @@
 @php
     $client = auth('web')->user();
     $cartCount = app(\App\Billing\Cart::class)->count();
+    $sellsDomains = \App\Models\TldPrice::query()->where('is_enabled', true)->exists();
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -17,7 +18,10 @@
         <a class="brand" href="{{ route('store.index') }}"><span class="brand-mark"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ setting('company.name') }}</span></a>
         <button class="icon-button menu-toggle" type="button" @click="open = ! open" :aria-expanded="open" aria-label="{{ __('Menu') }}"><x-icon name="menu" /></button>
         <nav class="site-nav" :class="{ 'is-open': open }" aria-label="{{ __('Main') }}">
-            <a href="{{ route('store.index') }}" @if (request()->routeIs('store.*')) aria-current="page" @endif>{{ __('Store') }}</a>
+            <a href="{{ route('store.index') }}" @if (request()->routeIs('store.index', 'store.group', 'store.product')) aria-current="page" @endif>{{ __('Store') }}</a>
+            @if ($sellsDomains)
+                <a href="{{ route('store.domains') }}" @if (request()->routeIs('store.domains')) aria-current="page" @endif>{{ __('Domains') }}</a>
+            @endif
             @if ($client)
                 <a href="{{ route('client.dashboard') }}" @if (request()->routeIs('client.*')) aria-current="page" @endif>{{ __('My account') }}</a>
             @else
@@ -42,6 +46,7 @@
         <div class="container">
             <a href="{{ route('client.dashboard') }}" @if (request()->routeIs('client.dashboard')) aria-current="page" @endif>{{ __('Overview') }}</a>
             <a href="{{ route('client.services.index') }}" @if (request()->routeIs('client.services.*')) aria-current="page" @endif>{{ __('Services') }}</a>
+            <a href="{{ route('client.domains.index') }}" @if (request()->routeIs('client.domains.*')) aria-current="page" @endif>{{ __('Domains') }}</a>
             <a href="{{ route('client.invoices.index') }}" @if (request()->routeIs('client.invoices.*')) aria-current="page" @endif>{{ __('Invoices') }}</a>
             <a href="{{ route('client.tickets.index') }}" @if (request()->routeIs('client.tickets.*')) aria-current="page" @endif>{{ __('Support') }}</a>
             <a href="{{ route('client.account.edit') }}" @if (request()->routeIs('client.account.*')) aria-current="page" @endif>{{ __('Account') }}</a>

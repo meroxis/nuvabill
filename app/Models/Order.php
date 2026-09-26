@@ -14,13 +14,22 @@ class Order extends Model
     /** @use HasFactory<OrderFactory> */
     use HasFactory;
 
-    protected $fillable = ['number', 'client_id', 'invoice_id', 'status', 'currency', 'total', 'ip_address', 'notes'];
+    protected $fillable = ['number', 'client_id', 'invoice_id', 'status', 'needs_review', 'fraud_reasons', 'currency', 'total', 'ip_address', 'notes'];
+
+    /**
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'needs_review' => false,
+    ];
 
     protected function casts(): array
     {
         return [
             'status' => OrderStatus::class,
             'total' => 'integer',
+            'needs_review' => 'boolean',
+            'fraud_reasons' => 'array',
         ];
     }
 
@@ -46,5 +55,13 @@ class Order extends Model
     public function services(): HasMany
     {
         return $this->hasMany(Service::class);
+    }
+
+    /**
+     * @return HasMany<Domain, $this>
+     */
+    public function domains(): HasMany
+    {
+        return $this->hasMany(Domain::class);
     }
 }

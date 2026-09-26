@@ -3,6 +3,8 @@
     @if ($admin->hasPermission('settings.manage'))
         <a class="chip" href="{{ route('admin.settings.edit') }}" @if (request()->routeIs('admin.settings.edit')) aria-current="true" @endif>{{ __('General') }}</a>
         <a class="chip" href="{{ route('admin.settings.gateways.index') }}" @if (request()->routeIs('admin.settings.gateways.*')) aria-current="true" @endif>{{ __('Payment gateways') }}</a>
+        <a class="chip" href="{{ route('admin.settings.tlds.index') }}" @if (request()->routeIs('admin.settings.tlds.*')) aria-current="true" @endif>{{ __('Domains') }}</a>
+        <a class="chip" href="{{ route('admin.settings.registrars.index') }}" @if (request()->routeIs('admin.settings.registrars.*')) aria-current="true" @endif>{{ __('Registrars') }}</a>
         <a class="chip" href="{{ route('admin.settings.email-templates.index') }}" @if (request()->routeIs('admin.settings.email-templates.*')) aria-current="true" @endif>{{ __('Email templates') }}</a>
         <a class="chip" href="{{ route('admin.settings.departments.index') }}" @if (request()->routeIs('admin.settings.departments.*')) aria-current="true" @endif>{{ __('Support departments') }}</a>
     @endif

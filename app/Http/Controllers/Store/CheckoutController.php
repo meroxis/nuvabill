@@ -47,7 +47,10 @@ class CheckoutController extends Controller
             return redirect()->route('cart.show')->with('error', __('Your cart is empty.'));
         }
 
-        $order = $placer->place($client, $lines, $request->ip());
+        // Only trust the visitor's country when a trusted proxy such as Cloudflare added it.
+        $ipCountry = $request->isFromTrustedProxy() ? $request->header('CF-IPCountry') : null;
+
+        $order = $placer->place($client, $lines, $request->ip(), $ipCountry);
         $cart->clear();
 
         $invoice = $order->invoice;

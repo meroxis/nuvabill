@@ -3,11 +3,15 @@
 namespace App\Billing;
 
 use App\Enums\AutoSetup;
+use App\Enums\DomainStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\OrderStatus;
 use App\Enums\ServiceStatus;
 use App\Jobs\ProvisionService;
+use App\Jobs\RegisterDomain;
+use App\Jobs\RenewDomain;
 use App\Mail\TemplateMailer;
+use App\Models\Domain;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Order;
@@ -28,17 +32,22 @@ class InvoicePaidHandler
 
     public function handle(Invoice $invoice): void
     {
-        $invoice->loadMissing('items.service.product', 'client');
+        $invoice->loadMissing('items.service.product', 'items.service.order', 'items.domain.order', 'client');
 
         foreach ($invoice->items as $item) {
             if ($item->service !== null && $item->type === InvoiceItem::TYPE_SERVICE) {
                 $this->handleServiceItem($item, $item->service);
+            }
+
+            if ($item->domain !== null && in_array($item->type, InvoiceItem::DOMAIN_TYPES, true)) {
+                $this->handleDomainItem($item, $item->domain);
             }
         }
 
         Order::query()
             ->where('invoice_id', $invoice->id)
             ->where('status', OrderStatus::Pending)
+            ->where('needs_review', false)
             ->update(['status' => OrderStatus::Active]);
 
         if ($invoice->total > 0) {
@@ -58,7 +67,9 @@ class InvoicePaidHandler
         }
 
         if ($service->status === ServiceStatus::Pending && $service->product->auto_setup === AutoSetup::OnPayment) {
-            ProvisionService::dispatch($service);
+            if ($service->order?->needs_review !== true) {
+                ProvisionService::dispatch($service);
+            }
 
             return;
         }
@@ -67,6 +78,21 @@ class InvoicePaidHandler
             && $service->suspension_reason === self::OVERDUE_REASON
             && ! $this->hasOtherOverdueInvoices($service, $item->invoice_id)) {
             $this->provisioner->unsuspend($service);
+        }
+    }
+
+    private function handleDomainItem(InvoiceItem $item, Domain $domain): void
+    {
+        if ($item->type === InvoiceItem::TYPE_DOMAIN_RENEW) {
+            if ($domain->status->isRenewable() && $item->period_start !== null && $domain->next_due_date?->isSameDay($item->period_start)) {
+                RenewDomain::dispatch($domain, max(1, (int) round($item->period_start->diffInYears($item->period_end->addDay()))));
+            }
+
+            return;
+        }
+
+        if ($domain->status === DomainStatus::Pending && setting('domains.auto_register') && filled($domain->registrar) && $domain->order?->needs_review !== true) {
+            RegisterDomain::dispatch($domain);
         }
     }
 
