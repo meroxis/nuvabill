@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\DomainController;
 use App\Http\Controllers\Admin\EmailTemplateController;
 use App\Http\Controllers\Admin\GatewayController;
+use App\Http\Controllers\Admin\ImportController;
 use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\ProductController;
@@ -154,6 +155,11 @@ Route::middleware(['auth:admin', 'admin.can'])->group(function (): void {
         Route::put('departments/{department}', [DepartmentController::class, 'update'])->name('departments.update');
 
         Route::get('activity', ActivityController::class)->name('activity');
+
+        Route::get('import', [ImportController::class, 'index'])->name('import.index');
+        Route::put('import', [ImportController::class, 'update'])->middleware('throttle:10,1')->name('import.update');
+        Route::post('import/start', [ImportController::class, 'start'])->name('import.start');
+        Route::post('import/cancel', [ImportController::class, 'cancel'])->name('import.cancel');
     });
 
     Route::middleware('admin.can:staff.manage')->prefix('settings')->name('settings.')->group(function (): void {

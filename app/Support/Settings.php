@@ -65,6 +65,9 @@ class Settings
         'updates.auto_all' => false,
         'updates.last_checked_at' => null,
         'updates.latest' => null,
+
+        'import.whmcs' => null,
+        'import.whmcs_status' => null,
     ];
 
     /**
@@ -72,7 +75,7 @@ class Settings
      *
      * @var list<string>
      */
-    public const SECRET_KEYS = ['mail.password'];
+    public const SECRET_KEYS = ['mail.password', 'import.whmcs'];
 
     /**
      * @var array<string, mixed>|null

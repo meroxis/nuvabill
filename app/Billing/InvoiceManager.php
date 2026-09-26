@@ -91,6 +91,15 @@ class InvoiceManager
 
     public function numberFor(Invoice $invoice): string
     {
-        return setting('billing.invoice_prefix').str_pad((string) $invoice->id, 4, '0', STR_PAD_LEFT);
+        $number = setting('billing.invoice_prefix').str_pad((string) $invoice->id, 4, '0', STR_PAD_LEFT);
+        $candidate = $number;
+        $suffix = 2;
+
+        // Imported invoices keep their old numbers, which may look like ours.
+        while (Invoice::query()->where('number', $candidate)->whereKeyNot($invoice->id)->exists()) {
+            $candidate = $number.'-'.$suffix++;
+        }
+
+        return $candidate;
     }
 }
