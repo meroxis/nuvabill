@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem
+    url: https://github.com/meroxis/nuvabill/security/advisories/new
+    about: Please report security problems privately, not in a public issue.
+  - name: Website and White-label License
+    url: https://nuvabill.com
+    about: Questions about licensing and priority support.
