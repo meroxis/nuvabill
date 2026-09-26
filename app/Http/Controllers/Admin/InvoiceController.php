@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Billing\InvoiceManager;
 use App\Billing\InvoicePdf;
 use App\Billing\PaymentRecorder;
+use App\Billing\RefundIssuer;
 use App\Enums\InvoiceStatus;
 use App\Extensions\ExtensionManager;
 use App\Extensions\ExtensionManifest;
@@ -12,6 +13,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\TemplateMailer;
 use App\Models\Client;
 use App\Models\Invoice;
+use App\Models\Transaction;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -19,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use RuntimeException;
 
 class InvoiceController extends Controller
 {
@@ -40,7 +43,7 @@ class InvoiceController extends Controller
         return view('admin.invoices.index', ['invoices' => $invoices, 'filter' => $filter]);
     }
 
-    public function show(Invoice $invoice, ExtensionManager $extensions): View
+    public function show(Invoice $invoice, ExtensionManager $extensions, RefundIssuer $refunds): View
     {
         $invoice->load('items.service.product', 'client', 'transactions');
 
@@ -49,7 +52,14 @@ class InvoiceController extends Controller
             ->put('manual', __('Other (cash, cheque, ...)'))
             ->all();
 
-        return view('admin.invoices.show', ['invoice' => $invoice, 'methods' => $methods]);
+        $canRefundThroughGateway = $invoice->status === InvoiceStatus::Paid
+            && $invoice->transactions->where('type', 'payment')->contains(fn (Transaction $payment): bool => $refunds->canRefundThroughGateway($payment));
+
+        return view('admin.invoices.show', [
+            'invoice' => $invoice,
+            'methods' => $methods,
+            'canRefundThroughGateway' => $canRefundThroughGateway,
+        ]);
     }
 
     public function create(Request $request): View
@@ -120,6 +130,23 @@ class InvoiceController extends Controller
         );
 
         return back()->with('status', __('Payment recorded.'));
+    }
+
+    public function refund(Request $request, Invoice $invoice, RefundIssuer $refunds): RedirectResponse
+    {
+        if ($invoice->status !== InvoiceStatus::Paid) {
+            return back()->with('error', __('Only paid invoices can be refunded.'));
+        }
+
+        try {
+            $refunds->refund($invoice, $request->boolean('through_gateway'));
+        } catch (RuntimeException $exception) {
+            report($exception);
+
+            return back()->with('error', __('The refund did not finish: :reason', ['reason' => $exception->getMessage()]));
+        }
+
+        return back()->with('status', __('Invoice refunded.'));
     }
 
     public function publish(Invoice $invoice, InvoiceManager $invoices): RedirectResponse
