@@ -1,0 +1,88 @@
+/*
+ * Nuvabill design tokens. Light is the default; dark follows the system setting
+ * unless the person picked a theme (data-theme on <html>).
+ */
+:root {
+    --nb-bg: #f3f6f6;
+    --nb-surface: #ffffff;
+    --nb-surface-2: #eaf0f0;
+    --nb-line: #d9e2e2;
+    --nb-line-2: #c7d3d3;
+    --nb-ink: #0e1a1c;
+    --nb-muted: #56676a;
+    --nb-faint: #7d8f90;
+    --nb-accent: #0b7a70;
+    --nb-accent-2: #0a5f57;
+    --nb-accent-ink: #ffffff;
+    --nb-accent-soft: #ddf1ee;
+    --nb-good: #1e8e55;
+    --nb-good-soft: #dff3e8;
+    --nb-warn: #9a640a;
+    --nb-warn-soft: #fbefd5;
+    --nb-crit: #c23b3b;
+    --nb-crit-soft: #fbe3e3;
+    --nb-info: #2b63c6;
+    --nb-info-soft: #e1ebfb;
+    --nb-shadow: 0 1px 2px rgb(14 26 28 / 0.05), 0 10px 30px rgb(14 26 28 / 0.07);
+    --nb-overlay: rgb(8 16 17 / 0.45);
+    --nb-radius: 10px;
+    --nb-radius-sm: 7px;
+    --nb-font-body: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --nb-font-display: 'Bricolage Grotesque', 'Figtree', ui-sans-serif, system-ui, sans-serif;
+    --nb-font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
+    color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme='light']) {
+        --nb-bg: #0b1213;
+        --nb-surface: #121b1c;
+        --nb-surface-2: #182325;
+        --nb-line: #243234;
+        --nb-line-2: #31413f;
+        --nb-ink: #e4edec;
+        --nb-muted: #9aadad;
+        --nb-faint: #6f8383;
+        --nb-accent: #35c2b1;
+        --nb-accent-2: #5fd6c7;
+        --nb-accent-ink: #03201c;
+        --nb-accent-soft: #11302c;
+        --nb-good: #4cc98a;
+        --nb-good-soft: #13301f;
+        --nb-warn: #e3a93b;
+        --nb-warn-soft: #33270f;
+        --nb-crit: #f07a7a;
+        --nb-crit-soft: #3a1818;
+        --nb-info: #7fa8f0;
+        --nb-info-soft: #16233a;
+        --nb-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 30px rgb(0 0 0 / 0.35);
+        --nb-overlay: rgb(0 0 0 / 0.6);
+        color-scheme: dark;
+    }
+}
+
+:root[data-theme='dark'] {
+    --nb-bg: #0b1213;
+    --nb-surface: #121b1c;
+    --nb-surface-2: #182325;
+    --nb-line: #243234;
+    --nb-line-2: #31413f;
+    --nb-ink: #e4edec;
+    --nb-muted: #9aadad;
+    --nb-faint: #6f8383;
+    --nb-accent: #35c2b1;
+    --nb-accent-2: #5fd6c7;
+    --nb-accent-ink: #03201c;
+    --nb-accent-soft: #11302c;
+    --nb-good: #4cc98a;
+    --nb-good-soft: #13301f;
+    --nb-warn: #e3a93b;
+    --nb-warn-soft: #33270f;
+    --nb-crit: #f07a7a;
+    --nb-crit-soft: #3a1818;
+    --nb-info: #7fa8f0;
+    --nb-info-soft: #16233a;
+    --nb-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 30px rgb(0 0 0 / 0.35);
+    --nb-overlay: rgb(0 0 0 / 0.6);
+    color-scheme: dark;
+}

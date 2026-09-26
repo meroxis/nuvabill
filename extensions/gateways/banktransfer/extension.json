@@ -1,0 +1,11 @@
+{
+    "slug": "banktransfer",
+    "type": "gateway",
+    "name": "Bank transfer",
+    "description": "Show your bank details on the invoice. Staff mark the invoice paid when the money arrives.",
+    "version": "1.0.0",
+    "author": "Nuvabill",
+    "namespace": "Nuvabill\\Extensions\\BankTransfer\\",
+    "class": "Nuvabill\\Extensions\\BankTransfer\\BankTransferGateway",
+    "requires": ">=0.1.0"
+}

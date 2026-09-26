@@ -1,12 +1,15 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "nuvabill/nuvabill",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
-    "license": "MIT",
+    "description": "Billing, automation and support for hosting companies.",
+    "keywords": ["billing", "hosting", "whmcs-alternative", "invoicing", "cpanel"],
+    "homepage": "https://nuvabill.com",
+    "license": "AGPL-3.0-or-later",
     "require": {
         "php": "^8.3",
+        "bacon/bacon-qr-code": "^3.1",
+        "dompdf/dompdf": "^3.1",
         "laravel/framework": "^13.17",
         "laravel/tinker": "^3.0"
     },
@@ -25,7 +28,10 @@
             "App\\": "app/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
-        }
+        },
+        "files": [
+            "app/helpers.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {

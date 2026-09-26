@@ -1,0 +1,56 @@
+<?php
+
+namespace App\Http\Controllers\Store;
+
+use App\Http\Controllers\Controller;
+use App\Models\Product;
+use App\Models\ProductGroup;
+use Illuminate\View\View;
+
+class StoreController extends Controller
+{
+    public function index(): View
+    {
+        return view('theme::store.index', [
+            'groups' => ProductGroup::query()
+                ->visible()
+                ->with(['products' => fn ($query) => $query->visible()->with('prices')])
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get()
+                ->filter(fn (ProductGroup $group): bool => $group->products->isNotEmpty()),
+            'currency' => $this->currency(),
+        ]);
+    }
+
+    public function group(ProductGroup $group): View
+    {
+        abort_unless($group->is_visible, 404);
+
+        return view('theme::store.group', [
+            'group' => $group,
+            'products' => $group->products()->visible()->with('prices')->get(),
+            'currency' => $this->currency(),
+        ]);
+    }
+
+    public function product(ProductGroup $group, Product $product): View
+    {
+        abort_unless($group->is_visible && $product->is_visible, 404);
+
+        $product->load('prices');
+
+        return view('theme::store.product', [
+            'group' => $group,
+            'product' => $product,
+            'prices' => $product->pricesIn($this->currency()),
+            'currency' => $this->currency(),
+            'inStock' => $product->isInStock(),
+        ]);
+    }
+
+    private function currency(): string
+    {
+        return auth('web')->user()?->currency ?? (string) setting('billing.currency');
+    }
+}

@@ -1,0 +1,11 @@
+{
+    "slug": "stripe",
+    "type": "gateway",
+    "name": "Stripe",
+    "description": "Cards, Apple Pay and Google Pay through Stripe Checkout.",
+    "version": "1.0.0",
+    "author": "Nuvabill",
+    "namespace": "Nuvabill\\Extensions\\Stripe\\",
+    "class": "Nuvabill\\Extensions\\Stripe\\StripeGateway",
+    "requires": ">=0.1.0"
+}

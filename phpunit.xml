@@ -32,5 +32,7 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="NUVABILL_INSTALLED" value="true"/>
+        <env name="NUVABILL_UPDATE_PUBLIC_KEY" value=""/>
     </php>
 </phpunit>

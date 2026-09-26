@@ -1,0 +1,11 @@
+{
+    "slug": "paypal",
+    "type": "gateway",
+    "name": "PayPal",
+    "description": "PayPal balance, cards and Pay Later through PayPal Checkout.",
+    "version": "1.0.0",
+    "author": "Nuvabill",
+    "namespace": "Nuvabill\\Extensions\\PayPal\\",
+    "class": "Nuvabill\\Extensions\\PayPal\\PayPalGateway",
+    "requires": ">=0.1.0"
+}

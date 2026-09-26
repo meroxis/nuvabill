@@ -1,0 +1,11 @@
+{
+    "slug": "cpanel",
+    "type": "server",
+    "name": "cPanel & WHM",
+    "description": "Create, suspend, upgrade and remove cPanel accounts, with one-click login for clients.",
+    "version": "1.0.0",
+    "author": "Nuvabill",
+    "namespace": "Nuvabill\\Extensions\\Cpanel\\",
+    "class": "Nuvabill\\Extensions\\Cpanel\\CpanelModule",
+    "requires": ">=0.1.0"
+}

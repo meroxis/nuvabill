@@ -1,0 +1,6 @@
+{{-- The Nuvabill mark: a cloud holding a bill. Color comes from currentColor. --}}
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" aria-hidden="true" {{ $attributes }}>
+    <rect width="32" height="32" rx="9" fill="currentColor"/>
+    <path d="M10.5 22.5h11.2a4.3 4.3 0 0 0 .7-8.55 6 6 0 0 0-11.6-1.2 4.9 4.9 0 0 0-.3 9.75z" fill="#fff"/>
+    <path d="M13 17.2h6.4M13 19.8h4.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+</svg>
