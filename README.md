@@ -21,11 +21,11 @@
 
 ![Nuvabill admin dashboard on desktop and the client area on a phone](.github/screenshots/hero.png)
 
-Nuvabill sells your hosting plans, bills clients every month, creates their cPanel accounts the moment they pay,
-suspends late payers, and answers support tickets. It is a modern, open alternative to WHMCS, written from scratch.
+Nuvabill sells your hosting plans and domains, bills clients every month, creates their cPanel, DirectAdmin, Plesk
+or VPS accounts the moment they pay, suspends late payers, and answers support tickets. It is a modern, open alternative to WHMCS, written from scratch.
 There is **no per-client pricing** and no license fee to run it.
 
-> **Status: v0.1.** Ready for small hosting companies and testing. See the [roadmap](#roadmap).
+> **Status: v0.2.** Domains, four control panels, two VPS panels, Iraqi payment gateways and a WHMCS importer. See the [roadmap](#roadmap).
 >
 > **Try it:** the [live demo](https://demo.nuvabill.com/admin/login) has sample clients, invoices and tickets. One click signs you in, and the data resets every hour.
 
@@ -64,11 +64,15 @@ It creates renewal invoices, sends reminders, suspends overdue services, sends e
 
 In the admin area (`/admin`):
 
-1. **Servers** → add your cPanel/WHM server and press **Test connection**.
-2. **Products** → create your plans (or edit the example plans) and choose the WHM package for each.
-3. **Settings → Payment gateways** → turn on Stripe, PayPal or bank transfer.
-4. **Settings → Sending email** → add your SMTP details and send yourself a test email.
-5. **Your profile** → turn on two-factor login.
+1. **Servers** → add your cPanel/WHM, DirectAdmin, Plesk, Proxmox or Virtualizor server and press **Test connection**.
+2. **Products** → create your plans (or edit the example plans) and choose the package or VPS plan for each.
+3. **Settings → Domains** and **Registrars** → set your domain prices and connect ResellerClub, Namecheap, Enom or OpenSRS.
+4. **Settings → Payment gateways** → turn on Stripe, PayPal, FIB, FastPay, Wayl or bank transfer.
+5. **Settings → Sending email** → add your SMTP details and send yourself a test email.
+6. **Settings → Security** → choose two-factor rules and CAPTCHA. Then turn on two-factor login on **Your profile**.
+
+Moving from WHMCS? **Settings → Import** copies your clients (with their passwords), products, services, domains,
+invoices and tickets. You can run it again before you switch; it never makes copies.
 
 That's it. Your store is live at your domain.
 
@@ -78,7 +82,8 @@ That's it. Your store is live at your domain.
 
 ### A store your clients enjoy
 
-Plans with monthly to three-yearly prices, setup fees, a domain field, cart and checkout. Clients register in one step.
+Plans with monthly to three-yearly prices, setup fees, a domain field, cart and checkout. Clients register in one step,
+or with **Google, GitHub or Facebook**.
 
 ![Store](.github/screenshots/store.png)
 
@@ -97,17 +102,28 @@ The whole client area works on a phone: services, invoices, payments, tickets an
 
 ![Invoice with payment recording](.github/screenshots/invoice.png)
 
+### Domains
+
+Clients search for a domain, see the price, and order it on its own or with a hosting plan. Nuvabill registers,
+transfers and renews it at **ResellerClub, Namecheap, Enom or OpenSRS**, sends expiry reminders, and lets clients
+change nameservers. Without a registrar, availability comes from free RDAP lookups.
+
 ### Get paid your way
 
-**Stripe Checkout**, **PayPal Checkout** and **bank transfer** are built in. Card numbers never touch your server.
+**Stripe Checkout**, **PayPal Checkout** and **bank transfer** are built in, with refunds from the invoice page.
+For Iraq: **FIB** (First Iraqi Bank, with QR code), **FastPay** and **Wayl**. Card numbers never touch your server.
 Webhooks are signature-checked, and each payment is recorded exactly once.
 
 ![Payment gateways](.github/screenshots/gateways.png)
 
-### cPanel & WHM automation
+### Control panel and VPS automation
 
-Accounts are created when the first invoice is paid. Suspend, unsuspend, terminate and change package from the admin area.
-Clients open their cPanel with one click, no password needed.
+**cPanel & WHM, DirectAdmin and Plesk** accounts are created when the first invoice is paid. Suspend, unsuspend,
+terminate and change package from the admin area. Clients open their control panel with one click, no password needed.
+
+**Virtualizor and Proxmox VE** virtual servers are managed **inside the client area**, like in WHMCS: start, stop,
+restart, live CPU, memory, disk and bandwidth, IP addresses, root password, OS reinstall and VNC details.
+API keys stay on your server.
 
 ![Product pricing and automatic setup](.github/screenshots/products.png)
 
@@ -128,7 +144,10 @@ failed setups, pending orders, overdue invoices, and a warning if the cron job s
 
 - Client profiles with services, invoices, payments, tickets and activity in one place
 - Staff **roles and permissions** (Owner, Billing, Support, or your own)
-- **Two-factor login** with any authenticator app, plus recovery codes
+- **Two-factor sign-in** for staff and clients: an authenticator app with recovery codes, or codes by email. Make it optional or required.
+- **CAPTCHA** (Cloudflare Turnstile, reCAPTCHA or hCaptcha) on the forms you choose
+- **Fraud checks** on new orders: throwaway email addresses, too many orders from one IP, and country mismatch
+- **Sign in with Google, GitHub or Facebook**
 - Activity log of everything that happens
 - Security headers on every page (content security policy, no framing, strict HTTPS) and a safe setup for Cloudflare
 
@@ -145,7 +164,7 @@ Security fixes can install themselves at night.
 ### Extensions and themes
 
 Payment gateways and server modules are drop-in folders in `extensions/`. Client-area themes live in `themes/`.
-The built-in Stripe, PayPal, bank transfer and cPanel extensions use the same system, so they are complete examples.
+The built-in gateways, control panel modules and domain registrars use the same system, so they are complete examples.
 A marketplace for themes and extensions is on the [roadmap](#roadmap).
 
 ---
@@ -166,8 +185,8 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 
 | Version | Focus |
 |---|---|
-| **v0.1** | First sale: store, billing, Stripe/PayPal/bank transfer, cPanel, tickets, 2FA, signed updater |
-| v0.2 | DirectAdmin, Plesk, Proxmox, Virtualizor, domains and registrars, **WHMCS importer**, fraud checks |
+| v0.1 | First sale: store, billing, Stripe/PayPal/bank transfer, cPanel, tickets, 2FA, signed updater |
+| **v0.2** | Domains and registrars, DirectAdmin, Plesk, Proxmox, Virtualizor, FIB/FastPay/Wayl, refunds, **WHMCS importer**, fraud checks, social login, CAPTCHA, client 2FA |
 | v0.3 | Taxes, multi-currency, promo codes, quotes, client wallet, affiliates, REST API |
 | v0.4 | White-label licenses, marketplace, extension SDK, right-to-left languages, passkeys |
 | v0.5 | Automation builder, AI ticket replies, WhatsApp and Telegram bot, admin phone app |

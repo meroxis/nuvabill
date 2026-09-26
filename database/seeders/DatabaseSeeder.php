@@ -116,6 +116,7 @@ class DatabaseSeeder extends Seeder
             ->each(fn (Service $service) => $service->update([
                 'server_id' => Server::query()->where('hostname', Demo::VPS_HOST)->value('id'),
                 'username' => 'root',
+                'domain' => 'vps'.(100 + $service->id).'.yourhost.net',
                 'module_data' => ['vpsid' => (string) (100 + $service->id)],
             ]));
 
