@@ -2,9 +2,11 @@
 
 namespace App\Provisioning;
 
+use App\Contracts\HasClientPanel;
 use App\Contracts\ServerModule;
 use App\Enums\ServiceStatus;
 use App\Extensions\ExtensionManager;
+use App\Extensions\Servers\Module;
 use App\Extensions\Servers\ModuleResult;
 use App\Mail\TemplateMailer;
 use App\Models\Server;
@@ -56,6 +58,11 @@ class Provisioner
         }
 
         $service->fill(array_intersect_key($result->data, array_flip(['username', 'password'])));
+
+        if (is_array($result->data['module_data'] ?? null)) {
+            $service->module_data = array_merge((array) $service->module_data, $result->data['module_data']);
+        }
+
         $service->status = ServiceStatus::Active;
         $service->save();
 
@@ -178,6 +185,63 @@ class Provisioner
 
             return null;
         }
+    }
+
+    /**
+     * The module's own client panel for an active service, as [view, data], or null when it has none.
+     * A control panel that does not answer gives the panel an error message instead of breaking the page.
+     *
+     * @return array{view: string, data: array<string, mixed>, actions: array<string, string>}|null
+     */
+    public function clientPanel(Service $service): ?array
+    {
+        $service->loadMissing('product', 'server');
+        $module = $this->moduleFor($service);
+
+        if (! $module instanceof HasClientPanel || $service->status !== ServiceStatus::Active || $service->server === null) {
+            return null;
+        }
+
+        try {
+            $data = $module->clientPanel($service);
+        } catch (Throwable $exception) {
+            report($exception);
+            $data = ['error' => __('The server did not answer. Please try again in a minute.')];
+        }
+
+        return ['view' => $module->clientPanelView(), 'data' => $data, 'actions' => $module->clientActions()];
+    }
+
+    /**
+     * Run a client panel action (for example "restart") and log it.
+     *
+     * @param  array<string, mixed>  $input
+     */
+    public function clientAction(Service $service, string $action, array $input): ModuleResult
+    {
+        $service->loadMissing('product', 'server', 'client');
+        $module = $this->moduleFor($service);
+
+        if (! $module instanceof HasClientPanel || ! array_key_exists($action, $module->clientActions()) || $service->status !== ServiceStatus::Active) {
+            return ModuleResult::fail(__('This action is not available.'));
+        }
+
+        $result = $this->attempt(fn (): ModuleResult => $module->clientAction($service, $action, $input));
+
+        Activity::log(
+            $result->success ? 'service.client_action' : 'service.module_failed',
+            "Client action \"{$action}\" on service #{$service->id} ({$service->label()}): {$result->message}",
+            $service,
+        );
+
+        return $result;
+    }
+
+    public function hasLoginLink(Service $service): bool
+    {
+        $module = $this->moduleFor($service->loadMissing('product'));
+
+        return $module instanceof Module ? $module->hasLoginLink() : $module instanceof ServerModule;
     }
 
     public function testConnection(Server $server): ModuleResult

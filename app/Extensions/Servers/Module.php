@@ -44,6 +44,22 @@ abstract class Module implements ServerModule
     }
 
     /**
+     * Whether clients see an "Open control panel" button. Modules without a panel login turn it off.
+     */
+    public function hasLoginLink(): bool
+    {
+        return true;
+    }
+
+    /**
+     * A value this module saved on the service when it was created, for example the VPS ID.
+     */
+    protected function moduleValue(Service $service, string $key, mixed $default = null): mixed
+    {
+        return $service->module_data[$key] ?? $default;
+    }
+
+    /**
      * A product setting for the service's product, for example the package name.
      */
     protected function productSetting(Service $service, string $key, mixed $default = null): mixed

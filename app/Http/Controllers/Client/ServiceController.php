@@ -18,7 +18,7 @@ class ServiceController extends Controller
         ]);
     }
 
-    public function show(Request $request, Service $service): View
+    public function show(Request $request, Service $service, Provisioner $provisioner): View
     {
         $this->authorizeOwner($request, $service);
 
@@ -26,7 +26,8 @@ class ServiceController extends Controller
 
         return view('theme::client.services.show', [
             'service' => $service,
-            'canLogin' => filled($service->product->server_module) && $service->server !== null && $service->username !== null,
+            'canLogin' => filled($service->product->server_module) && $service->server !== null && $service->username !== null && $provisioner->hasLoginLink($service),
+            'panel' => $provisioner->clientPanel($service),
         ]);
     }
 
@@ -39,6 +40,20 @@ class ServiceController extends Controller
         return $url !== null
             ? redirect()->away($url)
             : back()->with('error', __('The control panel link is not available right now. Try again in a minute or open a ticket.'));
+    }
+
+    /**
+     * An action from the module's own panel, for example "restart" on a VPS.
+     */
+    public function panel(Request $request, Service $service, string $action, Provisioner $provisioner): RedirectResponse
+    {
+        $this->authorizeOwner($request, $service);
+
+        $result = $provisioner->clientAction($service, $action, $request->except('_token'));
+
+        return back()
+            ->with($result->success ? 'status' : 'error', $result->message)
+            ->with('panel_result', $result->success ? $result->data : null);
     }
 
     private function authorizeOwner(Request $request, Service $service): void

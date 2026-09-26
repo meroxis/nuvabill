@@ -10,6 +10,7 @@ use App\Support\Installation;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\View;
 use InvalidArgumentException;
 use Throwable;
 
@@ -233,6 +234,20 @@ class ExtensionManager
     public function registrarNames(): Collection
     {
         return $this->ofType(ExtensionManifest::TYPE_REGISTRAR)->map(fn (ExtensionManifest $manifest): string => $manifest->name);
+    }
+
+    /**
+     * Extensions with a views folder can ship Blade views, used as "ext-{slug}::name".
+     */
+    public function registerViews(): void
+    {
+        foreach ($this->manifests() as $manifest) {
+            $views = $manifest->path.DIRECTORY_SEPARATOR.'views';
+
+            if (is_dir($views)) {
+                View::addNamespace('ext-'.$manifest->slug, $views);
+            }
+        }
     }
 
     /**

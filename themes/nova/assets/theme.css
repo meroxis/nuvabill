@@ -600,4 +600,92 @@
             flex-direction: column;
         }
     }
+
+    /* Server panels from modules (Virtualizor, Proxmox) */
+    .vps-panel {
+        display: grid;
+        gap: 18px;
+    }
+
+    .vps-panel-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .vps-power,
+    .vps-tools {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: flex-start;
+    }
+
+    .vps-tool {
+        flex: 1 1 260px;
+        border: 1px solid var(--nb-line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: var(--nb-surface-2);
+    }
+
+    .vps-tool summary {
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+
+    .vps-tool-form {
+        display: grid;
+        gap: 12px;
+        margin-top: 12px;
+    }
+
+    .usage-grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    }
+
+    .usage {
+        display: grid;
+        gap: 6px;
+    }
+
+    .usage-label {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        font-size: 0.85rem;
+        color: var(--nb-muted);
+    }
+
+    .usage-label span:last-child {
+        color: var(--nb-ink);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .usage-bar {
+        height: 8px;
+        border-radius: 999px;
+        background: var(--nb-surface-2);
+        border: 1px solid var(--nb-line);
+        overflow: hidden;
+    }
+
+    .usage-bar span {
+        display: block;
+        height: 100%;
+        background: var(--nb-accent);
+        border-radius: inherit;
+    }
+
+    .usage-bar[data-tone='warn'] span {
+        background: var(--nb-warn);
+    }
+
+    .usage-bar[data-tone='crit'] span {
+        background: var(--nb-crit);
+    }
 }

@@ -37,6 +37,7 @@ class Demo
         'admin.services.module',
         'client.account.*',
         'client.services.login',
+        'client.services.panel',
         'client.domains.nameservers',
         'client.invoices.pay',
     ];

@@ -1,0 +1,11 @@
+{
+    "slug": "proxmox",
+    "type": "server",
+    "name": "Proxmox VE",
+    "description": "Create KVM virtual servers from a cloud-init template. Clients start, stop and manage them inside the client area.",
+    "version": "1.0.0",
+    "author": "Nuvabill",
+    "namespace": "Nuvabill\\Extensions\\Proxmox\\",
+    "class": "Nuvabill\\Extensions\\Proxmox\\ProxmoxModule",
+    "requires": ">=0.2.0"
+}

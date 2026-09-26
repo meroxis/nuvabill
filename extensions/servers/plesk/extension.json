@@ -1,0 +1,11 @@
+{
+    "slug": "plesk",
+    "type": "server",
+    "name": "Plesk",
+    "description": "Create, suspend, upgrade and remove Plesk customers and subscriptions, with one-click login for clients.",
+    "version": "1.0.0",
+    "author": "Nuvabill",
+    "namespace": "Nuvabill\\Extensions\\Plesk\\",
+    "class": "Nuvabill\\Extensions\\Plesk\\PleskModule",
+    "requires": ">=0.2.0"
+}

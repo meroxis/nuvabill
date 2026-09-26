@@ -68,7 +68,7 @@ class AppServiceProvider extends ServiceProvider
             : route('client.password.reset', ['token' => $token, 'email' => $user->email]));
 
         $this->app->make(Themes::class)->register();
-        $this->app->make(ExtensionManager::class)->manifests();
+        $this->app->make(ExtensionManager::class)->registerViews();
 
         if (Installation::isInstalled()) {
             $this->applySettingsToConfig();

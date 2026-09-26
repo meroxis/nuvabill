@@ -22,6 +22,10 @@
         <div class="flash" data-tone="info"><span>{{ __('This service is being set up. It starts as soon as the first invoice is paid.') }}</span></div>
     @endif
 
+    @if ($panel)
+        @include($panel['view'], ['service' => $service, 'panel' => $panel['data'], 'actions' => $panel['actions'], 'result' => session('panel_result')])
+    @endif
+
     <div class="two-col">
         <section class="card" style="display:grid;gap:1rem">
             <h2 style="font-size:1.05rem">{{ __('Details') }}</h2>

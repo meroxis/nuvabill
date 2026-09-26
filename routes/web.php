@@ -67,6 +67,7 @@ Route::middleware(['auth:web', 'client.active'])->prefix('client')->name('client
     Route::get('services', [ServiceController::class, 'index'])->name('services.index');
     Route::get('services/{service}', [ServiceController::class, 'show'])->name('services.show');
     Route::post('services/{service}/login', [ServiceController::class, 'login'])->name('services.login');
+    Route::post('services/{service}/panel/{action}', [ServiceController::class, 'panel'])->where('action', '[a-z0-9-]+')->middleware('throttle:20,1')->name('services.panel');
 
     Route::get('domains', [DomainController::class, 'index'])->name('domains.index');
     Route::get('domains/{domain}', [DomainController::class, 'show'])->name('domains.show');

@@ -1,0 +1,11 @@
+{
+    "slug": "directadmin",
+    "type": "server",
+    "name": "DirectAdmin",
+    "description": "Create, suspend, upgrade and remove DirectAdmin user accounts.",
+    "version": "1.0.0",
+    "author": "Nuvabill",
+    "namespace": "Nuvabill\\Extensions\\DirectAdmin\\",
+    "class": "Nuvabill\\Extensions\\DirectAdmin\\DirectAdminModule",
+    "requires": ">=0.2.0"
+}
