@@ -1,0 +1,160 @@
+<?php
+
+namespace Nuvabill\Extensions\Wayl;
+
+use App\Extensions\Gateways\Gateway;
+use App\Extensions\Gateways\PaymentResult;
+use App\Extensions\Gateways\PaymentStart;
+use App\Extensions\Gateways\WebhookResult;
+use App\Models\Invoice;
+use App\Models\PaymentIntent;
+use App\Support\Money;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
+use RuntimeException;
+
+/**
+ * Wayl payment links. Each payment gets its own link and webhook; webhooks are signed with
+ * HMAC-SHA256, and the link status is read again from Wayl before a payment counts.
+ */
+class WaylGateway extends Gateway
+{
+    private const API = 'https://api.thewayl.com';
+
+    /**
+     * Wayl link statuses that mean the money arrived.
+     */
+    private const PAID_STATUSES = ['complete', 'delivered'];
+
+    public function settingsFields(): array
+    {
+        return [
+            'display_name' => [
+                'label' => 'Name shown to clients',
+                'type' => 'text',
+                'help' => 'Leave empty to show "Wayl". Many hosts use "Card or wallet (Wayl)".',
+            ],
+            'api_token' => [
+                'label' => 'API token',
+                'type' => 'password',
+                'required' => true,
+                'help' => 'Email jisr@wayl.io from your Wayl account to get an API token.',
+            ],
+            'mode' => [
+                'label' => 'Mode',
+                'type' => 'select',
+                'options' => ['live' => 'Live', 'test' => 'Test'],
+            ],
+        ];
+    }
+
+    public function supportsCurrency(string $currency): bool
+    {
+        return strtoupper($currency) === 'IQD';
+    }
+
+    public function startPayment(Invoice $invoice, string $returnUrl, string $cancelUrl): PaymentStart
+    {
+        $amount = $this->wholeUnits($invoice->balance());
+        $reference = 'NB-'.$invoice->id.'-'.Str::lower(Str::random(10));
+
+        $response = $this->api()->post(self::API.'/api/v1/links', [
+            'env' => $this->setting('mode') === 'test' ? 'test' : 'live',
+            'referenceId' => $reference,
+            'total' => $amount,
+            'currency' => 'IQD',
+            'lineItem' => [[
+                'label' => __('Invoice :number', ['number' => $invoice->displayNumber()]),
+                'amount' => $amount,
+                'type' => 'increase',
+            ]],
+            'webhookUrl' => route('webhooks.gateway', $this->slug()),
+            'webhookSecret' => $this->webhookSecret(),
+            'redirectionUrl' => $returnUrl,
+            'customParameter' => (string) $invoice->id,
+        ]);
+
+        $url = $response->json('data.url');
+
+        if (! $response->successful() || ! is_string($url)) {
+            throw new RuntimeException('Wayl could not create the payment link: '.($response->json('message') ?? $response->status()));
+        }
+
+        PaymentIntent::create([
+            'invoice_id' => $invoice->id,
+            'gateway' => $this->slug(),
+            'reference' => $reference,
+            'amount' => $invoice->balance(),
+            'currency' => 'IQD',
+            'status' => PaymentIntent::STATUS_PENDING,
+            'meta' => ['link_id' => $response->json('data.id'), 'code' => $response->json('data.code')],
+        ]);
+
+        return PaymentStart::redirect($url);
+    }
+
+    public function handleReturn(Request $request, Invoice $invoice): ?PaymentResult
+    {
+        $intent = PaymentIntent::query()
+            ->where('invoice_id', $invoice->id)
+            ->where('gateway', $this->slug())
+            ->where('status', PaymentIntent::STATUS_PENDING)
+            ->latest('id')
+            ->first();
+
+        return $intent === null ? null : $this->confirm($intent);
+    }
+
+    public function handleWebhook(Request $request): WebhookResult
+    {
+        $expected = hash_hmac('sha256', $request->getContent(), $this->webhookSecret());
+
+        if (! hash_equals($expected, strtolower((string) $request->header('x-wayl-signature-256', '')))) {
+            return WebhookResult::invalid('Invalid Wayl signature.');
+        }
+
+        $intent = PaymentIntent::findFor($this->slug(), (string) $request->input('referenceId', ''));
+
+        if ($intent === null) {
+            return WebhookResult::ignored('Unknown payment link.');
+        }
+
+        $result = $this->confirm($intent);
+
+        return $result ? WebhookResult::paid($result) : WebhookResult::ignored('Not paid yet.');
+    }
+
+    private function confirm(PaymentIntent $intent): ?PaymentResult
+    {
+        $response = $this->api()->get(self::API.'/api/v1/links/'.rawurlencode($intent->reference));
+
+        if (! $response->successful() || ! in_array(strtolower((string) $response->json('data.status')), self::PAID_STATUSES, true)) {
+            return null;
+        }
+
+        $intent->update(['status' => PaymentIntent::STATUS_PAID]);
+
+        return new PaymentResult(
+            invoiceId: $intent->invoice_id,
+            amount: Money::toMinor((string) $response->json('data.total')),
+            currency: 'IQD',
+            reference: (string) ($response->json('data.id') ?: $intent->reference),
+            meta: ['payment_method' => $response->json('data.paymentMethod')],
+        );
+    }
+
+    /**
+     * A secret for this site's webhooks, made from the app key so staff never need to enter one.
+     */
+    private function webhookSecret(): string
+    {
+        return hash_hmac('sha256', 'nuvabill-wayl-webhook', (string) config('app.key'));
+    }
+
+    private function api(): PendingRequest
+    {
+        return Http::withHeaders(['X-WAYL-AUTHENTICATION' => (string) $this->setting('api_token')])->timeout(30)->acceptJson();
+    }
+}

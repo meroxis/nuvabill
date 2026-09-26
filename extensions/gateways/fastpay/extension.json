@@ -1,0 +1,11 @@
+{
+    "slug": "fastpay",
+    "type": "gateway",
+    "name": "FastPay",
+    "version": "1.0.0",
+    "namespace": "Nuvabill\\Extensions\\FastPay\\",
+    "class": "Nuvabill\\Extensions\\FastPay\\FastPayGateway",
+    "description": "FastPay wallet checkout. Iraqi dinar only.",
+    "author": "RapidNet Ltd",
+    "requires": ">=0.2.0"
+}

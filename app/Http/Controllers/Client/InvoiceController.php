@@ -33,6 +33,7 @@ class InvoiceController extends Controller
             'invoice' => $invoice,
             'gateways' => $invoice->isPayable() ? $extensions->activeGateways($invoice->currency) : collect(),
             'instructions' => session('payment_instructions'),
+            'qr' => session('payment_qr'),
         ]);
     }
 

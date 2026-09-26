@@ -44,6 +44,26 @@
                     </div>
                 @endif
 
+                @if ($qr)
+                    <div class="qr-pay" x-data="{ paid: false }" x-init="setInterval(() => { if (paid) return; fetch(@js(route('client.invoices.payment-status', $invoice)), { headers: { Accept: 'application/json' } }).then(r => r.ok ? r.json() : {}).then(d => { if (d.paid) { paid = true; window.location.reload(); } }).catch(() => {}); }, 5000)">
+                        <strong>{{ __('Pay with :gateway', ['gateway' => $qr['gateway']]) }}</strong>
+                        <img src="{{ $qr['image'] }}" alt="{{ __('QR code to pay invoice :number', ['number' => $invoice->displayNumber()]) }}" width="220" height="220">
+                        <span class="muted">{{ __('Scan the code with your banking app, or enter this code:') }}</span>
+                        @if ($qr['code'])<code class="mono qr-code">{{ $qr['code'] }}</code>@endif
+                        @if ($qr['links'])
+                            <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">
+                                @foreach ($qr['links'] as $label => $url)
+                                    <a class="btn btn-sm" href="{{ $url }}" rel="noopener">{{ $label }}</a>
+                                @endforeach
+                            </div>
+                        @endif
+                        @if ($qr['expires_at'])
+                            <span class="faint" style="font-size:.8rem">{{ __('The code works until :time.', ['time' => \Illuminate\Support\Carbon::parse($qr['expires_at'])->timezone(config('app.timezone'))->format('H:i')]) }}</span>
+                        @endif
+                        <span class="faint" style="font-size:.8rem" x-text="paid ? @js(__('Payment received!')) : @js(__('This page updates by itself when the payment arrives.'))"></span>
+                    </div>
+                @endif
+
                 @if ($gateways->isEmpty())
                     <p class="muted" style="margin:0">{{ __('Online payment is not set up yet. Please contact us to pay this invoice.') }}</p>
                 @else

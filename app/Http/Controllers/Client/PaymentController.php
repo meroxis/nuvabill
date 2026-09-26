@@ -4,10 +4,13 @@ namespace App\Http\Controllers\Client;
 
 use App\Billing\PaymentRecorder;
 use App\Extensions\ExtensionManager;
+use App\Extensions\Gateways\Gateway;
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -47,10 +50,47 @@ class PaymentController extends Controller
             return redirect()->away($start->redirectUrl);
         }
 
+        if ($start->isQr()) {
+            return redirect()->route('client.invoices.show', $invoice)->with('payment_qr', [
+                'gateway' => $gateway->name(),
+                'image' => $start->qrImage,
+                'code' => $start->code,
+                'links' => $start->appLinks,
+                'expires_at' => $start->expiresAt,
+            ]);
+        }
+
         return redirect()->route('client.invoices.show', $invoice)->with('payment_instructions', Str::markdown((string) $start->instructions, [
             'html_input' => 'escape',
             'allow_unsafe_links' => false,
         ]));
+    }
+
+    /**
+     * Polled by the invoice page while the client pays in another app. Asks the gateway at most
+     * every few seconds, so a waiting page cannot flood it.
+     */
+    public function status(Request $request, Invoice $invoice, ExtensionManager $extensions, PaymentRecorder $payments): JsonResponse
+    {
+        abort_unless($invoice->client_id === $request->user('web')->id, 404);
+
+        $gateway = $invoice->payment_method ? $extensions->activeGateways()->get($invoice->payment_method) : null;
+
+        if ($invoice->isPayable() && $gateway instanceof Gateway && $gateway->checksWhileWaiting() && Cache::add('nuvabill.payment-poll.'.$invoice->id, true, 8)) {
+            try {
+                $result = $gateway->handleReturn($request, $invoice);
+            } catch (Throwable $exception) {
+                report($exception);
+                $result = null;
+            }
+
+            if ($result !== null) {
+                $payments->recordGatewayResult($result, $invoice->payment_method);
+                $invoice->refresh();
+            }
+        }
+
+        return response()->json(['paid' => ! $invoice->isPayable()]);
     }
 
     public function return(Request $request, Invoice $invoice, string $gateway, ExtensionManager $extensions, PaymentRecorder $payments): RedirectResponse

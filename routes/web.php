@@ -79,6 +79,7 @@ Route::middleware(['auth:web', 'client.active'])->prefix('client')->name('client
     Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'pdf'])->name('invoices.pdf');
     Route::post('invoices/{invoice}/pay', [PaymentController::class, 'store'])->name('invoices.pay');
     Route::get('invoices/{invoice}/return/{gateway}', [PaymentController::class, 'return'])->name('invoices.return');
+    Route::get('invoices/{invoice}/payment-status', [PaymentController::class, 'status'])->middleware('throttle:30,1')->name('invoices.payment-status');
 
     Route::get('tickets', [TicketController::class, 'index'])->name('tickets.index');
     Route::get('tickets/new', [TicketController::class, 'create'])->name('tickets.create');

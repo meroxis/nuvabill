@@ -63,6 +63,24 @@ abstract class Gateway implements PaymentGateway
         return WebhookResult::ignored();
     }
 
+    /**
+     * Whether the invoice page may ask this gateway every few seconds if the payment arrived,
+     * for gateways where the client pays in another app (for example by scanning a QR code).
+     */
+    public function checksWhileWaiting(): bool
+    {
+        return false;
+    }
+
+    /**
+     * Invoice amounts in Iraqi dinar as whole dinars. Nuvabill stores two decimal places, and
+     * Iraqi gateways only take whole dinars, so any fraction is rounded up.
+     */
+    protected function wholeUnits(int $minor): int
+    {
+        return intdiv($minor + 99, 100);
+    }
+
     protected function setting(string $key, mixed $default = null): mixed
     {
         return $this->settings[$key] ?? $default;

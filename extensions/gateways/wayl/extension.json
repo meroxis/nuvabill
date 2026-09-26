@@ -1,0 +1,11 @@
+{
+    "slug": "wayl",
+    "type": "gateway",
+    "name": "Wayl",
+    "version": "1.0.0",
+    "namespace": "Nuvabill\\Extensions\\Wayl\\",
+    "class": "Nuvabill\\Extensions\\Wayl\\WaylGateway",
+    "description": "Wayl payment links: cards, wallets and bank transfers in Iraq. Iraqi dinar only.",
+    "author": "RapidNet Ltd",
+    "requires": ">=0.2.0"
+}
