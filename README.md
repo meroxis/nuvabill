@@ -1,67 +1,178 @@
-# Nuvabill
+<h1 align="center">Nuvabill</h1>
 
-**Billing, automation and support for hosting companies. Free to run.**
+<p align="center">
+  <strong>Billing, automation and support for hosting companies.<br>Free to run. Open source. Built for phones first.</strong>
+</p>
 
-Nuvabill sells your hosting plans, bills clients every month, sets up their accounts automatically,
-suspends late payers, and handles support tickets. It is a modern, open alternative to WHMCS,
-written from scratch.
+<p align="center">
+  <a href="https://github.com/meroxis/nuvabill/actions/workflows/tests.yml"><img src="https://github.com/meroxis/nuvabill/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-0b7a70" alt="License: AGPL-3.0"></a>
+  <img src="https://img.shields.io/badge/PHP-8.3%20%7C%208.4-0b7a70" alt="PHP 8.3 and 8.4">
+  <a href="https://github.com/sponsors/meroxis"><img src="https://img.shields.io/badge/sponsor-meroxis-0b7a70" alt="Sponsor"></a>
+</p>
 
-[![Tests](https://github.com/meroxis/nuvabill/actions/workflows/tests.yml/badge.svg)](https://github.com/meroxis/nuvabill/actions/workflows/tests.yml)
+<p align="center">
+  <a href="https://nuvabill.com">Website</a> ·
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#whats-in-nuvabill">What's in Nuvabill</a> ·
+  <a href="#license">License</a>
+</p>
 
-> Status: **v0.1** (first release). Good for small hosting companies and for testing.
-> See the [roadmap](#roadmap) for what comes next.
+![Nuvabill admin dashboard on desktop and the client area on a phone](.github/screenshots/hero.png)
 
-## What you get in v0.1
+Nuvabill sells your hosting plans, bills clients every month, creates their cPanel accounts the moment they pay,
+suspends late payers, and answers support tickets. It is a modern, open alternative to WHMCS, written from scratch.
+There is **no per-client pricing** and no license fee to run it.
 
-- **Store and checkout.** Product groups, plans with monthly to three-yearly prices, setup fees, domain field, cart and checkout.
-- **Billing.** Invoices with PDF, recurring renewals, partial payments, account credit for overpayments, manual invoices and drafts.
-- **Payments.** Stripe Checkout, PayPal Checkout and bank transfer. Webhooks are signature-checked and each payment is recorded once.
-- **Automation.** Every night: renewal invoices, overdue reminders, automatic suspension, optional termination. Paying unsuspends automatically.
-- **cPanel & WHM.** Accounts are created when the first invoice is paid. Suspend, unsuspend, terminate, change package, and one-click login for clients.
-- **Support tickets.** Departments, priorities, email notifications to clients and staff.
-- **Client area.** Services, invoices, payments, tickets and account details, built for phones first. Light and dark mode.
-- **Staff.** Roles with permissions, two-factor login (authenticator apps), activity log.
-- **Editable emails.** Every email is a template with `{{ placeholders }}`.
-- **Extensions and themes.** Payment gateways and server modules are drop-in folders in `extensions/`. Client themes live in `themes/`.
-- **Web installer.** Upload, open the site, answer three screens.
-- **Signed one-click updates.** Every release is signed. The updater verifies the signature, backs up files and database, and rolls back if anything fails.
+> **Status: v0.1.** Ready for small hosting companies and testing. See the [roadmap](#roadmap).
 
-## Requirements
+---
 
-- PHP 8.3 or newer with `pdo`, `openssl`, `mbstring`, `intl`, `curl`, `zip`, `sodium`, `bcmath`, `fileinfo`
-- MySQL 8 / MariaDB 10.6 or newer (SQLite works for small sites and testing)
-- A cron job that runs every minute
+## Getting started
 
-Most cPanel, DirectAdmin and Plesk hosting accounts meet these requirements.
+### 1. Check your hosting
 
-## Install
+- PHP **8.3 or newer** with `pdo`, `openssl`, `mbstring`, `intl`, `curl`, `zip`, `sodium`, `bcmath`, `fileinfo`
+- **MySQL 8** or **MariaDB 10.6+** (SQLite works for small sites and testing)
+- A **cron job** that runs every minute
+
+Most cPanel, DirectAdmin and Plesk hosting accounts already have all of this.
+
+### 2. Upload and install
 
 1. Download `nuvabill-x.y.z.zip` from the [latest release](https://github.com/meroxis/nuvabill/releases/latest).
-2. Upload it to your hosting account and unzip it. Point your domain (or subdomain) to the `public` folder.
+2. Upload it to your hosting account and unzip it. Point your domain or subdomain (for example `billing.yourhost.com`) to the `public` folder.
 3. Create an empty MySQL database and user in your hosting panel.
 4. Open your domain in a browser. The installer checks your server, connects the database and creates your owner account.
-5. Add the cron job shown in **Settings → Automation**:
 
-   ```
-   * * * * * cd /path/to/nuvabill && php artisan schedule:run >> /dev/null 2>&1
-   ```
+### 3. Turn on automation
 
-6. In the admin area, add your cPanel server (**Servers**), turn on a payment gateway (**Settings → Payment gateways**) and set up outgoing email (**Settings → Sending email**).
+Add this cron job (cPanel → **Cron Jobs**). The exact line for your server is shown in **Settings → Automation**.
 
-The admin area is at `/admin`.
+```
+* * * * * cd /path/to/nuvabill && php artisan schedule:run >> /dev/null 2>&1
+```
+
+It creates renewal invoices, sends reminders, suspends overdue services, sends email and installs updates.
+
+### 4. Connect your business
+
+In the admin area (`/admin`):
+
+1. **Servers** → add your cPanel/WHM server and press **Test connection**.
+2. **Products** → create your plans (or edit the example plans) and choose the WHM package for each.
+3. **Settings → Payment gateways** → turn on Stripe, PayPal or bank transfer.
+4. **Settings → Sending email** → add your SMTP details and send yourself a test email.
+5. **Your profile** → turn on two-factor login.
+
+That's it. Your store is live at your domain.
+
+---
+
+## What's in Nuvabill
+
+### A store your clients enjoy
+
+Plans with monthly to three-yearly prices, setup fees, a domain field, cart and checkout. Clients register in one step.
+
+![Store](.github/screenshots/store.png)
+
+### Built for phones first
+
+The whole client area works on a phone: services, invoices, payments, tickets and account details. Light and dark mode follow the device.
+
+![Client area on phones](.github/screenshots/mobile.png)
+
+### Billing that runs itself
+
+- Invoices with PDF download, partial payments, account credit for overpayments, drafts and manual invoices
+- Renewal invoices created before the due date, grouped per client
+- Overdue reminders, automatic suspension, optional termination
+- **Paying unsuspends automatically**
+
+![Invoice with payment recording](.github/screenshots/invoice.png)
+
+### Get paid your way
+
+**Stripe Checkout**, **PayPal Checkout** and **bank transfer** are built in. Card numbers never touch your server.
+Webhooks are signature-checked, and each payment is recorded exactly once.
+
+![Payment gateways](.github/screenshots/gateways.png)
+
+### cPanel & WHM automation
+
+Accounts are created when the first invoice is paid. Suspend, unsuspend, terminate and change package from the admin area.
+Clients open their cPanel with one click, no password needed.
+
+![Product pricing and automatic setup](.github/screenshots/products.png)
+
+### Support tickets
+
+Departments, priorities, email notifications for clients and staff, and a clean conversation view.
+
+![Support ticket](.github/screenshots/support.png)
+
+### A dashboard that tells you what matters
+
+Revenue for the last 12 months, unpaid invoices, tickets waiting for a reply, and a **Needs your attention** list:
+failed setups, pending orders, overdue invoices, and a warning if the cron job stops running.
+
+![Light and dark mode](.github/screenshots/light-dark.png)
+
+### Clients, staff and security
+
+- Client profiles with services, invoices, payments, tickets and activity in one place
+- Staff **roles and permissions** (Owner, Billing, Support, or your own)
+- **Two-factor login** with any authenticator app, plus recovery codes
+- Activity log of everything that happens
+
+![Clients](.github/screenshots/clients.png)
+
+### Signed one-click updates
+
+Nuvabill checks for new versions every day. Every release is **signed**: the updater refuses anything with a wrong signature,
+backs up your files and database first, and **rolls back automatically** if something fails.
+Security fixes can install themselves at night.
+
+![Updates](.github/screenshots/updates.png)
+
+### Extensions and themes
+
+Payment gateways and server modules are drop-in folders in `extensions/`. Client-area themes live in `themes/`.
+The built-in Stripe, PayPal, bank transfer and cPanel extensions use the same system, so they are complete examples.
+A marketplace for themes and extensions is on the [roadmap](#roadmap).
+
+---
+
+## License
+
+Nuvabill is free software under the **[GNU Affero General Public License v3.0 or later](LICENSE)**, with one additional term:
+the **"Powered by Nuvabill"** credit in the client area, invoices and emails must stay visible. See [NOTICE](NOTICE).
+
+**Want only your own brand?** A **White-label License** that removes the credit, plus priority support,
+is available at [nuvabill.com](https://nuvabill.com).
+
+Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
+
+---
+
+## Roadmap
+
+| Version | Focus |
+|---|---|
+| **v0.1** | First sale: store, billing, Stripe/PayPal/bank transfer, cPanel, tickets, 2FA, signed updater |
+| v0.2 | DirectAdmin, Plesk, Proxmox, Virtualizor, domains and registrars, **WHMCS importer**, fraud checks |
+| v0.3 | Taxes, multi-currency, promo codes, quotes, client wallet, affiliates, REST API |
+| v0.4 | White-label licenses, marketplace, extension SDK, right-to-left languages, passkeys |
+| v0.5 | Automation builder, AI ticket replies, WhatsApp and Telegram bot, admin phone app |
+| v1.0 | Security audit, theme editor, status page, multi-brand, cloud edition |
 
 ## Updating
 
-Nuvabill checks GitHub for new releases every day. Go to **Updates** in the admin area and press **Update now**.
-You can also let security fixes (or every update) install automatically at 03:00.
+Go to **Updates** in the admin area and press **Update now**, or let updates install automatically.
+From the command line: `php artisan nuvabill:update`.
 
-From the command line:
-
-```
-php artisan nuvabill:update
-```
-
-## Development
+## For developers
 
 ```
 git clone https://github.com/meroxis/nuvabill.git
@@ -72,7 +183,7 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Set `NUVABILL_INSTALLED=true` and `APP_ENV=local` in `.env`, then load the demo data:
+Set `NUVABILL_INSTALLED=true` and `APP_ENV=local` in `.env`, then load the demo data and start the server:
 
 ```
 php artisan migrate:fresh --seed
@@ -81,14 +192,10 @@ php artisan serve
 
 Demo sign-ins: staff `admin@nuvabill.test`, client `client@nuvabill.test`, both with password `nuvabill-demo`.
 
-Run the tests and the code style check:
+Run the tests and the code style check with `php artisan test` and `vendor/bin/pint`.
 
-```
-php artisan test
-vendor/bin/pint
-```
-
-### Writing an extension
+<details>
+<summary><strong>Writing an extension</strong></summary>
 
 An extension is a folder with an `extension.json` manifest and PHP classes in `src/`:
 
@@ -111,14 +218,17 @@ extensions/gateways/mygateway/
 ```
 
 Payment gateways extend `App\Extensions\Gateways\Gateway`. Server modules extend `App\Extensions\Servers\Module`.
-The built-in Stripe, PayPal, bank transfer and cPanel extensions are complete examples.
+</details>
 
-### Writing a theme
+<details>
+<summary><strong>Writing a theme</strong></summary>
 
-Copy `themes/nova` to `themes/yourtheme`, change `theme.json`, and edit the views. Any view your theme does not
-include falls back to Nova. Choose the theme in **Settings → Look and feel**.
+Copy `themes/nova` to `themes/yourtheme`, change `theme.json`, and edit the views. Any view your theme does not include
+falls back to Nova. Choose the theme in **Settings → Look and feel**.
+</details>
 
-### Releasing (maintainers)
+<details>
+<summary><strong>Releasing (maintainers)</strong></summary>
 
 1. Set the new version in `config/nuvabill.php`.
 2. Commit, then push a tag with the same version: `git tag v0.1.1 && git push origin v0.1.1`.
@@ -126,30 +236,11 @@ include falls back to Nova. Choose the theme in **Settings → Look and feel**.
 4. For security releases, add `[security]` to the release notes so installs can apply them automatically.
 
 The public half of the signing key is in `config/nuvabill.php`. Never commit the secret half.
-
-## Roadmap
-
-| Version | Focus |
-|---|---|
-| **v0.1** | First sale: store, billing, Stripe/PayPal/bank transfer, cPanel, tickets, 2FA, updater |
-| v0.2 | DirectAdmin, Plesk, Proxmox, Virtualizor, domains and registrars, WHMCS importer, fraud checks |
-| v0.3 | Taxes, multi-currency, promo codes, quotes, client wallet, affiliates, REST API |
-| v0.4 | White-label licenses, marketplace, extension SDK, right-to-left languages, passkeys |
-| v0.5 | Automation builder, AI ticket replies, WhatsApp and Telegram bot, admin phone app |
-| v1.0 | Security audit, theme editor, status page, multi-brand, cloud edition |
-
-## License
-
-Nuvabill is free software under the **GNU Affero General Public License v3.0 or later**, with one additional term:
-the **"Powered by Nuvabill"** credit in the client area, invoices and emails must stay visible. See [NOTICE](NOTICE).
-
-Want your own brand only? A **White-label License** that removes the credit is available at [nuvabill.com](https://nuvabill.com).
-
-Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
+</details>
 
 ## Support Nuvabill
 
-Nuvabill is free. If it helps your business, you can support its development on
+Nuvabill is free. If it helps your business, please support its development on
 [GitHub Sponsors](https://github.com/sponsors/meroxis). Sponsors keep new features and security updates coming.
 
 ## Contributing
