@@ -33,6 +33,7 @@ class Demo
         'admin.updates.*',
         'admin.servers.*',
         'admin.services.module',
+        'admin.invoices.refund',
         'client.account.*',
         'client.services.login',
         'client.invoices.pay',
