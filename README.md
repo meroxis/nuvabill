@@ -147,6 +147,11 @@ Want your own brand only? A **White-label License** that removes the credit is a
 
 Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 
+## Support Nuvabill
+
+Nuvabill is free. If it helps your business, you can support its development on
+[GitHub Sponsors](https://github.com/sponsors/meroxis). Sponsors keep new features and security updates coming.
+
 ## Contributing
 
 Bug reports and pull requests are welcome. By sending a pull request you agree that your contribution may be
