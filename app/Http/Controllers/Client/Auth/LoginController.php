@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Client\Auth;
 
+use App\Auth\Social\SocialLogin;
 use App\Enums\ClientStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
@@ -13,9 +14,9 @@ use Illuminate\View\View;
 
 class LoginController extends Controller
 {
-    public function create(): View
+    public function create(SocialLogin $social): View
     {
-        return view('theme::auth.login');
+        return view('theme::auth.login', ['socialProviders' => $social->enabled()]);
     }
 
     public function store(Request $request): RedirectResponse

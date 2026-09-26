@@ -68,6 +68,10 @@ class Settings
 
         'import.whmcs' => null,
         'import.whmcs_status' => null,
+
+        'social.google' => null,
+        'social.github' => null,
+        'social.facebook' => null,
     ];
 
     /**
@@ -75,7 +79,7 @@ class Settings
      *
      * @var list<string>
      */
-    public const SECRET_KEYS = ['mail.password', 'import.whmcs'];
+    public const SECRET_KEYS = ['mail.password', 'import.whmcs', 'social.google', 'social.github', 'social.facebook'];
 
     /**
      * @var array<string, mixed>|null

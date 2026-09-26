@@ -21,6 +21,7 @@ use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServiceController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\SocialLoginController;
 use App\Http\Controllers\Admin\StaffController;
 use App\Http\Controllers\Admin\TicketController;
 use App\Http\Controllers\Admin\TldPriceController;
@@ -160,6 +161,9 @@ Route::middleware(['auth:admin', 'admin.can'])->group(function (): void {
         Route::put('import', [ImportController::class, 'update'])->middleware('throttle:10,1')->name('import.update');
         Route::post('import/start', [ImportController::class, 'start'])->name('import.start');
         Route::post('import/cancel', [ImportController::class, 'cancel'])->name('import.cancel');
+
+        Route::get('social-login', [SocialLoginController::class, 'edit'])->name('social.edit');
+        Route::put('social-login', [SocialLoginController::class, 'update'])->name('social.update');
     });
 
     Route::middleware('admin.can:staff.manage')->prefix('settings')->name('settings.')->group(function (): void {

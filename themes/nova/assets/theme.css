@@ -601,6 +601,40 @@
         }
     }
 
+    /* Sign in with Google, GitHub, Facebook */
+    .social-buttons {
+        display: grid;
+        gap: 8px;
+    }
+
+    .social-btn {
+        justify-content: center;
+        gap: 10px;
+        background: var(--nb-surface);
+    }
+
+    .social-btn svg {
+        width: 18px;
+        height: 18px;
+        flex: none;
+    }
+
+    .or-divider {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 0;
+        color: var(--nb-muted);
+        font-size: 0.85rem;
+    }
+
+    .or-divider::before,
+    .or-divider::after {
+        content: '';
+        flex: 1;
+        border-top: 1px solid var(--nb-line);
+    }
+
     /* Server panels from modules (Virtualizor, Proxmox) */
     .vps-panel {
         display: grid;

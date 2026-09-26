@@ -51,6 +51,7 @@ class Client extends Authenticatable
     protected $attributes = [
         'credit' => 0,
         'status' => 'active',
+        'has_password' => true,
     ];
 
     protected function casts(): array
@@ -59,6 +60,7 @@ class Client extends Authenticatable
             'password' => 'hashed',
             'status' => ClientStatus::class,
             'credit' => 'integer',
+            'has_password' => 'boolean',
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
         ];
@@ -110,6 +112,14 @@ class Client extends Authenticatable
     public function tickets(): HasMany
     {
         return $this->hasMany(Ticket::class);
+    }
+
+    /**
+     * @return HasMany<SocialAccount, $this>
+     */
+    public function socialAccounts(): HasMany
+    {
+        return $this->hasMany(SocialAccount::class);
     }
 
     /**

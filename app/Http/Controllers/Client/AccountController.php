@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Client;
 
+use App\Auth\Social\SocialLogin;
 use App\Http\Controllers\Controller;
 use App\Support\Activity;
 use App\Support\Countries;
@@ -13,11 +14,15 @@ use Illuminate\View\View;
 
 class AccountController extends Controller
 {
-    public function edit(Request $request): View
+    public function edit(Request $request, SocialLogin $social): View
     {
+        $client = $request->user('web');
+
         return view('theme::client.account', [
-            'client' => $request->user('web'),
+            'client' => $client,
             'countries' => Countries::all(),
+            'socialProviders' => $social->enabled(),
+            'socialAccounts' => $client->socialAccounts()->get()->keyBy('provider'),
         ]);
     }
 
@@ -46,13 +51,16 @@ class AccountController extends Controller
 
     public function password(Request $request): RedirectResponse
     {
+        $client = $request->user('web');
+
+        // Clients who signed up with Google, GitHub or Facebook choose their first password without an old one.
         $request->validate([
-            'current_password' => ['required', 'current_password:web'],
+            'current_password' => $client->has_password ? ['required', 'current_password:web'] : ['nullable'],
             'password' => ['required', 'confirmed', Password::min(8)],
         ]);
 
-        $request->user('web')->update(['password' => $request->input('password')]);
+        $client->forceFill(['password' => $request->input('password'), 'has_password' => true])->save();
 
-        return back()->with('status', __('Password changed.'));
+        return back()->with('status', __('Password saved.'));
     }
 }

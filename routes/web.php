@@ -1,9 +1,11 @@
 <?php
 
+use App\Auth\Social\SocialLogin;
 use App\Http\Controllers\Client\AccountController;
 use App\Http\Controllers\Client\Auth\LoginController;
 use App\Http\Controllers\Client\Auth\PasswordResetController;
 use App\Http\Controllers\Client\Auth\RegisterController;
+use App\Http\Controllers\Client\Auth\SocialLoginController;
 use App\Http\Controllers\Client\DashboardController;
 use App\Http\Controllers\Client\DomainController;
 use App\Http\Controllers\Client\InvoiceController;
@@ -55,6 +57,11 @@ Route::middleware('guest:web')->group(function (): void {
 
 Route::post('logout', [LoginController::class, 'destroy'])->middleware('auth:web')->name('client.logout');
 
+Route::middleware('throttle:20,1')->whereIn('provider', array_keys(SocialLogin::PROVIDERS))->group(function (): void {
+    Route::get('auth/{provider}/redirect', [SocialLoginController::class, 'redirect'])->name('client.social.redirect');
+    Route::get('auth/{provider}/callback', [SocialLoginController::class, 'callback'])->name('client.social.callback');
+});
+
 /*
 |--------------------------------------------------------------------------
 | Client area
@@ -92,4 +99,5 @@ Route::middleware(['auth:web', 'client.active'])->prefix('client')->name('client
     Route::get('account', [AccountController::class, 'edit'])->name('account.edit');
     Route::put('account', [AccountController::class, 'update'])->name('account.update');
     Route::put('account/password', [AccountController::class, 'password'])->name('account.password');
+    Route::delete('account/social/{provider}', [SocialLoginController::class, 'destroy'])->whereIn('provider', array_keys(SocialLogin::PROVIDERS))->name('account.social.destroy');
 });

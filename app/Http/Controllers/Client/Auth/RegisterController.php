@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Client\Auth;
 
+use App\Auth\Social\SocialLogin;
 use App\Enums\ClientStatus;
 use App\Http\Controllers\Controller;
 use App\Mail\TemplateMailer;
@@ -17,9 +18,9 @@ use Illuminate\View\View;
 
 class RegisterController extends Controller
 {
-    public function create(): View
+    public function create(SocialLogin $social): View
     {
-        return view('theme::auth.register', ['countries' => Countries::all()]);
+        return view('theme::auth.register', ['countries' => Countries::all(), 'socialProviders' => $social->enabled()]);
     }
 
     public function store(Request $request, TemplateMailer $mailer): RedirectResponse

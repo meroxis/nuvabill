@@ -30,6 +30,7 @@ class Demo
         'admin.settings.gateways.update',
         'admin.settings.registrars.*',
         'admin.settings.import.update',
+        'admin.settings.social.update',
         'admin.settings.import.start',
         'admin.settings.import.cancel',
         'admin.domains.action',

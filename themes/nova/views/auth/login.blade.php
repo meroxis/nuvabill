@@ -7,6 +7,7 @@
         <div class="auth-box">
             <h1 style="font-size:1.6rem">{{ __('Sign in to your account') }}</h1>
             <x-demo-sign-in :action="route('client.login')" :email="\App\Support\Demo::CLIENT_EMAIL" />
+            @include('theme::auth.social-buttons')
             <form method="POST" action="{{ route('client.login') }}" class="card" style="display:grid;gap:1rem">
                 @csrf
                 <x-input name="email" type="email" :label="__('Email')" required autofocus autocomplete="username" />

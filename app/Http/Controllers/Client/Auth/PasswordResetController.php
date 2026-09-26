@@ -44,7 +44,7 @@ class PasswordResetController extends Controller
         $status = Password::broker('clients')->reset(
             $request->only('email', 'password', 'password_confirmation', 'token'),
             function (Client $client, string $password): void {
-                $client->forceFill(['password' => $password, 'remember_token' => Str::random(60)])->save();
+                $client->forceFill(['password' => $password, 'has_password' => true, 'remember_token' => Str::random(60)])->save();
                 event(new PasswordReset($client));
             },
         );

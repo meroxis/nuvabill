@@ -25,14 +25,54 @@
             <div class="form-actions"><button class="btn btn-primary" type="submit">{{ __('Save details') }}</button></div>
         </form>
 
-        <form method="POST" action="{{ route('client.account.password') }}" class="card" style="display:grid;gap:1rem">
-            @csrf
-            @method('PUT')
-            <h2 style="font-size:1.05rem">{{ __('Change password') }}</h2>
-            <x-input name="current_password" type="password" :label="__('Current password')" required autocomplete="current-password" />
-            <x-input name="password" type="password" :label="__('New password')" required autocomplete="new-password" />
-            <x-input name="password_confirmation" type="password" :label="__('Type it again')" required autocomplete="new-password" />
-            <div class="form-actions"><button class="btn btn-primary" type="submit">{{ __('Change password') }}</button></div>
-        </form>
+        <div style="display:grid;gap:18px;align-content:start">
+            <form method="POST" action="{{ route('client.account.password') }}" class="card" style="display:grid;gap:1rem">
+                @csrf
+                @method('PUT')
+                @if ($client->has_password)
+                    <h2 style="font-size:1.05rem">{{ __('Change password') }}</h2>
+                    <x-input name="current_password" type="password" :label="__('Current password')" required autocomplete="current-password" />
+                @else
+                    <div>
+                        <h2 style="font-size:1.05rem">{{ __('Set a password') }}</h2>
+                        <p class="muted" style="margin:.3rem 0 0;font-size:.88rem">{{ __('You signed up with a connected account. Set a password to also sign in with your email.') }}</p>
+                    </div>
+                @endif
+                <x-input name="password" type="password" :label="__('New password')" :help="__('At least 8 characters.')" required autocomplete="new-password" />
+                <x-input name="password_confirmation" type="password" :label="__('Type it again')" required autocomplete="new-password" />
+                <div class="form-actions"><button class="btn btn-primary" type="submit">{{ $client->has_password ? __('Change password') : __('Set password') }}</button></div>
+            </form>
+
+            @if ($socialProviders || $socialAccounts->isNotEmpty())
+                <section class="card" style="display:grid;gap:.8rem">
+                    <div>
+                        <h2 style="font-size:1.05rem">{{ __('Connected accounts') }}</h2>
+                        <p class="muted" style="margin:.3rem 0 0;font-size:.88rem">{{ __('Sign in with one click using these accounts.') }}</p>
+                    </div>
+                    @foreach (array_keys(\App\Auth\Social\SocialLogin::PROVIDERS) as $slug)
+                        @php $account = $socialAccounts->get($slug); $provider = $socialProviders[$slug] ?? null; @endphp
+                        @continue(! $account && ! $provider)
+                        <div class="summary-row" style="align-items:center">
+                            <span style="display:inline-flex;gap:.5rem;align-items:center;min-width:0">
+                                <x-brand-icon :name="$slug" style="width:18px;height:18px;flex:none" />
+                                <span style="min-width:0;overflow-wrap:anywhere">
+                                    {{ $provider?->name() ?? ucfirst($slug) }}
+                                    @if ($account?->email)<span class="muted" style="font-size:.85rem"> · {{ $account->email }}</span>@endif
+                                </span>
+                            </span>
+                            @if ($account)
+                                <form method="POST" action="{{ route('client.account.social.destroy', $slug) }}" data-confirm="{{ __('Disconnect :provider? You can still sign in with your email and password.', ['provider' => $provider?->name() ?? ucfirst($slug)]) }}">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button class="btn btn-sm" type="submit">{{ __('Disconnect') }}</button>
+                                </form>
+                            @else
+                                <a class="btn btn-sm" href="{{ route('client.social.redirect', $slug) }}">{{ __('Connect') }}</a>
+                            @endif
+                        </div>
+                    @endforeach
+                </section>
+            @endif
+        </div>
     </div>
 @endsection

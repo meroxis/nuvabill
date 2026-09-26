@@ -6,6 +6,7 @@
     <div class="auth-wrap">
         <div class="auth-box" style="width:min(620px,100%)">
             <h1 style="font-size:1.6rem">{{ __('Create your account') }}</h1>
+            @include('theme::auth.social-buttons')
             <form method="POST" action="{{ route('client.register') }}" class="card" style="display:grid;gap:1.1rem">
                 @csrf
                 <div class="form-grid">
