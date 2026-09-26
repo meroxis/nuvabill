@@ -55,6 +55,15 @@ class ProductFactory extends Factory
         ]);
     }
 
+    public function directadmin(?Server $server = null): static
+    {
+        return $this->state([
+            'server_module' => 'directadmin',
+            'server_id' => $server?->id,
+            'module_config' => ['package' => 'starter'],
+        ]);
+    }
+
     public function withoutDomain(): static
     {
         return $this->state(['requires_domain' => false]);
