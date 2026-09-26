@@ -619,6 +619,23 @@
         flex: none;
     }
 
+    .legal-consent {
+        margin: 0;
+        color: var(--nb-muted);
+        font-size: 0.8rem;
+        text-align: center;
+    }
+
+    .footer-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 14px;
+    }
+
+    .footer-links a {
+        color: inherit;
+    }
+
     .or-divider {
         display: flex;
         align-items: center;

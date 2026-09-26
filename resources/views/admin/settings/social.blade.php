@@ -8,6 +8,15 @@
 
         <p class="muted" style="margin:0">{{ __('Let clients sign in or create an account with one click. For each one, create an app at the provider, paste its client ID and secret here, and give the provider the redirect address shown.') }}</p>
 
+        @if (filled(setting('company.privacy_url')))
+            <div class="flash" data-tone="info" style="display:grid;gap:.4rem">
+                <span>{{ __('Google and Facebook ask for your privacy policy and terms of service addresses. Facebook also asks how people delete their data: give it your privacy policy address too.') }}</span>
+                <span class="mono" style="overflow-wrap:anywhere">{{ setting('company.privacy_url') }}@if (filled(setting('orders.accept_terms_url'))) · {{ setting('orders.accept_terms_url') }}@endif</span>
+            </div>
+        @else
+            <div class="flash" data-tone="warn"><span>{!! __('Google and Facebook need a privacy policy address before clients can use them. Add it in :link.', ['link' => '<a href="'.e(route('admin.settings.edit')).'">'.e(__('Settings → General')).'</a>']) !!}</span></div>
+        @endif
+
         @foreach ($providers as $slug => $item)
             <section class="card" style="display:grid;gap:1rem">
                 <div style="display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap">

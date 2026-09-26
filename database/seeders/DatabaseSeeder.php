@@ -48,6 +48,8 @@ class DatabaseSeeder extends Seeder
             'company.email' => 'billing@nuvabill.test',
             'company.address' => "12 Cloud Street\nErbil",
             'automation.last_run_at' => now()->toIso8601String(),
+            'orders.accept_terms_url' => 'https://nuvabill.com/terms/',
+            'company.privacy_url' => 'https://nuvabill.com/privacy/',
         ]);
 
         $admin = Admin::query()->firstOrCreate(['email' => Demo::ADMIN_EMAIL], [

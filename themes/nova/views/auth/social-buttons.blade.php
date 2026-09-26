@@ -7,6 +7,7 @@
                 {{ __('Continue with :provider', ['provider' => $provider->name()]) }}
             </a>
         @endforeach
+        <x-legal-consent :action="__('continuing with Google, GitHub or Facebook')" />
     </div>
     <p class="or-divider"><span>{{ __('or') }}</span></p>
 @endif

@@ -61,7 +61,11 @@
 
 <footer class="site-footer">
     <div class="container">
-        <span>&copy; {{ date('Y') }} {{ setting('company.name') }}</span>
+        <span class="footer-links">
+            <span>&copy; {{ date('Y') }} {{ setting('company.name') }}</span>
+            @if (filled(setting('orders.accept_terms_url')))<a href="{{ setting('orders.accept_terms_url') }}" target="_blank" rel="noopener">{{ __('Terms of service') }}</a>@endif
+            @if (filled(setting('company.privacy_url')))<a href="{{ setting('company.privacy_url') }}" target="_blank" rel="noopener">{{ __('Privacy policy') }}</a>@endif
+        </span>
         @if (\App\Support\Branding::showPoweredBy())
             <a class="powered" href="{{ \App\Support\Branding::PRODUCT_URL }}" target="_blank" rel="noopener">{{ __('Powered by') }} <b>{{ \App\Support\Branding::PRODUCT_NAME }}</b></a>
         @endif

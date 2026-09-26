@@ -16,7 +16,10 @@
                     @csrf
                     @if ($termsUrl)
                         <x-checkbox name="accept_terms" :label="__('I agree to the terms of service')" />
-                        <p class="muted" style="margin:0;font-size:.85rem"><a href="{{ $termsUrl }}" target="_blank" rel="noopener">{{ __('Read the terms of service') }}</a></p>
+                        <p class="muted" style="margin:0;font-size:.85rem">
+                            <a href="{{ $termsUrl }}" target="_blank" rel="noopener">{{ __('Read the terms of service') }}</a>
+                            @if (filled(setting('company.privacy_url'))) · <a href="{{ setting('company.privacy_url') }}" target="_blank" rel="noopener">{{ __('Privacy policy') }}</a>@endif
+                        </p>
                     @endif
                     <x-captcha form="checkout" />
                     <button class="btn btn-primary" type="submit">{{ __('Place order') }}</button>

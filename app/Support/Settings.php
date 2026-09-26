@@ -50,6 +50,7 @@ class Settings
         'theme.active' => 'nova',
 
         'orders.accept_terms_url' => '',
+        'company.privacy_url' => '',
 
         'mail.mailer' => 'log',
         'mail.host' => '',

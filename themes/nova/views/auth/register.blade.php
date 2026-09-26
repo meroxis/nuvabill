@@ -21,6 +21,7 @@
                 </div>
                 <x-captcha form="client_register" />
                 <button class="btn btn-primary btn-block" type="submit">{{ __('Create account') }}</button>
+                <x-legal-consent :action="__('creating an account')" />
             </form>
             <p class="muted" style="text-align:center;margin:0">{{ __('Already have an account?') }} <a href="{{ route('client.login') }}">{{ __('Sign in') }}</a></p>
         </div>

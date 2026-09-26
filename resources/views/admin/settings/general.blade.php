@@ -14,6 +14,7 @@
                 <x-input name="company_email" type="email" :label="__('Billing email')" :value="$settings['company.email']" required :help="__('Shown on invoices. New order and ticket alerts go here.')" />
                 <x-input name="company_phone" :label="__('Phone')" :value="$settings['company.phone']" />
                 <x-input name="terms_url" type="url" :label="__('Terms of service link')" :value="$settings['orders.accept_terms_url']" :help="__('If set, clients must accept your terms at checkout.')" />
+                <x-input name="privacy_url" type="url" :label="__('Privacy policy link')" :value="$settings['company.privacy_url']" :help="__('Shown when clients sign up and in the client area footer. Google and Facebook sign-in need it.')" />
                 <x-textarea name="company_address" :label="__('Address on invoices')" :value="$settings['company.address']" rows="3" class="span-2" />
             </div>
         </section>

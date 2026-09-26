@@ -54,6 +54,7 @@ class SettingsController extends Controller
             'accent' => ['required', 'regex:/^#[0-9A-Fa-f]{6}$/'],
             'theme' => ['required', Rule::in($themes->all()->keys()->all())],
             'terms_url' => ['nullable', 'url', 'max:255'],
+            'privacy_url' => ['nullable', 'url', 'max:255'],
         ]);
 
         $settings->setMany([
@@ -75,6 +76,7 @@ class SettingsController extends Controller
             'branding.accent' => strtoupper($data['accent']),
             'theme.active' => $data['theme'],
             'orders.accept_terms_url' => $data['terms_url'] ?? '',
+            'company.privacy_url' => $data['privacy_url'] ?? '',
         ]);
 
         Activity::log('settings.updated', 'System settings changed');
