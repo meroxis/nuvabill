@@ -1,48 +1,59 @@
 /*
  * Nuvabill design tokens. Light is the default; dark follows the system setting
  * unless the person picked a theme (data-theme on <html>).
+ *
+ * "Chrome" is the dark navy frame (client menu bar, admin sidebar). It stays dark in both modes.
  */
 :root {
-    --nb-bg: #f3f6f6;
+    --nb-bg: #f3f5f8;
     --nb-surface: #ffffff;
-    --nb-surface-2: #eaf0f0;
-    --nb-line: #d9e2e2;
-    --nb-line-2: #c7d3d3;
-    --nb-ink: #0e1a1c;
-    --nb-muted: #56676a;
-    --nb-faint: #7d8f90;
+    --nb-surface-2: #f5f7fa;
+    --nb-line: #e3e8ef;
+    --nb-line-2: #d3dbe5;
+    --nb-ink: #0f1b2d;
+    --nb-muted: #56667a;
+    --nb-faint: #6b7a8d;
     --nb-accent: #0b7a70;
     --nb-accent-2: #0a5f57;
     --nb-accent-ink: #ffffff;
     --nb-accent-soft: #ddf1ee;
-    --nb-good: #1e8e55;
-    --nb-good-soft: #dff3e8;
-    --nb-warn: #9a640a;
-    --nb-warn-soft: #fbefd5;
-    --nb-crit: #c23b3b;
+    --nb-good: #1a7f4b;
+    --nb-good-soft: #e3f4ea;
+    --nb-warn: #8a5a0b;
+    --nb-warn-soft: #fdf1dc;
+    --nb-crit: #b42f2f;
     --nb-crit-soft: #fbe3e3;
-    --nb-info: #2b63c6;
-    --nb-info-soft: #e1ebfb;
-    --nb-shadow: 0 1px 2px rgb(14 26 28 / 0.05), 0 10px 30px rgb(14 26 28 / 0.07);
-    --nb-overlay: rgb(8 16 17 / 0.45);
-    --nb-radius: 10px;
-    --nb-radius-sm: 7px;
+    --nb-info: #2659b8;
+    --nb-info-soft: #e4ecfa;
+    --nb-chrome: #0e2b47;
+    --nb-chrome-2: #0b1f33;
+    --nb-chrome-ink: #ffffff;
+    --nb-chrome-muted: #c3cfdd;
+    --nb-chrome-faint: #8497ad;
+    --nb-chrome-line: #1c3a58;
+    --nb-chrome-hover: #16395c;
+    --nb-chrome-active: #1b4169;
+    --nb-shadow: 0 1px 2px rgb(15 27 45 / 0.05);
+    --nb-shadow-lg: 0 12px 32px rgb(15 27 45 / 0.14);
+    --nb-overlay: rgb(8 16 27 / 0.5);
+    --nb-radius: 6px;
+    --nb-radius-sm: 6px;
     --nb-font-body: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
-    --nb-font-display: 'Bricolage Grotesque', 'Figtree', ui-sans-serif, system-ui, sans-serif;
+    --nb-font-display: 'Figtree', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
     --nb-font-mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
     color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme='light']) {
-        --nb-bg: #0b1213;
-        --nb-surface: #121b1c;
-        --nb-surface-2: #182325;
-        --nb-line: #243234;
-        --nb-line-2: #31413f;
-        --nb-ink: #e4edec;
-        --nb-muted: #9aadad;
-        --nb-faint: #6f8383;
+        --nb-bg: #0b1320;
+        --nb-surface: #111b29;
+        --nb-surface-2: #162235;
+        --nb-line: #223047;
+        --nb-line-2: #2d3d57;
+        --nb-ink: #e6edf5;
+        --nb-muted: #9fb0c4;
+        --nb-faint: #8392a7;
         --nb-accent: #35c2b1;
         --nb-accent-2: #5fd6c7;
         --nb-accent-ink: #03201c;
@@ -55,21 +66,29 @@
         --nb-crit-soft: #3a1818;
         --nb-info: #7fa8f0;
         --nb-info-soft: #16233a;
-        --nb-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 30px rgb(0 0 0 / 0.35);
+        --nb-chrome: #0a1626;
+        --nb-chrome-2: #070f1b;
+        --nb-chrome-muted: #aebdd0;
+        --nb-chrome-faint: #71849b;
+        --nb-chrome-line: #17263a;
+        --nb-chrome-hover: #13233a;
+        --nb-chrome-active: #19304d;
+        --nb-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+        --nb-shadow-lg: 0 12px 32px rgb(0 0 0 / 0.45);
         --nb-overlay: rgb(0 0 0 / 0.6);
         color-scheme: dark;
     }
 }
 
 :root[data-theme='dark'] {
-    --nb-bg: #0b1213;
-    --nb-surface: #121b1c;
-    --nb-surface-2: #182325;
-    --nb-line: #243234;
-    --nb-line-2: #31413f;
-    --nb-ink: #e4edec;
-    --nb-muted: #9aadad;
-    --nb-faint: #6f8383;
+    --nb-bg: #0b1320;
+    --nb-surface: #111b29;
+    --nb-surface-2: #162235;
+    --nb-line: #223047;
+    --nb-line-2: #2d3d57;
+    --nb-ink: #e6edf5;
+    --nb-muted: #9fb0c4;
+    --nb-faint: #8392a7;
     --nb-accent: #35c2b1;
     --nb-accent-2: #5fd6c7;
     --nb-accent-ink: #03201c;
@@ -82,7 +101,15 @@
     --nb-crit-soft: #3a1818;
     --nb-info: #7fa8f0;
     --nb-info-soft: #16233a;
-    --nb-shadow: 0 1px 2px rgb(0 0 0 / 0.3), 0 10px 30px rgb(0 0 0 / 0.35);
+    --nb-chrome: #0a1626;
+    --nb-chrome-2: #070f1b;
+    --nb-chrome-muted: #aebdd0;
+    --nb-chrome-faint: #71849b;
+    --nb-chrome-line: #17263a;
+    --nb-chrome-hover: #13233a;
+    --nb-chrome-active: #19304d;
+    --nb-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+    --nb-shadow-lg: 0 12px 32px rgb(0 0 0 / 0.45);
     --nb-overlay: rgb(0 0 0 / 0.6);
     color-scheme: dark;
 }

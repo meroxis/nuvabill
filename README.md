@@ -87,6 +87,13 @@ or with **Google, GitHub or Facebook**.
 
 ![Store](.github/screenshots/store.png)
 
+### A professional client area
+
+Clients see everything at a glance: their services, domains that expire soon, unpaid invoices and support tickets,
+with shortcuts and their account details on the side. The menu bar and colours follow your brand.
+
+![Client area](.github/screenshots/client-area.png)
+
 ### Built for phones first
 
 The whole client area works on a phone: services, invoices, payments, tickets and account details. Light and dark mode follow the device.

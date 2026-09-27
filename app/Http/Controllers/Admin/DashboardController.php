@@ -48,7 +48,14 @@ class DashboardController extends Controller
             'openTickets' => Ticket::query()->whereIn('status', [TicketStatus::Open, TicketStatus::CustomerReply])->count(),
             'chart' => $this->revenueChart($currency),
             'attention' => $this->attentionItems(),
-            'activity' => ActivityLog::query()->with('actor')->latest('id')->limit(12)->get(),
+            'activity' => ActivityLog::query()->with('actor')->latest('id')->limit(8)->get(),
+            'recentOrders' => Order::query()->with('client')->latest('id')->limit(5)->get(),
+            'recentTickets' => Ticket::query()
+                ->with(['client', 'department'])
+                ->where('status', '!=', TicketStatus::Closed)
+                ->latest('last_reply_at')
+                ->limit(5)
+                ->get(),
         ]);
     }
 

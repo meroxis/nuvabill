@@ -73,6 +73,23 @@
                 </form>
             @endif
             <span style="flex:1"></span>
+            @php
+                $quickNew = array_filter([
+                    $can('clients.manage') ? ['url' => route('admin.clients.create'), 'icon' => 'user', 'label' => __('New client')] : null,
+                    $can('billing.manage') ? ['url' => route('admin.invoices.create'), 'icon' => 'receipt', 'label' => __('New invoice')] : null,
+                    $can('products.manage') ? ['url' => route('admin.products.create'), 'icon' => 'box', 'label' => __('New product')] : null,
+                ]);
+            @endphp
+            @if ($quickNew)
+                <div class="quick-new" x-data="{ open: false }" @click.outside="open = false" @keydown.escape="open = false">
+                    <button class="btn btn-primary btn-sm" type="button" @click="open = ! open" :aria-expanded="open" aria-haspopup="true"><x-icon name="plus" />{{ __('New') }}<x-icon name="chevron-down" /></button>
+                    <div class="dropdown" x-show="open" x-cloak>
+                        @foreach ($quickNew as $item)
+                            <a href="{{ $item['url'] }}"><x-icon :name="$item['icon']" />{{ $item['label'] }}</a>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
             <a class="btn btn-sm" href="{{ route('store.index') }}" target="_blank" rel="noopener"><x-icon name="external" />{{ __('View store') }}</a>
             <button class="icon-btn" type="button" onclick="nuvabillToggleTheme()" aria-label="{{ __('Switch light or dark mode') }}"><x-icon name="moon" /></button>
         </header>

@@ -22,7 +22,8 @@
     h3,
     h4 {
         font-family: var(--nb-font-display);
-        line-height: 1.15;
+        font-weight: 700;
+        line-height: 1.2;
         letter-spacing: -0.01em;
         text-wrap: balance;
         margin: 0;
@@ -88,7 +89,7 @@
         background: var(--nb-surface);
         color: var(--nb-ink);
         border-radius: var(--nb-radius-sm);
-        padding: 0.5rem 0.95rem;
+        padding: 0.55rem 1rem;
         font: inherit;
         font-weight: 600;
         font-size: 0.88rem;
@@ -96,11 +97,13 @@
         white-space: nowrap;
         text-decoration: none;
         cursor: pointer;
+        box-shadow: var(--nb-shadow);
         transition: border-color 0.15s, background 0.15s;
     }
 
     .btn:hover {
-        border-color: var(--nb-accent);
+        border-color: var(--nb-line-2);
+        background: var(--nb-surface-2);
     }
 
     .btn:disabled,
@@ -132,11 +135,13 @@
 
     .btn-danger:hover {
         border-color: var(--nb-crit);
+        background: var(--nb-crit-soft);
     }
 
     .btn-ghost {
         border-color: transparent;
         background: transparent;
+        box-shadow: none;
     }
 
     .btn-sm {
@@ -155,6 +160,7 @@
         border-radius: var(--nb-radius);
         padding: 1.1rem;
         min-width: 0;
+        box-shadow: var(--nb-shadow);
     }
 
     .card-flush {
@@ -172,11 +178,14 @@
 
     .card-header h2,
     .card-header h3 {
-        font-size: 1rem;
+        font-size: 0.98rem;
     }
 
+    /* A flush card is a panel: a header strip, then rows or a table edge to edge. */
     .card-flush > .card-header {
-        padding: 0.95rem 1.1rem 0;
+        margin: 0;
+        padding: 0.8rem 1.1rem;
+        border-bottom: 1px solid var(--nb-line);
     }
 
     /* Status pills */
@@ -249,7 +258,7 @@
     .textarea {
         width: 100%;
         border: 1px solid var(--nb-line-2);
-        border-radius: 8px;
+        border-radius: var(--nb-radius-sm);
         background: var(--nb-surface);
         color: var(--nb-ink);
         padding: 0.55rem 0.7rem;
@@ -330,11 +339,12 @@
 
     .table th {
         text-align: start;
-        font-size: 0.72rem;
+        font-size: 0.7rem;
         font-weight: 700;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.06em;
         text-transform: uppercase;
-        color: var(--nb-faint);
+        color: var(--nb-muted);
+        background: var(--nb-surface-2);
         padding: 0.6rem 1.1rem;
         border-bottom: 1px solid var(--nb-line);
         white-space: nowrap;
@@ -356,6 +366,10 @@
 
     .table .end {
         text-align: end;
+    }
+
+    .table .num {
+        white-space: nowrap;
     }
 
     .row-link {
@@ -445,8 +459,9 @@
         background: var(--nb-surface);
         border: 1px solid var(--nb-line);
         border-radius: var(--nb-radius);
-        padding: 0.9rem 1rem;
+        padding: 1rem 1.1rem;
         min-width: 0;
+        box-shadow: var(--nb-shadow);
     }
 
     .kpi small {
@@ -459,9 +474,9 @@
     .kpi b {
         display: block;
         font-family: var(--nb-font-display);
-        font-size: 1.5rem;
+        font-size: 1.65rem;
         font-weight: 700;
-        margin-top: 0.1rem;
+        margin-top: 0.35rem;
         font-variant-numeric: tabular-nums;
         overflow: hidden;
         text-overflow: ellipsis;

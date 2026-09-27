@@ -16,10 +16,11 @@
 @layer components {
     .admin-shell {
         display: grid;
-        grid-template-columns: 232px minmax(0, 1fr);
+        grid-template-columns: 244px minmax(0, 1fr);
         min-height: 100vh;
     }
 
+    /* Dark navy sidebar, like most professional billing systems. */
     .admin-side {
         position: sticky;
         top: 0;
@@ -28,27 +29,31 @@
         display: flex;
         flex-direction: column;
         gap: 2px;
-        padding: 14px 10px;
-        background: var(--nb-surface);
-        border-inline-end: 1px solid var(--nb-line);
+        padding: 0 12px 12px;
+        background: var(--nb-chrome-2);
+        color: var(--nb-chrome-muted);
+        scrollbar-color: var(--nb-chrome-line) transparent;
     }
 
     .admin-brand {
         display: flex;
         align-items: center;
-        gap: 9px;
-        padding: 4px 8px 14px;
+        gap: 10px;
+        margin: 0 -12px 10px;
+        padding: 0 20px;
+        min-height: 60px;
+        border-bottom: 1px solid var(--nb-chrome-line);
         font-family: var(--nb-font-display);
-        font-weight: 800;
+        font-weight: 700;
         font-size: 1.1rem;
-        letter-spacing: -0.02em;
-        color: var(--nb-ink);
+        letter-spacing: -0.01em;
+        color: var(--nb-chrome-ink);
         text-decoration: none;
     }
 
     .admin-brand svg {
-        width: 26px;
-        height: 26px;
+        width: 28px;
+        height: 28px;
         color: var(--nb-accent);
         flex: none;
     }
@@ -56,20 +61,21 @@
     .nav-label {
         font-size: 0.66rem;
         font-weight: 700;
-        letter-spacing: 0.12em;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: var(--nb-faint);
-        padding: 12px 10px 4px;
+        color: var(--nb-chrome-faint);
+        padding: 16px 12px 6px;
     }
 
     .nav-link {
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 8px 10px;
-        border-radius: 7px;
-        color: var(--nb-muted);
-        font-weight: 600;
+        gap: 12px;
+        min-height: 38px;
+        padding: 0 12px;
+        border-radius: var(--nb-radius-sm);
+        color: var(--nb-chrome-muted);
+        font-weight: 500;
         font-size: 0.9rem;
         text-decoration: none;
     }
@@ -81,13 +87,15 @@
     }
 
     .nav-link:hover {
-        background: var(--nb-surface-2);
-        color: var(--nb-ink);
+        background: var(--nb-chrome-hover);
+        color: var(--nb-chrome-ink);
     }
 
     .nav-link[aria-current='page'] {
-        background: var(--nb-accent-soft);
-        color: var(--nb-accent);
+        background: var(--nb-chrome-active);
+        color: var(--nb-chrome-ink);
+        font-weight: 600;
+        box-shadow: inset 3px 0 0 var(--nb-accent);
     }
 
     .nav-link .count {
@@ -105,18 +113,37 @@
     }
 
     .side-foot {
-        margin-top: auto;
+        margin: auto -12px -12px;
         display: flex;
         align-items: center;
-        gap: 9px;
-        padding: 12px 8px 4px;
-        border-top: 1px solid var(--nb-line);
+        gap: 10px;
+        padding: 14px 16px;
+        border-top: 1px solid var(--nb-chrome-line);
         font-size: 0.84rem;
     }
 
+    .side-foot .row-link {
+        color: var(--nb-chrome-ink);
+    }
+
+    .side-foot .faint {
+        color: var(--nb-chrome-faint);
+    }
+
+    .side-foot .icon-btn {
+        background: transparent;
+        border-color: var(--nb-chrome-line);
+        color: var(--nb-chrome-muted);
+    }
+
+    .side-foot .icon-btn:hover {
+        background: var(--nb-chrome-hover);
+        color: var(--nb-chrome-ink);
+    }
+
     .avatar {
-        width: 32px;
-        height: 32px;
+        width: 34px;
+        height: 34px;
         border-radius: 50%;
         display: grid;
         place-items: center;
@@ -124,7 +151,13 @@
         font-size: 0.78rem;
         background: var(--nb-accent-soft);
         color: var(--nb-accent);
+        text-decoration: none;
         flex: none;
+    }
+
+    .side-foot .avatar {
+        background: var(--nb-chrome-active);
+        color: var(--nb-chrome-ink);
     }
 
     .admin-main {
@@ -140,19 +173,20 @@
         display: flex;
         align-items: center;
         gap: 10px;
-        padding: 10px 24px;
-        background: color-mix(in srgb, var(--nb-bg) 88%, transparent);
-        backdrop-filter: blur(10px);
+        min-height: 60px;
+        padding: 0 28px;
+        background: var(--nb-surface);
         border-bottom: 1px solid var(--nb-line);
     }
 
     .admin-content {
-        padding: 24px;
+        padding: 24px 28px 40px;
         display: grid;
-        gap: 18px;
+        gap: 20px;
         align-content: start;
-        max-width: 1320px;
+        max-width: 1640px;
         width: 100%;
+        box-sizing: border-box;
     }
 
     .page-head {
@@ -164,7 +198,7 @@
     }
 
     .page-head h1 {
-        font-size: 1.55rem;
+        font-size: 1.6rem;
         font-weight: 700;
     }
 
@@ -180,8 +214,8 @@
         height: 38px;
         display: grid;
         place-items: center;
-        border: 1px solid var(--nb-line);
-        border-radius: 8px;
+        border: 1px solid var(--nb-line-2);
+        border-radius: var(--nb-radius-sm);
         background: var(--nb-surface);
         color: var(--nb-muted);
         cursor: pointer;
@@ -200,7 +234,7 @@
 
     .search-box {
         flex: 1;
-        max-width: 420px;
+        max-width: 460px;
         position: relative;
     }
 
@@ -217,7 +251,7 @@
 
     .search-box .input {
         padding-inline-start: 34px;
-        background: var(--nb-surface);
+        background: var(--nb-surface-2);
     }
 
     .mobile-only {
@@ -274,23 +308,91 @@
         white-space: nowrap;
     }
 
+    /* "Needs your attention": one row per item, with a coloured dot. */
     .attention {
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 10px 12px;
-        border: 1px solid var(--nb-line);
-        border-inline-start: 3px solid var(--nb-warn);
-        border-radius: 8px;
-        font-size: 0.87rem;
+        gap: 12px;
+        padding: 12px 1.1rem;
+        border-top: 1px solid var(--nb-line);
+        font-size: 0.9rem;
     }
 
-    .attention[data-tone='crit'] {
-        border-inline-start-color: var(--nb-crit);
+    .attention:first-child {
+        border-top: 0;
+    }
+
+    .attention::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--nb-warn);
+        flex: none;
+    }
+
+    .attention[data-tone='crit']::before {
+        background: var(--nb-crit);
+    }
+
+    .attention[data-tone='info']::before {
+        background: var(--nb-info);
+    }
+
+    .attention[data-tone='good']::before {
+        background: var(--nb-good);
     }
 
     .attention .btn {
         margin-inline-start: auto;
+    }
+
+    /* Admin top bar: the "+ New" menu. */
+    .quick-new {
+        position: relative;
+    }
+
+    .dropdown {
+        position: absolute;
+        inset-block-start: calc(100% + 6px);
+        inset-inline-end: 0;
+        z-index: 40;
+        min-width: 210px;
+        display: grid;
+        padding: 6px;
+        background: var(--nb-surface);
+        border: 1px solid var(--nb-line);
+        border-radius: var(--nb-radius);
+        box-shadow: var(--nb-shadow-lg);
+    }
+
+    .dropdown a,
+    .dropdown button {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        border: 0;
+        border-radius: var(--nb-radius-sm);
+        background: none;
+        color: var(--nb-ink);
+        font: inherit;
+        font-size: 0.9rem;
+        text-align: start;
+        text-decoration: none;
+        cursor: pointer;
+    }
+
+    .dropdown a:hover,
+    .dropdown button:hover {
+        background: var(--nb-surface-2);
+    }
+
+    .dropdown svg {
+        width: 16px;
+        height: 16px;
+        color: var(--nb-muted);
+        flex: none;
     }
 
     .filters {
@@ -394,6 +496,10 @@
         .admin-topbar {
             padding: 10px 16px;
             padding-top: calc(10px + env(safe-area-inset-top, 0px));
+        }
+
+        .admin-side.is-open {
+            padding-bottom: 12px;
         }
 
         .admin-content {

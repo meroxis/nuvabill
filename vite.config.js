@@ -19,12 +19,6 @@ export default defineConfig({
                         weight,
                     })),
                 }),
-                local('Bricolage Grotesque', {
-                    variants: [600, 700, 800].map((weight) => ({
-                        src: `resources/fonts/bricolage-grotesque/bricolage-grotesque-latin-${weight}-normal.woff2`,
-                        weight,
-                    })),
-                }),
             ],
         }),
         tailwindcss(),

@@ -13,7 +13,7 @@
     <div class="auth-card" @if ($wide) style="width:min(640px,100%)" @endif>
         <div style="display:flex;align-items:center;gap:10px">
             <x-logo style="width:34px;height:34px;color:var(--nb-accent)" />
-            <span style="font-family:var(--nb-font-display);font-weight:800;font-size:1.3rem;letter-spacing:-.02em">{{ \App\Support\Branding::PRODUCT_NAME }}</span>
+            <span style="font-family:var(--nb-font-display);font-weight:700;font-size:1.3rem;letter-spacing:-.01em">{{ \App\Support\Branding::PRODUCT_NAME }}</span>
         </div>
         <div class="card" style="padding:1.5rem;display:grid;gap:1.1rem">
             <div>
