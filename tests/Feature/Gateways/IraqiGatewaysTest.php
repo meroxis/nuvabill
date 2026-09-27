@@ -134,6 +134,17 @@ class IraqiGatewaysTest extends TestCase
         $this->assertDatabaseHas('activity_logs', ['action' => 'payment.failed', 'description' => 'Wayl could not start a payment for invoice '.$invoice->displayNumber().': Wayl could not create the payment link: Invalid authentication key']);
     }
 
+    public function test_wayl_validation_details_are_kept_in_the_reason(): void
+    {
+        $this->enableGateway('wayl', ['api_token' => 'token', 'mode' => 'live']);
+        Http::fake(['api.thewayl.com/*' => Http::response(['message' => 'Validation failed', 'errors' => ['total' => ['Total must be at least 1000']]], 422)]);
+
+        [$client, $invoice] = $this->invoice(50000);
+        $this->actingAs($client, 'web')->post(route('client.invoices.pay', $invoice), ['gateway' => 'wayl']);
+
+        $this->assertDatabaseHas('activity_logs', ['action' => 'payment.failed', 'description' => 'Wayl could not start a payment for invoice '.$invoice->displayNumber().': Wayl could not create the payment link: Validation failed (Total must be at least 1000)']);
+    }
+
     public function test_iraqi_gateways_are_only_offered_for_dinar_invoices(): void
     {
         $this->enableGateway('fib', ['client_id' => 'shop', 'client_secret' => 'secret']);

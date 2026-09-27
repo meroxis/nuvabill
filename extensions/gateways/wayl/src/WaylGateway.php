@@ -80,7 +80,9 @@ class WaylGateway extends Gateway
         $url = $response->json('data.url');
 
         if (! $response->successful() || ! is_string($url)) {
-            throw new RuntimeException('Wayl could not create the payment link: '.($response->json('message') ?? $response->status()));
+            $details = collect((array) $response->json('errors'))->flatten()->filter(fn ($error): bool => is_string($error))->implode('; ');
+
+            throw new RuntimeException('Wayl could not create the payment link: '.($response->json('message') ?? $response->status()).($details !== '' ? " ({$details})" : ''));
         }
 
         PaymentIntent::create([
