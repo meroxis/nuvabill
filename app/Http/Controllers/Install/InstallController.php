@@ -172,7 +172,7 @@ class InstallController extends Controller
             'mail.from_name' => $data['company_name'],
         ]);
 
-        if ($request->boolean('demo_products')) {
+        if ($request->boolean('demo_products') && ! config('nuvabill.marketplace.store')) {
             (new DemoCatalogSeeder)->run($data['currency']);
         }
 

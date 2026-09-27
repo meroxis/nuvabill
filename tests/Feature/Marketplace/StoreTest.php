@@ -142,6 +142,15 @@ class StoreTest extends TestCase
         $this->postJson(route('marketplace.api.licenses.check'), ['slug' => 'aurora', 'license_key' => $license->key, 'site' => 'billing.example.org'])->assertJson(['valid' => false, 'status' => 'revoked']);
     }
 
+    public function test_the_store_opens_on_the_marketplace_instead_of_hosting_plans(): void
+    {
+        $this->get(route('store.index'))->assertRedirect(route('marketplace.index'));
+
+        $this->get(route('marketplace.index'))->assertOk()
+            ->assertSee(route('marketplace.developers'), false)
+            ->assertDontSee('>'.__('Store').'</a>', false);
+    }
+
     public function test_download_links_are_https_and_still_work_behind_a_plain_http_proxy(): void
     {
         $this->liveItem('paper', 'theme', 0, 0);

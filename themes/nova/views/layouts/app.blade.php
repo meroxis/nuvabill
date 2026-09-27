@@ -2,6 +2,7 @@
     $client = auth('web')->user();
     $cartCount = app(\App\Billing\Cart::class)->count();
     $sellsDomains = \App\Models\TldPrice::query()->where('is_enabled', true)->exists();
+    $marketplaceStore = (bool) config('nuvabill.marketplace.store');
     $initials = $client ? mb_strtoupper(mb_substr((string) $client->first_name, 0, 1).mb_substr((string) $client->last_name, 0, 1)) : '';
 @endphp
 <!DOCTYPE html>
@@ -64,29 +65,34 @@
                 @if ($client)
                     <a href="{{ route('client.dashboard') }}" @if (request()->routeIs('client.dashboard')) aria-current="page" @endif><x-icon name="home" />{{ __('Dashboard') }}</a>
                     <a href="{{ route('client.services.index') }}" @if (request()->routeIs('client.services.*')) aria-current="page" @endif>{{ __('Services') }}</a>
-                    <a href="{{ route('client.domains.index') }}" @if (request()->routeIs('client.domains.*')) aria-current="page" @endif>{{ __('Domains') }}</a>
+                    @unless ($marketplaceStore)
+                        <a href="{{ route('client.domains.index') }}" @if (request()->routeIs('client.domains.*')) aria-current="page" @endif>{{ __('Domains') }}</a>
+                    @endunless
                     <a href="{{ route('client.invoices.index') }}" @if (request()->routeIs('client.invoices.*')) aria-current="page" @endif>{{ __('Billing') }}</a>
                     <a href="{{ route('client.tickets.index') }}" @if (request()->routeIs('client.tickets.*')) aria-current="page" @endif>{{ __('Support') }}</a>
-                    <a href="{{ route('store.index') }}" @if (request()->routeIs('store.*')) aria-current="page" @endif>{{ __('Store') }}</a>
-                    @if (config('nuvabill.marketplace.store'))
+                    @if ($marketplaceStore)
                         <a href="{{ route('marketplace.index') }}" @if (request()->routeIs('marketplace.*', 'developer.*')) aria-current="page" @endif>{{ __('Marketplace') }}</a>
+                    @else
+                        <a href="{{ route('store.index') }}" @if (request()->routeIs('store.*')) aria-current="page" @endif>{{ __('Store') }}</a>
                     @endif
                     <a class="nav-only-mobile" href="{{ route('client.account.edit') }}" @if (request()->routeIs('client.account.*')) aria-current="page" @endif>{{ __('Account') }}</a>
+                @elseif ($marketplaceStore)
+                    <a href="{{ route('marketplace.index') }}" @if (request()->routeIs('marketplace.index', 'marketplace.show')) aria-current="page" @endif><x-icon name="home" />{{ __('Marketplace') }}</a>
+                    <a href="{{ route('marketplace.developers') }}" @if (request()->routeIs('marketplace.developers')) aria-current="page" @endif>{{ __('Developers') }}</a>
+                    <a href="{{ route('client.login') }}" @if (request()->routeIs('client.login', 'client.register', 'client.password.*')) aria-current="page" @endif>{{ __('Client area') }}</a>
                 @else
                     <a href="{{ route('store.index') }}" @if (request()->routeIs('store.index', 'store.group', 'store.product')) aria-current="page" @endif><x-icon name="home" />{{ __('Store') }}</a>
                     @if ($sellsDomains)
                         <a href="{{ route('store.domains') }}" @if (request()->routeIs('store.domains')) aria-current="page" @endif>{{ __('Domains') }}</a>
                     @endif
-                    @if (config('nuvabill.marketplace.store'))
-                        <a href="{{ route('marketplace.index') }}" @if (request()->routeIs('marketplace.index', 'marketplace.show')) aria-current="page" @endif>{{ __('Marketplace') }}</a>
-                        <a href="{{ route('marketplace.developers') }}" @if (request()->routeIs('marketplace.developers')) aria-current="page" @endif>{{ __('Developers') }}</a>
-                    @endif
                     <a href="{{ route('client.login') }}" @if (request()->routeIs('client.login', 'client.register', 'client.password.*')) aria-current="page" @endif>{{ __('Client area') }}</a>
                 @endif
             </div>
-            @if ($client)
+            @if ($client && $marketplaceStore)
+                <a class="nav-cta" href="{{ route('marketplace.index') }}"><x-icon name="search" />{{ __('Browse the marketplace') }}</a>
+            @elseif ($client)
                 <a class="nav-cta" href="{{ route('store.index') }}"><x-icon name="plus" />{{ __('Order new services') }}</a>
-            @elseif ($sellsDomains)
+            @elseif ($sellsDomains && ! $marketplaceStore)
                 <a class="nav-cta" href="{{ route('store.domains') }}"><x-icon name="search" />{{ __('Find a domain') }}</a>
             @endif
         </div>

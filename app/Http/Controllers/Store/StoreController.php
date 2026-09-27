@@ -7,12 +7,18 @@ use App\Models\Product;
 use App\Models\ProductAddon;
 use App\Models\ProductGroup;
 use App\Models\TldPrice;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\View\View;
 
 class StoreController extends Controller
 {
-    public function index(): View
+    public function index(): View|RedirectResponse
     {
+        // The marketplace store (my.nuvabill.com) sells themes and extensions, not hosting.
+        if (config('nuvabill.marketplace.store')) {
+            return redirect()->route('marketplace.index');
+        }
+
         return view('theme::store.index', [
             'groups' => ProductGroup::query()
                 ->visible()
