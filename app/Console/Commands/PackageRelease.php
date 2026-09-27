@@ -94,6 +94,11 @@ class PackageRelease extends Command
             return true;
         }
 
+        // Marketplace packages installed on this copy (paid ones must never ship) and local databases.
+        if (preg_match('#^(themes/(?!nova/)|orderforms/(?!\.gitkeep$)|extensions/addons/)|^database/.+\.sqlite(-journal|-wal|-shm)?$#', $relative)) {
+            return true;
+        }
+
         foreach (self::EXCLUDED as $excluded) {
             if ($relative === $excluded || str_starts_with($relative, $excluded.'/')) {
                 return true;
