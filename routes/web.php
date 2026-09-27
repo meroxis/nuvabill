@@ -18,6 +18,7 @@ use App\Http\Controllers\PreviewController;
 use App\Http\Controllers\Store\CartController;
 use App\Http\Controllers\Store\CheckoutController;
 use App\Http\Controllers\Store\DomainSearchController;
+use App\Http\Controllers\Store\QuickOrderController;
 use App\Http\Controllers\Store\StoreController;
 use Illuminate\Support\Facades\Route;
 
@@ -41,6 +42,10 @@ Route::delete('cart/{index}', [CartController::class, 'destroy'])->whereNumber('
 
 Route::get('preview/stop', [PreviewController::class, 'stop'])->name('preview.stop');
 Route::get('preview/{kind}/{slug}', [PreviewController::class, 'start'])->whereIn('kind', ['theme', 'orderform'])->where('slug', '[a-z0-9][a-z0-9_-]*')->name('preview.start');
+
+Route::get('store-api/domains', [QuickOrderController::class, 'domains'])->middleware('throttle:30,1')->name('store.api.domains');
+Route::post('store-api/quote', [QuickOrderController::class, 'quote'])->middleware('throttle:120,1')->name('store.api.quote');
+Route::post('order', [QuickOrderController::class, 'store'])->middleware(['throttle:10,1', 'client.active', 'client.two-factor', 'captcha:checkout'])->name('order.store');
 
 Route::get('checkout', [CheckoutController::class, 'show'])->name('checkout.show');
 Route::post('checkout', [CheckoutController::class, 'store'])->middleware(['auth:web', 'client.active', 'client.two-factor', 'captcha:checkout'])->name('checkout.store');

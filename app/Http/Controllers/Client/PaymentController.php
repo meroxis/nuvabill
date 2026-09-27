@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Client;
 
 use App\Billing\PaymentRecorder;
+use App\Billing\PaymentStarter;
 use App\Extensions\ExtensionManager;
 use App\Extensions\Gateways\Gateway;
 use App\Http\Controllers\Controller;
@@ -11,12 +12,11 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
 use Throwable;
 
 class PaymentController extends Controller
 {
-    public function store(Request $request, Invoice $invoice, ExtensionManager $extensions): RedirectResponse
+    public function store(Request $request, Invoice $invoice, PaymentStarter $payments): RedirectResponse
     {
         abort_unless($invoice->client_id === $request->user('web')->id, 404);
 
@@ -24,46 +24,7 @@ class PaymentController extends Controller
             return redirect()->route('client.invoices.show', $invoice)->with('status', __('This invoice is already paid.'));
         }
 
-        $gateways = $extensions->activeGateways($invoice->currency);
-        $slug = (string) $request->validate(['gateway' => ['required', 'string']])['gateway'];
-        $gateway = $gateways->get($slug);
-
-        if ($gateway === null) {
-            return back()->with('error', __('Choose one of the payment methods shown.'));
-        }
-
-        $invoice->update(['payment_method' => $slug]);
-
-        try {
-            $start = $gateway->startPayment(
-                $invoice->loadMissing('client'),
-                route('client.invoices.return', [$invoice, $slug]),
-                route('client.invoices.show', $invoice),
-            );
-        } catch (Throwable $exception) {
-            report($exception);
-
-            return back()->with('error', __(':gateway is not available right now. Try another payment method or contact us.', ['gateway' => $gateway->name()]));
-        }
-
-        if ($start->isRedirect()) {
-            return redirect()->away($start->redirectUrl);
-        }
-
-        if ($start->isQr()) {
-            return redirect()->route('client.invoices.show', $invoice)->with('payment_qr', [
-                'gateway' => $gateway->name(),
-                'image' => $start->qrImage,
-                'code' => $start->code,
-                'links' => $start->appLinks,
-                'expires_at' => $start->expiresAt,
-            ]);
-        }
-
-        return redirect()->route('client.invoices.show', $invoice)->with('payment_instructions', Str::markdown((string) $start->instructions, [
-            'html_input' => 'escape',
-            'allow_unsafe_links' => false,
-        ]));
+        return $payments->start($invoice, (string) $request->validate(['gateway' => ['required', 'string']])['gateway']);
     }
 
     /**
