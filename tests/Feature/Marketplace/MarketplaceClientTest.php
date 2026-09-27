@@ -144,6 +144,15 @@ class MarketplaceClientTest extends TestCase
         $this->get(route('admin.dashboard'))->assertDontSee('Aurora is unlicensed.');
     }
 
+    public function test_the_public_demo_shows_paid_themes_without_license_warnings(): void
+    {
+        File::ensureDirectoryExists($this->dir.'/themes/aurora');
+        File::put($this->dir.'/themes/aurora/theme.json', json_encode(['slug' => 'aurora', 'name' => 'Aurora', 'version' => '1.0.0', 'paid' => true]));
+        config(['nuvabill.demo' => true]);
+
+        $this->get(route('admin.dashboard'))->assertOk()->assertDontSee('Aurora is unlicensed.');
+    }
+
     public function test_the_daily_check_marks_a_revoked_license_and_warns_staff(): void
     {
         $install = MarketplaceInstall::create(['slug' => 'aurora', 'type' => 'theme', 'name' => 'Aurora', 'version' => '1.0.0', 'license_key' => 'NVB-AURO-0000-0001', 'license_status' => 'valid']);

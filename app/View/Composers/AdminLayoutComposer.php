@@ -9,6 +9,7 @@ use App\Marketplace\MarketplaceClient;
 use App\Models\MarketplaceInstall;
 use App\Models\Order;
 use App\Models\Ticket;
+use App\Support\Demo;
 use Illuminate\Support\Collection;
 use Illuminate\View\View;
 
@@ -36,7 +37,8 @@ class AdminLayoutComposer
             'marketplaceUpdates' => $this->marketplaceUpdates($installs),
             'licenseWarnings' => $installs->toBase()->filter(fn (MarketplaceInstall $install): bool => $install->hasInvalidLicense())
                 ->map(fn (MarketplaceInstall $install): array => ['slug' => $install->slug, 'name' => $install->name, 'message' => (string) $install->license_message])
-                ->merge(collect($this->licenses->cachedUnlicensedCopies())->map(fn (array $copy): array => $copy + ['message' => __('This paid copy was not installed from the marketplace, so it has no license.')]))
+                // The public demo shows paid themes for previews on purpose; it resets every hour and cannot be used as a real site.
+                ->merge(Demo::isEnabled() ? [] : collect($this->licenses->cachedUnlicensedCopies())->map(fn (array $copy): array => $copy + ['message' => __('This paid copy was not installed from the marketplace, so it has no license.')]))
                 ->values(),
         ]);
     }
