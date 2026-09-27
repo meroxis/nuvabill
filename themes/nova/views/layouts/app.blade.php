@@ -11,6 +11,7 @@
     <meta name="description" content="@yield('description', setting('company.name'))">
     @include('partials.head', ['assets' => ['themes/nova/assets/theme.css', 'resources/js/app.js']])
     @include('theme::partials.brand-style')
+    <x-extension-head area="client" />
 </head>
 <body>
 <x-demo-banner />

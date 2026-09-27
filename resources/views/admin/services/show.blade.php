@@ -70,6 +70,12 @@
                     <dt>{{ __('Registered') }}</dt><dd>{{ $service->registration_date->format('d M Y') }}</dd>
                     <dt>{{ __('First payment') }}</dt><dd class="num">{{ money($service->first_payment_amount, $service->currency) }}</dd>
                     <dt>{{ __('Server') }}</dt><dd>{{ $service->server ? $service->server->name.' ('.$service->server->hostname.')' : '—' }}</dd>
+                    @foreach ($service->addons as $addon)
+                        <dt>{{ __('Add-on') }}</dt><dd>{{ $addon->name }} · {{ money($addon->recurring_amount, $service->currency) }}@unless ($addon->isActive()) <x-pill>{{ __('Cancelled') }}</x-pill>@endunless</dd>
+                    @endforeach
+                    @if ($service->coupon)
+                        <dt>{{ __('Coupon') }}</dt><dd><a class="mono" href="{{ route('admin.coupons.edit', $service->coupon) }}">{{ $service->coupon->code }}</a> · {{ $service->coupon_payments_left === null ? __('every renewal') : trans_choice(':count more payment|:count more payments', $service->coupon_payments_left, ['count' => $service->coupon_payments_left]) }}</dd>
+                    @endif
                     @if ($service->password)
                         <dt>{{ __('Password') }}</dt><dd><button type="button" class="btn btn-sm" data-copy="{{ $service->password }}" data-copied="{{ __('Copied') }}">{{ __('Copy password') }}</button></dd>
                     @endif

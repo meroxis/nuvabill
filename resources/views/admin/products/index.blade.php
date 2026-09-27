@@ -12,6 +12,8 @@
         </div>
     </div>
 
+    @include('admin.products.nav')
+
     @forelse ($groups as $group)
         <section class="card card-flush">
             <div class="card-header" style="padding-bottom:.85rem;border-bottom:1px solid var(--nb-line);margin:0">

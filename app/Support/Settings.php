@@ -29,6 +29,8 @@ class Settings
         'billing.renewal_days_before' => 7,
         'billing.payment_terms_days' => 7,
 
+        'currency.rates' => [],
+
         'automation.enabled' => true,
         'automation.reminder_days' => [1, 3, 7],
         'automation.suspend_days' => 3,
@@ -48,6 +50,7 @@ class Settings
         'branding.accent' => '#0B7A70',
 
         'theme.active' => 'nova',
+        'orderform.active' => 'standard',
 
         'orders.accept_terms_url' => '',
         'company.privacy_url' => '',

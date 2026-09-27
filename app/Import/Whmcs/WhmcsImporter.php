@@ -1049,7 +1049,7 @@ class WhmcsImporter
     }
 
     /**
-     * WHMCS stores most text HTML-encoded ("Tom &amp; Co").
+     * WHMCS stores most text HTML-encoded ("Raz &amp; Co").
      */
     private function text(mixed $value): ?string
     {

@@ -119,6 +119,6 @@ class DemoModeTest extends TestCase
      */
     private function clientForm(string $email): array
     {
-        return ['first_name' => 'Rozh', 'last_name' => 'Ahmed', 'email' => $email, 'status' => 'active'];
+        return ['first_name' => 'Raz', 'last_name' => 'Las', 'email' => $email, 'status' => 'active'];
     }
 }

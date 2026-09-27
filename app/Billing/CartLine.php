@@ -12,6 +12,10 @@ use App\Models\TldPrice;
  */
 final readonly class CartLine
 {
+    /**
+     * @param  list<array{id: int, name: string, price: int, setup_fee: int}>  $addons  Product add-ons chosen with the product, priced for its cycle.
+     * @param  int  $discount  Coupon discount on this line, in minor units.
+     */
     public const KIND_PRODUCT = 'product';
 
     public const KIND_DOMAIN = 'domain';
@@ -28,6 +32,8 @@ final readonly class CartLine
         public int $years = 1,
         public ?string $eppCode = null,
         public ?TldPrice $tldPrice = null,
+        public array $addons = [],
+        public int $discount = 0,
     ) {}
 
     public static function forDomain(int $index, string $domain, string $action, int $years, TldPrice $tldPrice, ?string $eppCode = null): self
@@ -51,9 +57,30 @@ final readonly class CartLine
         return $this->kind === self::KIND_DOMAIN;
     }
 
+    /**
+     * What the line costs today before any coupon: price, setup fee and add-ons.
+     */
+    public function subtotal(): int
+    {
+        return $this->price + $this->setupFee + $this->addonsTotal();
+    }
+
     public function dueToday(): int
     {
-        return $this->price + $this->setupFee;
+        return max(0, $this->subtotal() - $this->discount);
+    }
+
+    public function addonsTotal(): int
+    {
+        return array_sum(array_map(fn (array $addon): int => $addon['price'] + $addon['setup_fee'], $this->addons));
+    }
+
+    public function withDiscount(int $discount): self
+    {
+        return new self(
+            $this->index, $this->product, $this->cycle, $this->domain, $this->price, $this->setupFee, $this->kind,
+            $this->domainAction, $this->years, $this->eppCode, $this->tldPrice, $this->addons, max(0, $discount),
+        );
     }
 
     /**

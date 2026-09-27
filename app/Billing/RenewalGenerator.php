@@ -38,12 +38,17 @@ class RenewalGenerator
         /** @var array<string, array{client: Client, currency: string, due: CarbonImmutable, items: list<array<string, mixed>>}> $groups */
         $groups = [];
 
+        /** @var array<int, Service> $discounted Services whose coupon was used on this run. */
+        $discounted = [];
+
         foreach ($this->dueServices($today) as $service) {
-            $this->addToGroup($groups, $service->client, $service->currency, $service->next_due_date, LineItems::servicePeriod(
-                $service,
-                $service->next_due_date,
-                $service->recurring_amount,
-            ));
+            foreach ($this->serviceItems($service) as $item) {
+                $this->addToGroup($groups, $service->client, $service->currency, $service->next_due_date, $item);
+
+                if ($item['type'] === InvoiceItem::TYPE_DISCOUNT) {
+                    $discounted[$service->id] = $service;
+                }
+            }
         }
 
         foreach ($this->dueDomains($today) as $domain) {
@@ -59,11 +64,61 @@ class RenewalGenerator
         foreach ($groups as $group) {
             $invoice = $this->invoices->create($group['client'], $group['items'], dueAt: $group['due'], currency: $group['currency']);
 
+            foreach ($group['items'] as $item) {
+                if ($item['type'] === InvoiceItem::TYPE_DISCOUNT && isset($discounted[$item['service_id']])) {
+                    $this->useRenewalCoupon($discounted[$item['service_id']], $invoice, -$item['amount']);
+                }
+            }
+
             Activity::log('invoice.renewal', "Renewal invoice {$invoice->number} created", $invoice, $group['client']);
             $this->mailer->send('invoice.created', $group['client'], TemplateMailer::invoiceContext($invoice));
         }
 
         return count($groups);
+    }
+
+    /**
+     * The service's renewal line, its active add-ons, and its coupon discount if it still has one.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function serviceItems(Service $service): array
+    {
+        $start = $service->next_due_date;
+        $items = [LineItems::servicePeriod($service, $start, $service->recurring_amount)];
+
+        foreach ($service->addons as $addon) {
+            if ($addon->isActive() && $addon->recurring_amount > 0) {
+                $items[] = LineItems::addonPeriod($service, $addon->name, $start, $addon->recurring_amount);
+            }
+        }
+
+        $coupon = $service->coupon;
+
+        if ($coupon !== null && ($service->coupon_payments_left === null || $service->coupon_payments_left > 0)) {
+            $discount = $coupon->discountOn($service->recurring_amount);
+
+            if ($discount > 0) {
+                $items[] = LineItems::discount($coupon, $discount, $service);
+            }
+        }
+
+        return $items;
+    }
+
+    private function useRenewalCoupon(Service $service, Invoice $invoice, int $amount): void
+    {
+        $service->coupon->redemptions()->create([
+            'client_id' => $service->client_id,
+            'invoice_id' => $invoice->id,
+            'amount' => $amount,
+            'currency' => $invoice->currency,
+        ]);
+
+        if ($service->coupon_payments_left !== null) {
+            $left = $service->coupon_payments_left - 1;
+            $service->update(['coupon_payments_left' => $left, 'coupon_id' => $left > 0 ? $service->coupon_id : null]);
+        }
     }
 
     /**
@@ -110,7 +165,7 @@ class RenewalGenerator
     private function dueServices(CarbonImmutable $today): iterable
     {
         return Service::query()
-            ->with('product', 'client')
+            ->with('product', 'client', 'addons', 'coupon')
             ->whereIn('status', [ServiceStatus::Active, ServiceStatus::Suspended])
             ->whereNotIn('billing_cycle', [BillingCycle::OneTime, BillingCycle::Free])
             ->whereNotNull('next_due_date')

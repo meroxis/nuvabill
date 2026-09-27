@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Gateways;
 
+use App\Billing\ExchangeRates;
 use App\Enums\InvoiceStatus;
 use App\Models\Client;
 use App\Models\Invoice;
@@ -128,6 +129,44 @@ class IraqiGatewaysTest extends TestCase
 
         $this->actingAs($client, 'web')->get(route('client.invoices.show', $invoice))->assertOk()->assertDontSee('FIB (First Iraqi Bank)');
         $this->post(route('client.invoices.pay', $invoice), ['gateway' => 'fib'])->assertSessionHas('error');
+    }
+
+    public function test_with_an_exchange_rate_wayl_charges_a_dollar_invoice_in_dinar(): void
+    {
+        $this->enableGateway('wayl', ['api_token' => 'wayl-token', 'mode' => 'test']);
+        app(ExchangeRates::class)->save(['IQD' => 1310]);
+        $paidTotal = '77290';
+
+        Http::fake([
+            'api.thewayl.com/api/v1/links' => Http::response(['data' => ['id' => 'cmlink_2', 'code' => 'USD59', 'url' => 'https://checkout.thewayl.com/pay/USD59']], 201),
+            'api.thewayl.com/api/v1/links/*' => function () use (&$paidTotal) {
+                return Http::response(['data' => ['id' => 'cmlink_2', 'total' => $paidTotal, 'status' => 'Complete']]);
+            },
+        ]);
+
+        $client = Client::factory()->create(['currency' => 'USD']);
+        $invoice = Invoice::factory()->create(['client_id' => $client->id, 'currency' => 'USD', 'total' => 5900]);
+
+        $this->actingAs($client, 'web')->get(route('client.invoices.show', $invoice))->assertOk()->assertSee('Wayl')->assertSee('77,290');
+
+        $this->post(route('client.invoices.pay', $invoice), ['gateway' => 'wayl'])->assertRedirect('https://checkout.thewayl.com/pay/USD59');
+        Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.thewayl.com/api/v1/links' && $request['total'] === 77290 && $request['currency'] === 'IQD');
+
+        $paidTotal = '1000';
+        $this->get(route('client.invoices.return', [$invoice, 'wayl']));
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->fresh()->status, 'Less dinar than was charged does not pay the invoice.');
+
+        $paidTotal = '77290';
+        $this->get(route('client.invoices.return', [$invoice, 'wayl']));
+
+        $invoice->refresh();
+        $this->assertSame(InvoiceStatus::Paid, $invoice->status);
+        $this->assertSame(5900, $invoice->amount_paid);
+
+        $payment = $invoice->transactions()->sole();
+        $this->assertSame('USD', $payment->currency);
+        $this->assertSame(7729000, $payment->meta['paid_amount']);
+        $this->assertSame('IQD', $payment->meta['paid_currency']);
     }
 
     /**

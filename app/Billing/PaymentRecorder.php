@@ -3,6 +3,7 @@
 namespace App\Billing;
 
 use App\Enums\InvoiceStatus;
+use App\Events\InvoicePaid;
 use App\Extensions\Gateways\PaymentResult;
 use App\Models\Invoice;
 use App\Models\Transaction;
@@ -81,6 +82,7 @@ class PaymentRecorder
 
         if ($becamePaid) {
             $this->paidHandler->handle($invoice);
+            InvoicePaid::dispatch($invoice);
         }
 
         return $transaction;
@@ -119,5 +121,6 @@ class PaymentRecorder
 
         $invoice->update(['status' => InvoiceStatus::Paid, 'paid_at' => now()]);
         $this->paidHandler->handle($invoice);
+        InvoicePaid::dispatch($invoice);
     }
 }

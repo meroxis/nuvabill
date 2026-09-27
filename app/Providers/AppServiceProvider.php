@@ -17,6 +17,7 @@ use App\Models\Ticket;
 use App\Models\Transaction;
 use App\Support\Demo;
 use App\Support\Installation;
+use App\Support\ServicePanels;
 use App\Support\Settings;
 use App\Support\Themes;
 use App\View\Composers\AdminLayoutComposer;
@@ -37,7 +38,8 @@ class AppServiceProvider extends ServiceProvider
         Installation::ensureAppKey();
 
         $this->app->singleton(Settings::class);
-        $this->app->singleton(Themes::class, fn (): Themes => new Themes(config('nuvabill.themes_path')));
+        $this->app->singleton(ServicePanels::class);
+        $this->app->singleton(Themes::class, fn (): Themes => new Themes(config('nuvabill.themes_path'), config('nuvabill.orderforms_path')));
         $this->app->singleton(ExtensionManager::class, fn (): ExtensionManager => new ExtensionManager(config('nuvabill.extensions_path')));
     }
 
@@ -72,6 +74,7 @@ class AppServiceProvider extends ServiceProvider
 
         if (Installation::isInstalled()) {
             $this->applySettingsToConfig();
+            $this->app->make(ExtensionManager::class)->bootAddons();
         }
 
         if (Demo::isEnabled()) {

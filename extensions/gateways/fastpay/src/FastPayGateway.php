@@ -56,7 +56,8 @@ class FastPayGateway extends Gateway
 
     public function startPayment(Invoice $invoice, string $returnUrl, string $cancelUrl): PaymentStart
     {
-        $amount = $this->wholeUnits($invoice->balance());
+        $quote = $this->quote($invoice);
+        $amount = $this->wholeUnits($quote['amount']);
         $orderId = 'NB'.$invoice->id.'X'.Str::upper(Str::random(8));
 
         $response = $this->post('/api/v1/public/pgw/payment/initiation', [
@@ -82,8 +83,9 @@ class FastPayGateway extends Gateway
             'gateway' => $this->slug(),
             'reference' => $orderId,
             'amount' => $invoice->balance(),
-            'currency' => 'IQD',
+            'currency' => $invoice->currency,
             'status' => PaymentIntent::STATUS_PENDING,
+            'meta' => $this->chargeDetails($quote, $amount * 100),
         ]);
 
         return PaymentStart::redirect($redirect);
@@ -127,15 +129,19 @@ class FastPayGateway extends Gateway
             return null;
         }
 
-        $intent->update(['status' => PaymentIntent::STATUS_PAID]);
-
-        return new PaymentResult(
-            invoiceId: $intent->invoice_id,
-            amount: Money::toMinor((string) $response->json('data.received_amount')),
-            currency: 'IQD',
-            reference: (string) ($response->json('data.gw_transaction_id') ?: $response->json('data.transaction_id') ?: $intent->reference),
-            meta: ['customer_mobile' => $response->json('data.customer_mobile_number')],
+        $result = $this->resultFor(
+            $intent,
+            Money::toMinor((string) $response->json('data.received_amount')),
+            'IQD',
+            (string) ($response->json('data.gw_transaction_id') ?: $response->json('data.transaction_id') ?: $intent->reference),
+            ['customer_mobile' => $response->json('data.customer_mobile_number')],
         );
+
+        if ($result !== null) {
+            $intent->update(['status' => PaymentIntent::STATUS_PAID]);
+        }
+
+        return $result;
     }
 
     /**

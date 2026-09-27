@@ -2,6 +2,7 @@
 
 namespace App\Extensions;
 
+use App\Marketplace\Permissions;
 use InvalidArgumentException;
 
 /**
@@ -15,6 +16,16 @@ final readonly class ExtensionManifest
 
     public const TYPE_REGISTRAR = 'registrar';
 
+    public const TYPE_ADDON = 'addon';
+
+    /**
+     * @var list<string>
+     */
+    public const TYPES = [self::TYPE_GATEWAY, self::TYPE_SERVER, self::TYPE_REGISTRAR, self::TYPE_ADDON];
+
+    /**
+     * @param  list<string>  $permissions  What the extension may do, shown to staff before they install it. See {@see Permissions}.
+     */
     public function __construct(
         public string $slug,
         public string $type,
@@ -26,6 +37,7 @@ final readonly class ExtensionManifest
         public string $description = '',
         public string $author = '',
         public string $requires = '',
+        public array $permissions = [],
     ) {}
 
     public static function fromFile(string $file): self
@@ -46,7 +58,7 @@ final readonly class ExtensionManifest
             throw new InvalidArgumentException("Extension slug [{$data['slug']}] may only use lowercase letters, numbers, dashes and underscores.");
         }
 
-        if (! in_array($data['type'], [self::TYPE_GATEWAY, self::TYPE_SERVER, self::TYPE_REGISTRAR], true)) {
+        if (! in_array($data['type'], self::TYPES, true)) {
             throw new InvalidArgumentException("Extension [{$data['slug']}] has an unknown type [{$data['type']}].");
         }
 
@@ -61,6 +73,7 @@ final readonly class ExtensionManifest
             description: (string) ($data['description'] ?? ''),
             author: (string) ($data['author'] ?? ''),
             requires: (string) ($data['requires'] ?? ''),
+            permissions: array_values(array_filter((array) ($data['permissions'] ?? []), 'is_string')),
         );
     }
 

@@ -35,6 +35,7 @@ class Demo
         'admin.settings.mail',
         'admin.settings.mail.test',
         'admin.settings.gateways.update',
+        'admin.settings.currencies.update',
         'admin.settings.registrars.*',
         'admin.settings.import.update',
         'admin.settings.social.update',

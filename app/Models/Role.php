@@ -28,6 +28,7 @@ class Role extends Model
             'domains.manage' => 'Manage domains and registrar actions',
             'billing.view' => 'View invoices and payments',
             'billing.manage' => 'Create invoices and record payments',
+            'coupons.manage' => 'Manage coupons',
         ],
         'Support' => [
             'support.manage' => 'Answer tickets',

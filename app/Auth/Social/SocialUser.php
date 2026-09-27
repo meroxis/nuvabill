@@ -16,7 +16,7 @@ final readonly class SocialUser
     ) {}
 
     /**
-     * Split a full name such as "Dana Ali Hassan" into first ("Dana Ali") and last ("Hassan") name.
+     * Split a full name such as "Mer Las" into first ("Mer") and last ("Las") name.
      *
      * @return array{0: string, 1: string}
      */

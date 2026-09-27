@@ -482,6 +482,66 @@
         border-top: 1px solid var(--nb-line);
     }
 
+    .coupon-form {
+        display: grid;
+        gap: 6px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--nb-line);
+    }
+
+    .coupon-applied {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border: 1px dashed var(--nb-line-strong, var(--nb-line));
+        border-radius: var(--nb-radius);
+        background: var(--nb-good-soft);
+    }
+
+    .coupon-applied > svg {
+        width: 18px;
+        height: 18px;
+        color: var(--nb-good);
+        flex: none;
+    }
+
+    .coupon-applied > span {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .addon-options {
+        display: grid;
+        gap: 8px;
+    }
+
+    .addon-option {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--nb-line);
+        border-radius: var(--nb-radius);
+        cursor: pointer;
+    }
+
+    .addon-option:has(input:checked) {
+        border-color: var(--nb-accent);
+        background: var(--nb-accent-soft);
+    }
+
+    .addon-option input {
+        margin-top: 3px;
+        accent-color: var(--nb-accent);
+    }
+
+    .addon-option .price {
+        margin-inline-start: auto;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
     .two-col {
         display: grid;
         gap: 18px;

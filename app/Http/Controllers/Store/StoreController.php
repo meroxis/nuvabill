@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Store;
 
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\ProductAddon;
 use App\Models\ProductGroup;
 use App\Models\TldPrice;
 use Illuminate\View\View;
@@ -47,6 +48,7 @@ class StoreController extends Controller
             'prices' => $product->pricesIn($this->currency()),
             'currency' => $this->currency(),
             'inStock' => $product->isInStock(),
+            'addons' => ProductAddon::offeredFor($product, $this->currency()),
             'sellsDomains' => TldPrice::query()->enabled($this->currency())->exists(),
         ]);
     }

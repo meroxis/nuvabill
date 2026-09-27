@@ -2,6 +2,7 @@
 
 namespace App\Billing;
 
+use App\Models\Coupon;
 use App\Models\Domain;
 use App\Models\InvoiceItem;
 use App\Models\Service;
@@ -74,6 +75,42 @@ class LineItems
             'description' => __('Setup fee').' - '.$service->product->name,
             'amount' => $amount,
             'service_id' => $service->id,
+        ];
+    }
+
+    /**
+     * A product add-on billed with its service for the same period as the service line.
+     *
+     * @return array{type: string, description: string, amount: int, service_id: int, period_start: CarbonImmutable, period_end: CarbonImmutable|null}
+     */
+    public static function addonPeriod(Service $service, string $name, CarbonImmutable $start, int $amount): array
+    {
+        $period = self::servicePeriod($service, $start, $amount);
+        $end = $period['period_end'];
+
+        return [
+            'type' => InvoiceItem::TYPE_ADDON,
+            'description' => $name.($service->domain ? ' - '.$service->domain : '').($end !== null ? ' ('.$start->format('d M Y').' - '.$end->format('d M Y').')' : ''),
+            'amount' => $amount,
+            'service_id' => $service->id,
+            'period_start' => $start,
+            'period_end' => $end,
+        ];
+    }
+
+    /**
+     * A coupon discount on a service or domain. The amount is made negative.
+     *
+     * @return array{type: string, description: string, amount: int, service_id: int|null, domain_id: int|null}
+     */
+    public static function discount(Coupon $coupon, int $amount, ?Service $service = null, ?Domain $domain = null): array
+    {
+        return [
+            'type' => InvoiceItem::TYPE_DISCOUNT,
+            'description' => __('Coupon :code (:discount)', ['code' => $coupon->code, 'discount' => $coupon->describe()]),
+            'amount' => -abs($amount),
+            'service_id' => $service?->id,
+            'domain_id' => $domain?->id,
         ];
     }
 }

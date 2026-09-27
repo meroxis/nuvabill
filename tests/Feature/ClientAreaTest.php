@@ -119,9 +119,9 @@ class ClientAreaTest extends TestCase
     public function test_email_placeholders_are_replaced_but_code_is_not_run(): void
     {
         $text = TemplateMailer::render('Hi {{ client.first_name }} {{ unknown.key }} {{ client }}', [
-            'client' => ['first_name' => '<b>Dana</b>'],
+            'client' => ['first_name' => '<b>Raz</b>'],
         ]);
 
-        $this->assertSame('Hi <b>Dana</b>  ', $text);
+        $this->assertSame('Hi <b>Raz</b>  ', $text);
     }
 }

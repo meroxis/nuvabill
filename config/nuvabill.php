@@ -73,4 +73,6 @@ return [
 
     'themes_path' => base_path('themes'),
 
+    'orderforms_path' => base_path('orderforms'),
+
 ];

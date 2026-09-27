@@ -48,10 +48,15 @@
             <h2 style="font-size:1.05rem">{{ __('Order summary') }}</h2>
             @foreach ($lines as $line)
                 <div class="summary-row">
-                    <span>{{ $line->title() }}<br><span class="muted" style="font-size:.82rem">{{ $line->summary() }}</span></span>
+                    <span>{{ $line->title() }}<br><span class="muted" style="font-size:.82rem">{{ $line->summary() }}</span>@foreach ($line->addons as $addon)<br><span class="muted" style="font-size:.82rem">+ {{ $addon['name'] }}</span>@endforeach</span>
                     <span class="num">{{ money($line->dueToday(), $currency) }}</span>
                 </div>
             @endforeach
+            @if ($discount)
+                <div class="summary-row" style="color:var(--nb-good)"><span>{{ __('Coupon :code', ['code' => $coupon?->code]) }}</span><span class="num">-{{ money($discount, $currency) }}</span></div>
+            @elseif ($couponProblem)
+                <p class="error" style="margin:0">{{ $couponProblem }}</p>
+            @endif
             <div class="summary-row total"><span>{{ __('Total due today') }}</span><span class="num">{{ money($total, $currency) }}</span></div>
         </aside>
     </div>

@@ -24,10 +24,10 @@ class DirectAdminModuleTest extends TestCase
     private function directAdminService(Server $server, array $attributes = []): Service
     {
         return Service::factory()->create([
-            'client_id' => Client::factory()->create(['email' => 'dana@example.test'])->id,
+            'client_id' => Client::factory()->create(['email' => 'raz@example.test'])->id,
             'product_id' => Product::factory()->directadmin($server)->create()->id,
             'server_id' => $server->id,
-            'domain' => 'danasbakery.com',
+            'domain' => 'razstudio.com',
         ] + $attributes);
     }
 
@@ -44,7 +44,7 @@ class DirectAdminModuleTest extends TestCase
         $this->assertTrue($result->success);
         $this->assertSame(ServiceStatus::Active, $service->status);
         $this->assertSame($server->id, $service->server_id);
-        $this->assertMatchesRegularExpression('/^danasba[a-z0-9]{3}$/', $service->username);
+        $this->assertMatchesRegularExpression('/^razstud[a-z0-9]{3}$/', $service->username);
         $this->assertNotNull($service->password);
 
         Http::assertSent(fn (Request $request): bool => $request->method() === 'POST'
@@ -52,9 +52,9 @@ class DirectAdminModuleTest extends TestCase
             && $request['action'] === 'create'
             && $request['username'] === $service->username
             && $request['passwd'] === $service->password
-            && $request['domain'] === 'danasbakery.com'
+            && $request['domain'] === 'razstudio.com'
             && $request['package'] === 'starter'
-            && $request['email'] === 'dana@example.test'
+            && $request['email'] === 'raz@example.test'
             && $request['ip'] === '203.0.113.10'
             && $request->header('Authorization')[0] === 'Basic '.base64_encode('admin:TESTTOKEN123'));
     }
@@ -91,7 +91,7 @@ class DirectAdminModuleTest extends TestCase
     {
         Http::fake(['*' => Http::response('error=0&text=Success')]);
 
-        $service = $this->directAdminService(Server::factory()->directadmin()->create(), ['username' => 'danaacc']);
+        $service = $this->directAdminService(Server::factory()->directadmin()->create(), ['username' => 'razacc']);
         $provisioner = app(Provisioner::class);
 
         $this->assertTrue($provisioner->suspend($service, 'Overdue on payment')->success);
@@ -101,10 +101,10 @@ class DirectAdminModuleTest extends TestCase
         $this->assertTrue($provisioner->terminate($service->fresh())->success);
         $this->assertSame(ServiceStatus::Terminated, $service->fresh()->status);
 
-        Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/CMD_API_SELECT_USERS') && ($request->data()['suspend'] ?? null) === 'Suspend' && $request['select0'] === 'danaacc');
-        Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/CMD_API_SELECT_USERS') && ($request->data()['suspend'] ?? null) === 'Unsuspend' && $request['select0'] === 'danaacc');
-        Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/CMD_API_MODIFY_USER') && $request['action'] === 'package' && $request['user'] === 'danaacc' && $request['package'] === 'starter');
-        Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/CMD_API_SELECT_USERS') && ($request->data()['delete'] ?? null) === 'yes' && $request['confirmed'] === 'Confirm' && $request['select0'] === 'danaacc');
+        Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/CMD_API_SELECT_USERS') && ($request->data()['suspend'] ?? null) === 'Suspend' && $request['select0'] === 'razacc');
+        Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/CMD_API_SELECT_USERS') && ($request->data()['suspend'] ?? null) === 'Unsuspend' && $request['select0'] === 'razacc');
+        Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/CMD_API_MODIFY_USER') && $request['action'] === 'package' && $request['user'] === 'razacc' && $request['package'] === 'starter');
+        Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/CMD_API_SELECT_USERS') && ($request->data()['delete'] ?? null) === 'yes' && $request['confirmed'] === 'Confirm' && $request['select0'] === 'razacc');
     }
 
     public function test_the_connection_test_reports_a_rejected_login(): void
@@ -127,11 +127,11 @@ class DirectAdminModuleTest extends TestCase
     {
         Http::fake(['*/api/login/url' => Http::response(['url' => 'https://da.example.test:2222/api/login/url?key=abc'])]);
 
-        $service = $this->directAdminService(Server::factory()->directadmin()->create(), ['username' => 'danaacc']);
+        $service = $this->directAdminService(Server::factory()->directadmin()->create(), ['username' => 'razacc']);
 
         $this->assertSame('https://da.example.test:2222/api/login/url?key=abc', app(Provisioner::class)->loginUrl($service));
 
-        Http::assertSent(fn (Request $request): bool => $request->header('Authorization')[0] === 'Basic '.base64_encode('admin|danaacc:TESTTOKEN123'));
+        Http::assertSent(fn (Request $request): bool => $request->header('Authorization')[0] === 'Basic '.base64_encode('admin|razacc:TESTTOKEN123'));
     }
 
     public function test_directadmin_usernames_follow_directadmin_rules(): void

@@ -43,9 +43,9 @@ class CheckoutTest extends TestCase
         $this->get(route('checkout.show'))->assertOk()->assertSee('Create an account');
 
         $this->post(route('client.register'), [
-            'first_name' => 'Dana',
-            'last_name' => 'Baker',
-            'email' => 'dana@example.test',
+            'first_name' => 'Raz',
+            'last_name' => 'Las',
+            'email' => 'raz@example.test',
             'country' => 'IQ',
             'password' => 'secret-pass-1',
             'password_confirmation' => 'secret-pass-1',
@@ -53,7 +53,7 @@ class CheckoutTest extends TestCase
 
         $response = $this->post(route('checkout.store'));
 
-        $client = Client::query()->where('email', 'dana@example.test')->firstOrFail();
+        $client = Client::query()->where('email', 'raz@example.test')->firstOrFail();
         $order = Order::query()->where('client_id', $client->id)->firstOrFail();
         $invoice = $order->invoice;
         $service = $order->services()->firstOrFail();
@@ -72,7 +72,7 @@ class CheckoutTest extends TestCase
         $this->assertTrue($invoice->items->first()->period_start->isToday());
 
         $this->get(route('cart.show'))->assertSee('Your cart is empty');
-        Mail::assertSent(TemplatedMessage::class, fn (TemplatedMessage $mail) => $mail->hasTo('dana@example.test') && str_contains($mail->subjectLine, $order->number));
+        Mail::assertSent(TemplatedMessage::class, fn (TemplatedMessage $mail) => $mail->hasTo('raz@example.test') && str_contains($mail->subjectLine, $order->number));
         Mail::assertSent(TemplatedMessage::class, fn (TemplatedMessage $mail) => $mail->hasTo('billing@example.com'));
     }
 

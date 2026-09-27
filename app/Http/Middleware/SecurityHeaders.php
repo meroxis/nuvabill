@@ -2,7 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Extensions\ExtensionManager;
 use App\Security\Captcha;
+use App\Support\Installation;
 use Closure;
 use Illuminate\Foundation\Vite;
 use Illuminate\Http\Request;
@@ -55,15 +57,19 @@ class SecurityHeaders
     private function contentSecurityPolicy(Request $request): string
     {
         $captcha = implode(' ', app(Captcha::class)->details((string) setting('security.captcha_provider'))['hosts'] ?? []);
+        $addons = Installation::isInstalled() ? app(ExtensionManager::class)->contentSecurityPolicy() : [];
+        $extra = fn (string $directive): string => implode(' ', $addons[$directive] ?? []);
+        $frames = trim($captcha.' '.$extra('frame-src'));
 
         return implode('; ', array_filter([
             "default-src 'self'",
-            trim("script-src 'self' 'unsafe-inline' 'unsafe-eval' {$captcha}"),
-            "style-src 'self' 'unsafe-inline'",
+            trim("script-src 'self' 'unsafe-inline' 'unsafe-eval' {$captcha} ".$extra('script-src')),
+            trim("style-src 'self' 'unsafe-inline' ".$extra('style-src')),
             "img-src 'self' data: https:",
-            "font-src 'self' data:",
-            trim("connect-src 'self' {$captcha}"),
-            $captcha !== '' ? "frame-src 'self' {$captcha}" : null,
+            trim("font-src 'self' data: ".$extra('font-src')),
+            trim("connect-src 'self' {$captcha} ".$extra('connect-src')),
+            $frames !== '' ? "frame-src 'self' {$frames}" : null,
+            $extra('media-src') !== '' ? "media-src 'self' ".$extra('media-src') : null,
             "object-src 'none'",
             "base-uri 'self'",
             "form-action 'self' https:",

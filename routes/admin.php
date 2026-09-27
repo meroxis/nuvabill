@@ -5,6 +5,8 @@ use App\Http\Controllers\Admin\Auth\LoginController;
 use App\Http\Controllers\Admin\Auth\PasswordResetController;
 use App\Http\Controllers\Admin\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\Admin\ClientController;
+use App\Http\Controllers\Admin\CouponController;
+use App\Http\Controllers\Admin\CurrencyController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\DomainController;
@@ -13,6 +15,7 @@ use App\Http\Controllers\Admin\GatewayController;
 use App\Http\Controllers\Admin\ImportController;
 use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\ProductAddonController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ProductGroupController;
 use App\Http\Controllers\Admin\ProfileController;
@@ -114,6 +117,10 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::post('invoices/{invoice}/email', [InvoiceController::class, 'email'])->name('invoices.email');
     });
 
+    Route::middleware('admin.can:coupons.manage')->group(function (): void {
+        Route::resource('coupons', CouponController::class)->except('show');
+    });
+
     Route::middleware('admin.can:support.manage')->group(function (): void {
         Route::get('tickets', [TicketController::class, 'index'])->name('tickets.index');
         Route::get('tickets/{ticket}', [TicketController::class, 'show'])->name('tickets.show');
@@ -123,6 +130,7 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
 
     Route::middleware('admin.can:products.manage')->group(function (): void {
         Route::resource('products', ProductController::class)->except('show');
+        Route::resource('product-addons', ProductAddonController::class)->except('show')->parameters(['product-addons' => 'productAddon']);
         Route::resource('product-groups', ProductGroupController::class)->except(['index', 'show'])->parameters(['product-groups' => 'productGroup']);
         Route::resource('servers', ServerController::class)->except('show');
         Route::post('servers/{server}/test', [ServerController::class, 'test'])->name('servers.test');
@@ -133,6 +141,9 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::put('/', [SettingsController::class, 'update'])->name('update');
         Route::put('mail', [SettingsController::class, 'updateMail'])->name('mail');
         Route::post('mail/test', [SettingsController::class, 'testMail'])->name('mail.test');
+
+        Route::get('currencies', [CurrencyController::class, 'edit'])->name('currencies.edit');
+        Route::put('currencies', [CurrencyController::class, 'update'])->name('currencies.update');
 
         Route::get('gateways', [GatewayController::class, 'index'])->name('gateways.index');
         Route::get('gateways/{gateway}', [GatewayController::class, 'edit'])->name('gateways.edit');

@@ -21,6 +21,12 @@
                             <td>
                                 <b>{{ $line->title() }}</b>
                                 <div class="muted" style="font-size:.85rem">{{ $line->summary() }}@if ($line->setupFee) · {{ __('includes :fee setup', ['fee' => money($line->setupFee, $currency)]) }}@endif</div>
+                                @foreach ($line->addons as $addon)
+                                    <div class="muted" style="font-size:.85rem">+ {{ $addon['name'] }} · {{ money($addon['price'] + $addon['setup_fee'], $currency) }}</div>
+                                @endforeach
+                                @if ($line->discount)
+                                    <div style="font-size:.85rem;color:var(--nb-good)">{{ __('Coupon: -:amount', ['amount' => money($line->discount, $currency)]) }}</div>
+                                @endif
                             </td>
                             <td class="end num">{{ money($line->dueToday(), $currency) }}</td>
                             <td class="end">
@@ -37,6 +43,10 @@
             </section>
 
             <aside class="card summary">
+                @include('theme::partials.coupon-form')
+                @if ($discount)
+                    <div class="summary-row" style="color:var(--nb-good)"><span>{{ __('You save') }}</span><span class="num">-{{ money($discount, $currency) }}</span></div>
+                @endif
                 <div class="summary-row total"><span>{{ __('Total due today') }}</span><span class="num">{{ money($total, $currency) }}</span></div>
                 <a class="btn btn-primary btn-block" href="{{ route('checkout.show') }}">{{ __('Continue to checkout') }}</a>
                 <a class="btn btn-block btn-ghost" href="{{ route('store.index') }}">{{ __('Keep shopping') }}</a>

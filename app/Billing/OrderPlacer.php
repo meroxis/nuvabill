@@ -7,13 +7,16 @@ use App\Enums\AutoSetup;
 use App\Enums\DomainStatus;
 use App\Enums\OrderStatus;
 use App\Enums\ServiceStatus;
+use App\Events\OrderPlaced;
 use App\Jobs\ProvisionService;
 use App\Mail\TemplateMailer;
 use App\Models\Client;
+use App\Models\Coupon;
 use App\Models\Domain;
 use App\Models\InvoiceItem;
 use App\Models\Order;
 use App\Models\Service;
+use App\Models\ServiceAddon;
 use App\Support\Activity;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
@@ -33,18 +36,22 @@ class OrderPlacer
     ) {}
 
     /**
-     * @param  Collection<int, CartLine>  $lines
+     * @param  Collection<int, CartLine>  $lines  Lines from the cart. With a coupon, they already carry their discounts.
      * @param  string|null  $ipCountry  The visitor's country from a trusted proxy, for the fraud check.
      */
-    public function place(Client $client, Collection $lines, ?string $ipAddress = null, ?string $ipCountry = null): Order
+    public function place(Client $client, Collection $lines, ?string $ipAddress = null, ?string $ipCountry = null, ?Coupon $coupon = null): Order
     {
         if ($lines->isEmpty()) {
             throw new InvalidArgumentException('Cannot place an empty order.');
         }
 
+        if ($coupon === null && $lines->contains(fn (CartLine $line): bool => $line->discount > 0)) {
+            throw new InvalidArgumentException('Discounted cart lines need their coupon.');
+        }
+
         $fraudReasons = $this->fraud->reasons($client, $ipAddress, $ipCountry);
 
-        $order = DB::transaction(function () use ($client, $lines, $ipAddress, $fraudReasons): Order {
+        $order = DB::transaction(function () use ($client, $lines, $ipAddress, $fraudReasons, $coupon): Order {
             $today = CarbonImmutable::today();
 
             $order = Order::create([
@@ -62,10 +69,12 @@ class OrderPlacer
 
             foreach ($lines as $line) {
                 if ($line->isDomain()) {
-                    $items[] = $this->domainItem($client, $order, $line, $nameservers, $today);
+                    $items = [...$items, ...$this->domainItems($client, $order, $line, $nameservers, $today, $coupon)];
 
                     continue;
                 }
+
+                $keepsDiscount = $coupon !== null && $line->discount > 0 && $coupon->isRecurring();
 
                 $service = Service::create([
                     'client_id' => $client->id,
@@ -80,6 +89,8 @@ class OrderPlacer
                     'recurring_amount' => $line->cycle->isRecurring() ? $line->price : 0,
                     'registration_date' => $today,
                     'next_due_date' => $today,
+                    'coupon_id' => $keepsDiscount ? $coupon->id : null,
+                    'coupon_payments_left' => $keepsDiscount && $coupon->recurring === Coupon::RECURRING_COUNT ? $coupon->recurring_count - 1 : null,
                 ]);
 
                 $service->setRelation('product', $line->product);
@@ -88,10 +99,35 @@ class OrderPlacer
                 if ($line->setupFee > 0) {
                     $items[] = LineItems::setupFee($service, $line->setupFee);
                 }
+
+                foreach ($line->addons as $addon) {
+                    $service->addons()->create([
+                        'product_addon_id' => $addon['id'],
+                        'name' => $addon['name'],
+                        'recurring_amount' => $line->cycle->isRecurring() ? $addon['price'] : 0,
+                        'status' => ServiceAddon::STATUS_ACTIVE,
+                    ]);
+
+                    $items[] = LineItems::addonPeriod($service, $addon['name'], $today, $addon['price']);
+
+                    if ($addon['setup_fee'] > 0) {
+                        $items[] = ['type' => InvoiceItem::TYPE_ADDON, 'description' => __('Setup fee').' - '.$addon['name'], 'amount' => $addon['setup_fee'], 'service_id' => $service->id];
+                    }
+                }
+
+                if ($coupon !== null && $line->discount > 0) {
+                    $items[] = LineItems::discount($coupon, $line->discount, $service);
+                }
             }
 
             $invoice = $this->invoices->create($client, $items, dueAt: $today);
-            $order->update(['invoice_id' => $invoice->id, 'total' => $invoice->total]);
+            $discount = (int) $lines->sum(fn (CartLine $line): int => $line->discount);
+            $order->update(['invoice_id' => $invoice->id, 'total' => $invoice->total, 'coupon_id' => $discount > 0 ? $coupon?->id : null, 'discount' => $discount]);
+
+            if ($coupon !== null && $discount > 0) {
+                $coupon->redemptions()->create(['client_id' => $client->id, 'order_id' => $order->id, 'invoice_id' => $invoice->id, 'amount' => $discount, 'currency' => $client->currency]);
+                $coupon->increment('uses');
+            }
 
             return $order;
         });
@@ -124,14 +160,18 @@ class OrderPlacer
             'admin_url' => route('admin.orders.show', $order),
         ]);
 
-        return $order->refresh();
+        $order->refresh();
+
+        OrderPlaced::dispatch($order);
+
+        return $order;
     }
 
     /**
      * @param  list<string>  $nameservers
-     * @return array<string, mixed>
+     * @return list<array<string, mixed>>
      */
-    private function domainItem(Client $client, Order $order, CartLine $line, array $nameservers, CarbonImmutable $today): array
+    private function domainItems(Client $client, Order $order, CartLine $line, array $nameservers, CarbonImmutable $today, ?Coupon $coupon): array
     {
         $domain = Domain::create([
             'client_id' => $client->id,
@@ -143,7 +183,7 @@ class OrderPlacer
             'status' => DomainStatus::Pending,
             'years' => $line->years,
             'currency' => $client->currency,
-            'first_payment_amount' => $line->price,
+            'first_payment_amount' => $line->dueToday(),
             'recurring_amount' => $line->tldPrice->priceFor('renew', $line->years),
             'nameservers' => $nameservers,
             'epp_code' => $line->eppCode,
@@ -151,7 +191,10 @@ class OrderPlacer
 
         $type = $line->domainAction === Domain::TYPE_TRANSFER ? InvoiceItem::TYPE_DOMAIN_TRANSFER : InvoiceItem::TYPE_DOMAIN_REGISTER;
 
-        return LineItems::domainPeriod($domain, $type, $line->years, $line->price, $today);
+        return array_values(array_filter([
+            LineItems::domainPeriod($domain, $type, $line->years, $line->price, $today),
+            $coupon !== null && $line->discount > 0 ? LineItems::discount($coupon, $line->discount, domain: $domain) : null,
+        ]));
     }
 
     /**

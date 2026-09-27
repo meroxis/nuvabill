@@ -37,7 +37,7 @@ class ServiceController extends Controller
 
     public function show(Service $service): View
     {
-        $service->load('client', 'product', 'server', 'order', 'invoiceItems.invoice');
+        $service->load('client', 'product', 'server', 'order', 'invoiceItems.invoice', 'addons', 'coupon');
 
         return view('admin.services.show', [
             'service' => $service,

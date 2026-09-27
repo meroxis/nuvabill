@@ -38,6 +38,8 @@ class Service extends Model
         'terminated_at',
         'cancelled_at',
         'module_data',
+        'coupon_id',
+        'coupon_payments_left',
     ];
 
     protected $hidden = ['password'];
@@ -56,6 +58,7 @@ class Service extends Model
             'suspended_at' => 'datetime',
             'terminated_at' => 'datetime',
             'cancelled_at' => 'datetime',
+            'coupon_payments_left' => 'integer',
         ];
     }
 
@@ -97,6 +100,24 @@ class Service extends Model
     public function invoiceItems(): HasMany
     {
         return $this->hasMany(InvoiceItem::class);
+    }
+
+    /**
+     * The coupon that still takes money off this service's renewals, if any.
+     *
+     * @return BelongsTo<Coupon, $this>
+     */
+    public function coupon(): BelongsTo
+    {
+        return $this->belongsTo(Coupon::class);
+    }
+
+    /**
+     * @return HasMany<ServiceAddon, $this>
+     */
+    public function addons(): HasMany
+    {
+        return $this->hasMany(ServiceAddon::class);
     }
 
     public function label(): string

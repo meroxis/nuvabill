@@ -26,11 +26,11 @@ class PaymentAndProvisioningTest extends TestCase
 
     private function placeCpanelOrder(Server $server): Invoice
     {
-        $client = Client::factory()->create(['email' => 'dana@example.test']);
+        $client = Client::factory()->create(['email' => 'raz@example.test']);
         $product = Product::factory()->cpanel($server)->priced(899)->create();
 
         $cart = app(Cart::class);
-        $cart->add($product, BillingCycle::Monthly, 'danasbakery.com');
+        $cart->add($product, BillingCycle::Monthly, 'razstudio.com');
 
         return app(OrderPlacer::class)->place($client, $cart->lines('USD'))->invoice;
     }
@@ -64,7 +64,7 @@ class PaymentAndProvisioningTest extends TestCase
 
         Http::assertSent(function (Request $request) use ($service): bool {
             return str_starts_with($request->url(), 'https://whm.example.test:2087/json-api/createacct')
-                && $request['domain'] === 'danasbakery.com'
+                && $request['domain'] === 'razstudio.com'
                 && $request['plan'] === 'starter'
                 && $request['username'] === $service->username
                 && $request->header('Authorization')[0] === 'whm root:TESTTOKEN123';
@@ -130,7 +130,7 @@ class PaymentAndProvisioningTest extends TestCase
         $service = Service::factory()->create([
             'product_id' => Product::factory()->cpanel($server)->create()->id,
             'server_id' => $server->id,
-            'username' => 'danaacc',
+            'username' => 'razacc',
         ]);
 
         $this->signInAdmin();
@@ -142,7 +142,7 @@ class PaymentAndProvisioningTest extends TestCase
         $this->post(route('admin.services.module', [$service, 'unsuspend']))->assertSessionHas('status');
         $this->assertSame(ServiceStatus::Active, $service->fresh()->status);
 
-        Http::assertSent(fn (Request $request) => str_contains($request->url(), '/json-api/suspendacct') && $request['user'] === 'danaacc' && $request['reason'] === 'Abuse report');
+        Http::assertSent(fn (Request $request) => str_contains($request->url(), '/json-api/suspendacct') && $request['user'] === 'razacc' && $request['reason'] === 'Abuse report');
         Http::assertSent(fn (Request $request) => str_contains($request->url(), '/json-api/unsuspendacct'));
     }
 

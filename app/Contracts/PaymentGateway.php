@@ -34,6 +34,12 @@ interface PaymentGateway
     public function supportsCurrency(string $currency): bool;
 
     /**
+     * The currency this gateway charges for an invoice in $currency: the same one when it is
+     * supported, otherwise one it supports that has an exchange rate, or null when it cannot be used.
+     */
+    public function chargeCurrencyFor(string $currency): ?string;
+
+    /**
      * Begin paying the invoice's balance. Either redirect the client or show instructions.
      */
     public function startPayment(Invoice $invoice, string $returnUrl, string $cancelUrl): PaymentStart;

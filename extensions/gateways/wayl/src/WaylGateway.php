@@ -57,7 +57,8 @@ class WaylGateway extends Gateway
 
     public function startPayment(Invoice $invoice, string $returnUrl, string $cancelUrl): PaymentStart
     {
-        $amount = $this->wholeUnits($invoice->balance());
+        $quote = $this->quote($invoice);
+        $amount = $this->wholeUnits($quote['amount']);
         $reference = 'NB-'.$invoice->id.'-'.Str::lower(Str::random(10));
 
         $response = $this->api()->post(self::API.'/api/v1/links', [
@@ -87,9 +88,9 @@ class WaylGateway extends Gateway
             'gateway' => $this->slug(),
             'reference' => $reference,
             'amount' => $invoice->balance(),
-            'currency' => 'IQD',
+            'currency' => $invoice->currency,
             'status' => PaymentIntent::STATUS_PENDING,
-            'meta' => ['link_id' => $response->json('data.id'), 'code' => $response->json('data.code')],
+            'meta' => ['link_id' => $response->json('data.id'), 'code' => $response->json('data.code')] + $this->chargeDetails($quote, $amount * 100),
         ]);
 
         return PaymentStart::redirect($url);
@@ -134,15 +135,19 @@ class WaylGateway extends Gateway
             return null;
         }
 
-        $intent->update(['status' => PaymentIntent::STATUS_PAID]);
-
-        return new PaymentResult(
-            invoiceId: $intent->invoice_id,
-            amount: Money::toMinor((string) $response->json('data.total')),
-            currency: 'IQD',
-            reference: (string) ($response->json('data.id') ?: $intent->reference),
-            meta: ['payment_method' => $response->json('data.paymentMethod')],
+        $result = $this->resultFor(
+            $intent,
+            Money::toMinor((string) $response->json('data.total')),
+            'IQD',
+            (string) ($response->json('data.id') ?: $intent->reference),
+            ['payment_method' => $response->json('data.paymentMethod')],
         );
+
+        if ($result !== null) {
+            $intent->update(['status' => PaymentIntent::STATUS_PAID]);
+        }
+
+        return $result;
     }
 
     /**

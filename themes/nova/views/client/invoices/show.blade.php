@@ -71,10 +71,14 @@
                         @csrf
                         <div class="gateway-list" role="radiogroup" aria-label="{{ __('Payment method') }}">
                             @foreach ($gateways as $slug => $gateway)
+                                @php $quote = $gateway instanceof \App\Extensions\Gateways\Gateway ? $gateway->quote($invoice) : null; @endphp
                                 <label class="gateway-option">
                                     <input type="radio" name="gateway" value="{{ $slug }}" @checked(($invoice->payment_method ?? $gateways->keys()->first()) === $slug) required>
                                     <x-icon :name="$slug === 'banktransfer' ? 'globe' : 'card'" style="width:18px;height:18px" />
                                     {{ $gateway->name() }}
+                                    @if ($quote && $quote['currency'] !== $invoice->currency)
+                                        <span class="muted" style="font-size:.8rem;margin-inline-start:auto">{{ __('You pay :amount', ['amount' => money((int) ceil($quote['amount'] / 100) * 100, $quote['currency'])]) }}</span>
+                                    @endif
                                 </label>
                             @endforeach
                         </div>

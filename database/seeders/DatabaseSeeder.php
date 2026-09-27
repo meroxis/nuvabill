@@ -37,6 +37,21 @@ use Illuminate\Support\Collection;
  */
 class DatabaseSeeder extends Seeder
 {
+    /**
+     * Demo client businesses. People in demo data are only ever called Raz or Mer Las.
+     *
+     * @var list<string>
+     */
+    private const COMPANIES = [
+        'Bright Pixel Studio', 'Cedar Web Shop', 'Blue River Media', 'Silver Oak Cafe', 'Green Leaf Market',
+        'Mountain View Tours', 'Sunrise Bakery', 'Clear Sky Travel', 'Stone Bridge Legal', 'Golden Field Farms',
+        'Swift Parcel', 'Harbor Light Design', 'Red Brick Books', 'Open Road Motors', 'Maple Street Dental',
+        'North Star Fitness', 'Quiet Lake Hotel', 'Urban Nest Homes', 'Paper Plane Agency', 'Iron Gate Security',
+        'Fresh Basket Grocery', 'Bold Ink Printing', 'Little Sprout School', 'Rapid Repair', 'Blue Tile Kitchen',
+        'Starlight Events', 'Summit Outdoor', 'Lantern Photo', 'Wild Honey Crafts', 'Nimbus Apps',
+        'Coral Bay Diving', 'Pine Hill Clinic', 'Echo Music School', 'Velvet Rose Salon', 'Copper Pot Restaurant',
+    ];
+
     public function run(): void
     {
         $this->call(DefaultDataSeeder::class);
@@ -63,14 +78,19 @@ class DatabaseSeeder extends Seeder
         $today = CarbonImmutable::today();
 
         $demo = Client::factory()->create([
-            'first_name' => 'Dana',
-            'last_name' => 'Baker',
+            'first_name' => 'Raz',
+            'last_name' => '',
             'email' => Demo::CLIENT_EMAIL,
             'password' => Demo::PASSWORD,
-            'company_name' => 'Dana\'s Bakery',
+            'company_name' => 'Raz Studio',
         ]);
 
-        $clients = collect([$demo])->merge(Client::factory()->count(35)->create())->values();
+        $clients = collect([$demo])->merge(collect(self::COMPANIES)->map(fn (string $company, int $index): Client => Client::factory()->create([
+            'first_name' => $index % 2 === 0 ? 'Mer' : 'Raz',
+            'last_name' => $index % 2 === 0 ? 'Las' : '',
+            'company_name' => $company,
+            'email' => self::slug($company).'@example.com',
+        ])))->values();
 
         foreach ($clients as $index => $client) {
             $started = $today->subMonths(11 - (int) floor($index / 3.3))->subDays($index % 9);
@@ -79,7 +99,7 @@ class DatabaseSeeder extends Seeder
             $plans = $index === 0 ? [0, 3] : [$index % $products->count(), ...($index % 4 === 0 ? [($index + 2) % $products->count()] : [])];
 
             foreach ($plans as $planIndex => $productIndex) {
-                $this->serviceWithHistory($client, $products[$productIndex], $started->addMonths($planIndex * 2), $index === 0 && $planIndex === 0 ? 'danasbakery.com' : null);
+                $this->serviceWithHistory($client, $products[$productIndex], $started->addMonths($planIndex * 2), $index === 0 && $planIndex === 0 ? 'razstudio.com' : null);
             }
         }
 
@@ -242,7 +262,7 @@ class DatabaseSeeder extends Seeder
 
         Domain::factory()->create([
             'client_id' => $clients[0]->id,
-            'name' => 'danasbakery.com',
+            'name' => 'razstudio.com',
             'tld' => 'com',
             'registered_at' => $today->subMonths(10),
             'expires_at' => $today->addMonths(2),
@@ -253,7 +273,7 @@ class DatabaseSeeder extends Seeder
 
         Domain::factory()->create([
             'client_id' => $clients[0]->id,
-            'name' => 'danasbakery.net',
+            'name' => 'razstudio.net',
             'tld' => 'net',
             'registered_at' => $today->subYears(2)->addDays(20),
             'expires_at' => $today->addDays(20),
@@ -268,7 +288,7 @@ class DatabaseSeeder extends Seeder
 
             Domain::factory()->create([
                 'client_id' => $client->id,
-                'name' => fake()->unique()->domainWord().'.'.$tld,
+                'name' => self::slug((string) $client->company_name).'.'.$tld,
                 'tld' => $tld,
                 'registered_at' => $expires->subYear(),
                 'expires_at' => $expires,
@@ -285,11 +305,14 @@ class DatabaseSeeder extends Seeder
         $price = $product->priceFor('USD', BillingCycle::Monthly)->price;
         $months = max(0, (int) $started->diffInMonths($today));
 
+        $slug = self::slug((string) $client->company_name);
+        $siteDomain = $client->services()->exists() ? $slug.'-shop.com' : $slug.'.com';
+
         $service = Service::factory()->create([
             'client_id' => $client->id,
             'product_id' => $product->id,
-            'domain' => $domain ?? ($product->requires_domain ? fake()->unique()->domainWord().'.com' : 'vps'.fake()->unique()->numberBetween(100, 999).'.yourhost.net'),
-            'username' => substr((string) preg_replace('/[^a-z]/', '', strtolower($client->last_name)), 0, 6).fake()->numberBetween(10, 99),
+            'domain' => $domain ?? ($product->requires_domain ? $siteDomain : 'vps'.fake()->unique()->numberBetween(100, 999).'.yourhost.net'),
+            'username' => substr($slug, 0, 6).fake()->numberBetween(10, 99),
             'recurring_amount' => $price,
             'first_payment_amount' => $price,
             'registration_date' => $started,
@@ -331,6 +354,14 @@ class DatabaseSeeder extends Seeder
                 'paid_at' => $paidAt,
             ]);
         }
+    }
+
+    /**
+     * "Bright Pixel Studio" => "brightpixelstudio", for demo emails, domains and usernames.
+     */
+    private static function slug(string $company): string
+    {
+        return (string) preg_replace('/[^a-z0-9]/', '', strtolower($company));
     }
 
     /**

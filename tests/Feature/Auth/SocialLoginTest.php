@@ -31,13 +31,13 @@ class SocialLoginTest extends TestCase
     public function test_a_new_client_signs_up_with_google(): void
     {
         $this->enable('google');
-        $this->fakeGoogle(['sub' => 'g-123', 'email' => 'Dana@Example.com', 'email_verified' => true, 'given_name' => 'Dana', 'family_name' => 'Ali']);
+        $this->fakeGoogle(['sub' => 'g-123', 'email' => 'Raz@Example.com', 'email_verified' => true, 'given_name' => 'Raz', 'family_name' => 'Las']);
 
         $this->completeSignIn('google')->assertRedirect(route('client.account.edit'));
 
-        $client = Client::query()->where('email', 'dana@example.com')->firstOrFail();
+        $client = Client::query()->where('email', 'raz@example.com')->firstOrFail();
         $this->assertAuthenticatedAs($client, 'web');
-        $this->assertSame('Dana', $client->first_name);
+        $this->assertSame('Raz', $client->first_name);
         $this->assertFalse($client->has_password);
         $this->assertNotNull($client->email_verified_at);
         $this->assertTrue($client->socialAccounts()->where('provider', 'google')->where('provider_user_id', 'g-123')->exists());
@@ -51,9 +51,9 @@ class SocialLoginTest extends TestCase
 
     public function test_a_verified_email_signs_in_to_the_existing_account(): void
     {
-        $client = Client::factory()->create(['email' => 'sam@example.com']);
+        $client = Client::factory()->create(['email' => 'raz@example.com']);
         $this->enable('google');
-        $this->fakeGoogle(['sub' => 'g-9', 'email' => 'sam@example.com', 'email_verified' => true]);
+        $this->fakeGoogle(['sub' => 'g-9', 'email' => 'raz@example.com', 'email_verified' => true]);
 
         $this->completeSignIn('google')->assertRedirect(route('client.dashboard'));
 
@@ -63,11 +63,11 @@ class SocialLoginTest extends TestCase
 
     public function test_facebook_never_takes_over_an_existing_account_by_email(): void
     {
-        Client::factory()->create(['email' => 'sam@example.com']);
+        Client::factory()->create(['email' => 'raz@example.com']);
         $this->enable('facebook');
         Http::fake([
             'graph.facebook.com/*/oauth/access_token*' => Http::response(['access_token' => 'fb-token']),
-            'graph.facebook.com/*/me*' => Http::response(['id' => 'fb-1', 'email' => 'sam@example.com', 'first_name' => 'Sam']),
+            'graph.facebook.com/*/me*' => Http::response(['id' => 'fb-1', 'email' => 'raz@example.com', 'first_name' => 'Raz']),
         ]);
 
         $this->completeSignIn('facebook')

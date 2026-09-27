@@ -50,12 +50,12 @@ class WhmcsImportTest extends TestCase
 
         $this->runImport();
 
-        $dana = Client::query()->where('email', 'dana@example.com')->firstOrFail();
-        $this->assertSame('Tom & Co', $dana->company_name);
-        $this->assertSame('IQ', $dana->country);
-        $this->assertSame('IQD', $dana->currency);
-        $this->assertSame(1250, $dana->credit);
-        $this->assertTrue(Hash::check('dana-password-1', $dana->password), 'WHMCS 8 owner password works');
+        $raz = Client::query()->where('email', 'raz@example.com')->firstOrFail();
+        $this->assertSame('Raz & Co', $raz->company_name);
+        $this->assertSame('IQ', $raz->country);
+        $this->assertSame('IQD', $raz->currency);
+        $this->assertSame(1250, $raz->credit);
+        $this->assertTrue(Hash::check('raz-password-1', $raz->password), 'WHMCS 8 owner password works');
 
         $sam = Client::query()->where('email', 'sam@example.com')->firstOrFail();
         $this->assertTrue(Hash::check('sam-password-1', $sam->password), 'WHMCS 7 password works');
@@ -70,14 +70,14 @@ class WhmcsImportTest extends TestCase
         $this->assertSame(1, Server::query()->count(), 'Unknown server types are skipped');
         $this->assertFalse(Server::query()->first()->is_active);
 
-        $service = Service::query()->where('domain', 'danasbakery.com')->firstOrFail();
+        $service = Service::query()->where('domain', 'razstudio.com')->firstOrFail();
         $this->assertSame(ServiceStatus::Active, $service->status);
         $this->assertSame(BillingCycle::Monthly, $service->billing_cycle);
         $this->assertSame('2026-10-01', $service->next_due_date->toDateString());
 
         $this->assertSame(1299, TldPrice::forTld('com', 'USD')->register_price);
         $this->assertSame(1499, TldPrice::forTld('com', 'USD')->renew_price);
-        $domain = Domain::query()->where('name', 'danasbakery.com')->firstOrFail();
+        $domain = Domain::query()->where('name', 'razstudio.com')->firstOrFail();
         $this->assertSame(DomainStatus::Active, $domain->status);
         $this->assertSame('resellerclub', $domain->registrar);
 
@@ -162,10 +162,10 @@ class WhmcsImportTest extends TestCase
         ]);
         $db->table('tbladmins')->insert(['id' => 1, 'firstname' => 'Lana', 'lastname' => 'Staff', 'email' => 'lana@example.com']);
         $db->table('tblclients')->insert([
-            ['id' => 1, 'firstname' => 'Dana', 'lastname' => 'Ali', 'companyname' => 'Tom &amp; Co', 'email' => 'dana@example.com', 'country' => 'IQ', 'currency' => 2, 'credit' => '12.50', 'status' => 'Active', 'password' => '', 'datecreated' => '2024-01-02'],
+            ['id' => 1, 'firstname' => 'Raz', 'lastname' => 'Las', 'companyname' => 'Raz &amp; Co', 'email' => 'raz@example.com', 'country' => 'IQ', 'currency' => 2, 'credit' => '12.50', 'status' => 'Active', 'password' => '', 'datecreated' => '2024-01-02'],
             ['id' => 2, 'firstname' => 'Sam', 'lastname' => 'Lee', 'companyname' => '', 'email' => 'sam@example.com', 'country' => 'US', 'currency' => 1, 'credit' => '0.00', 'status' => 'Inactive', 'password' => password_hash('sam-password-1', PASSWORD_BCRYPT, ['cost' => 4]), 'datecreated' => '2024-02-03'],
         ]);
-        $db->table('tblusers')->insert(['id' => 5, 'email' => 'dana@example.com', 'password' => str_replace('$2y$', '$2a$', password_hash('dana-password-1', PASSWORD_BCRYPT, ['cost' => 4]))]);
+        $db->table('tblusers')->insert(['id' => 5, 'email' => 'raz@example.com', 'password' => str_replace('$2y$', '$2a$', password_hash('raz-password-1', PASSWORD_BCRYPT, ['cost' => 4]))]);
         $db->table('tblusers_clients')->insert(['auth_user_id' => 5, 'client_id' => 1, 'owner' => 1]);
 
         $db->table('tblproductgroups')->insert(['id' => 1, 'name' => 'Hosting', 'headline' => 'Fast hosting', 'hidden' => 0, 'order' => 1]);
@@ -179,10 +179,10 @@ class WhmcsImportTest extends TestCase
             ['id' => 1, 'name' => 'Web 1', 'ipaddress' => '203.0.113.4', 'hostname' => 'web1.example.com', 'type' => 'cpanel', 'username' => 'root', 'secure' => 'on', 'port' => null, 'maxaccounts' => 200, 'nameserver1' => 'ns1.example.com', 'nameserver2' => 'ns2.example.com'],
             ['id' => 2, 'name' => 'Old', 'ipaddress' => '', 'hostname' => 'old.example.com', 'type' => 'somethingelse', 'username' => '', 'secure' => '', 'port' => null, 'maxaccounts' => 0, 'nameserver1' => '', 'nameserver2' => ''],
         ]);
-        $db->table('tblhosting')->insert(['id' => 10, 'userid' => 1, 'packageid' => 3, 'server' => 1, 'regdate' => '2025-10-01', 'domain' => 'danasbakery.com', 'firstpaymentamount' => '5.00', 'amount' => '5.00', 'billingcycle' => 'Monthly', 'nextduedate' => '2026-10-01', 'domainstatus' => 'Active', 'username' => 'danabak', 'suspendreason' => '']);
+        $db->table('tblhosting')->insert(['id' => 10, 'userid' => 1, 'packageid' => 3, 'server' => 1, 'regdate' => '2025-10-01', 'domain' => 'razstudio.com', 'firstpaymentamount' => '5.00', 'amount' => '5.00', 'billingcycle' => 'Monthly', 'nextduedate' => '2026-10-01', 'domainstatus' => 'Active', 'username' => 'razstud', 'suspendreason' => '']);
 
         $db->table('tbldomainpricing')->insert(['id' => 1, 'extension' => '.com', 'autoreg' => 'resellerclub', 'eppcode' => 1, 'order' => 1]);
-        $db->table('tbldomains')->insert(['id' => 20, 'userid' => 1, 'type' => 'Register', 'registrationdate' => '2025-10-01', 'domain' => 'danasbakery.com', 'firstpaymentamount' => '12.99', 'recurringamount' => '14.99', 'registrar' => 'resellerclub', 'registrationperiod' => 1, 'expirydate' => '2026-10-01', 'status' => 'Active', 'nextduedate' => '2026-10-01', 'donotrenew' => 0]);
+        $db->table('tbldomains')->insert(['id' => 20, 'userid' => 1, 'type' => 'Register', 'registrationdate' => '2025-10-01', 'domain' => 'razstudio.com', 'firstpaymentamount' => '12.99', 'recurringamount' => '14.99', 'registrar' => 'resellerclub', 'registrationperiod' => 1, 'expirydate' => '2026-10-01', 'status' => 'Active', 'nextduedate' => '2026-10-01', 'donotrenew' => 0]);
 
         $db->table('tblinvoices')->insert([
             ['id' => 1000, 'userid' => 1, 'invoicenum' => '', 'date' => '2025-10-01', 'duedate' => '2025-10-01', 'datepaid' => '2025-10-01 12:00:00', 'subtotal' => '17.99', 'credit' => '0.00', 'tax' => '0.00', 'tax2' => '0.00', 'total' => '17.99', 'status' => 'Paid', 'paymentmethod' => 'fib', 'notes' => ''],
@@ -190,7 +190,7 @@ class WhmcsImportTest extends TestCase
         ]);
         $db->table('tblinvoiceitems')->insert([
             ['id' => 1, 'invoiceid' => 1000, 'userid' => 1, 'type' => 'Hosting', 'relid' => 10, 'description' => 'Starter Hosting', 'amount' => '5.00', 'duedate' => '2025-10-01'],
-            ['id' => 2, 'invoiceid' => 1000, 'userid' => 1, 'type' => 'DomainRegister', 'relid' => 20, 'description' => 'Register danasbakery.com', 'amount' => '12.99', 'duedate' => '2025-10-01'],
+            ['id' => 2, 'invoiceid' => 1000, 'userid' => 1, 'type' => 'DomainRegister', 'relid' => 20, 'description' => 'Register razstudio.com', 'amount' => '12.99', 'duedate' => '2025-10-01'],
             ['id' => 3, 'invoiceid' => 1001, 'userid' => 1, 'type' => 'Hosting', 'relid' => 10, 'description' => 'Starter Hosting (01/10/2026 - 31/10/2026)', 'amount' => '5.00', 'duedate' => '2026-10-01'],
         ]);
         $db->table('tblaccounts')->insert([

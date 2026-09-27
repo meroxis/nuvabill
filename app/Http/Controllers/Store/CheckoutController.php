@@ -25,10 +25,15 @@ class CheckoutController extends Controller
 
         $currency = $client?->currency ?? (string) setting('billing.currency');
 
+        $lines = $cart->lines($currency, $client);
+
         return view('theme::checkout', [
             'client' => $client,
-            'lines' => $cart->lines($currency),
-            'total' => $cart->total($currency),
+            'lines' => $lines,
+            'total' => $lines->sum(fn ($line): int => $line->dueToday()),
+            'discount' => $lines->sum(fn ($line): int => $line->discount),
+            'coupon' => $cart->coupon($currency, $client),
+            'couponProblem' => $cart->couponProblem($currency, $client),
             'currency' => $currency,
             'termsUrl' => setting('orders.accept_terms_url'),
         ]);
@@ -41,7 +46,8 @@ class CheckoutController extends Controller
         }
 
         $client = $request->user('web');
-        $lines = $cart->lines($client->currency);
+        $coupon = $cart->coupon($client->currency, $client);
+        $lines = $cart->lines($client->currency, $client);
 
         if ($lines->isEmpty()) {
             return redirect()->route('cart.show')->with('error', __('Your cart is empty.'));
@@ -50,7 +56,7 @@ class CheckoutController extends Controller
         // Only trust the visitor's country when a trusted proxy such as Cloudflare added it.
         $ipCountry = $request->isFromTrustedProxy() ? $request->header('CF-IPCountry') : null;
 
-        $order = $placer->place($client, $lines, $request->ip(), $ipCountry);
+        $order = $placer->place($client, $lines, $request->ip(), $ipCountry, $coupon);
         $cart->clear();
 
         $invoice = $order->invoice;

@@ -4,6 +4,8 @@ namespace App\Support;
 
 use App\Enums\TicketPriority;
 use App\Enums\TicketStatus;
+use App\Events\TicketOpened;
+use App\Events\TicketReplied;
 use App\Mail\TemplateMailer;
 use App\Models\Admin;
 use App\Models\Client;
@@ -40,7 +42,7 @@ class TicketDesk
                 'last_reply_at' => now(),
             ]);
 
-            $this->addReply($ticket, $client, $message);
+            $ticket->setRelation('firstMessage', $this->addReply($ticket, $client, $message));
 
             return $ticket;
         });
@@ -51,6 +53,8 @@ class TicketDesk
         $this->mailer->send('ticket.opened', $client, TemplateMailer::ticketContext($ticket));
         $this->notifyStaff($ticket, 'admin.ticket_opened', $message);
 
+        TicketOpened::dispatch($ticket, $ticket->getRelation('firstMessage'));
+
         return $ticket;
     }
 
@@ -60,6 +64,8 @@ class TicketDesk
         $ticket->update(['status' => TicketStatus::CustomerReply, 'last_reply_at' => now(), 'closed_at' => null]);
 
         $this->notifyStaff($ticket, 'admin.ticket_reply', $message);
+
+        TicketReplied::dispatch($ticket, $reply);
 
         return $reply;
     }
@@ -75,6 +81,8 @@ class TicketDesk
 
         Activity::log('ticket.replied', "Replied to ticket #{$ticket->number}", $ticket);
         $this->mailer->send('ticket.reply', $ticket->client, TemplateMailer::ticketContext($ticket) + ['reply' => ['message' => $message, 'author' => $admin->name]]);
+
+        TicketReplied::dispatch($ticket, $reply);
 
         return $reply;
     }

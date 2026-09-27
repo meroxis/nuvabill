@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\PackageAssetController;
 use App\Support\Money;
 use App\Support\Settings;
 
@@ -20,5 +21,16 @@ if (! function_exists('money')) {
     function money(int $minor, ?string $currency = null): string
     {
         return Money::format($minor, $currency ?? setting('billing.currency'));
+    }
+}
+
+if (! function_exists('package_asset')) {
+    /**
+     * The address of a file in a theme, order form or extension's public folder,
+     * for example package_asset('themes', 'aurora', 'aurora.css').
+     */
+    function package_asset(string $kind, string $slug, string $path): string
+    {
+        return PackageAssetController::url($kind, $slug, $path);
     }
 }

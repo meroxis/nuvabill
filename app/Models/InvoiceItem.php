@@ -13,6 +13,13 @@ class InvoiceItem extends Model
 
     public const TYPE_MANUAL = 'manual';
 
+    public const TYPE_ADDON = 'addon';
+
+    /**
+     * A coupon discount. The amount is negative.
+     */
+    public const TYPE_DISCOUNT = 'discount';
+
     public const TYPE_DOMAIN_REGISTER = 'domain_register';
 
     public const TYPE_DOMAIN_TRANSFER = 'domain_transfer';

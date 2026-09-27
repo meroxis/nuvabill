@@ -26,6 +26,10 @@
         @include($panel['view'], ['service' => $service, 'panel' => $panel['data'], 'actions' => $panel['actions'], 'result' => session('panel_result')])
     @endif
 
+    @foreach (app(\App\Support\ServicePanels::class)->for($service) as $extra)
+        @include($extra['view'], $extra['data'] + ['service' => $service])
+    @endforeach
+
     <div class="two-col">
         <section class="card" style="display:grid;gap:1rem">
             <h2 style="font-size:1.05rem">{{ __('Details') }}</h2>
@@ -50,6 +54,12 @@
                 <dt>{{ __('Billing') }}</dt><dd>{{ money($service->recurring_amount ?: $service->first_payment_amount, $service->currency) }} · {{ $service->billing_cycle->label() }}</dd>
                 <dt>{{ __('Next payment') }}</dt><dd>{{ $service->next_due_date?->format('d M Y') ?? '—' }}</dd>
                 <dt>{{ __('Since') }}</dt><dd>{{ $service->registration_date->format('d M Y') }}</dd>
+                @foreach ($service->addons->where('status', \App\Models\ServiceAddon::STATUS_ACTIVE) as $addon)
+                    <dt>{{ __('Add-on') }}</dt><dd>{{ $addon->name }}@if ($addon->recurring_amount) · {{ money($addon->recurring_amount, $service->currency) }}@endif</dd>
+                @endforeach
+                @if ($service->coupon)
+                    <dt>{{ __('Coupon') }}</dt><dd><span class="mono">{{ $service->coupon->code }}</span> · {{ $service->coupon->describe() }}@if ($service->coupon_payments_left !== null) · {{ trans_choice(':count more payment|:count more payments', $service->coupon_payments_left, ['count' => $service->coupon_payments_left]) }}@endif</dd>
+                @endif
             </dl>
         </section>
 

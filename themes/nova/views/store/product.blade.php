@@ -16,7 +16,7 @@
     </div>
 
     <div class="two-col">
-        <form method="POST" action="{{ route('cart.store') }}" class="card" style="display:grid;gap:1.2rem">
+        <form method="POST" action="{{ route('cart.store') }}" class="card" style="display:grid;gap:1.2rem" x-data="{ cycle: @js($selectedCycle) }">
             @csrf
             <input type="hidden" name="product_id" value="{{ $product->id }}">
 
@@ -29,7 +29,7 @@
                 <div class="cycle-options">
                     @foreach ($prices as $price)
                         <label class="cycle-option">
-                            <input type="radio" name="billing_cycle" value="{{ $price->billing_cycle->value }}" @checked($selectedCycle === $price->billing_cycle->value)>
+                            <input type="radio" name="billing_cycle" value="{{ $price->billing_cycle->value }}" x-model="cycle" @checked($selectedCycle === $price->billing_cycle->value)>
                             <span>{{ $price->billing_cycle->label() }}</span>
                             <b>{{ $price->price === 0 ? __('Free') : money($price->price, $currency) }}</b>
                             @if ($price->setup_fee > 0)<span>{{ __('+ :fee setup', ['fee' => money($price->setup_fee, $currency)]) }}</span>@endif
@@ -44,6 +44,22 @@
                 @if ($sellsDomains)
                     <x-checkbox name="register_domain" :label="__('Also register this domain for me')" :checked="(bool) old('register_domain')" />
                 @endif
+            @endif
+
+            @if ($addons->isNotEmpty())
+                <fieldset style="border:0;padding:0;margin:0;display:grid;gap:.6rem">
+                    <legend class="label" style="margin-bottom:.5rem">{{ __('Add-ons') }} <span class="muted" style="font-weight:400">{{ __('optional') }}</span></legend>
+                    <div class="addon-options">
+                        @foreach ($addons as $addon)
+                            @php $addonPrices = $addon->prices->where('currency', $currency)->mapWithKeys(fn ($price) => [$price->billing_cycle->value => money($price->price, $currency).$price->billing_cycle->suffix()]); @endphp
+                            <label class="addon-option" x-show="@js($addonPrices->keys()->all()).includes(cycle)">
+                                <input type="checkbox" name="addons[]" value="{{ $addon->id }}" @checked(in_array($addon->id, (array) old('addons', [])))>
+                                <span><b>{{ $addon->name }}</b>@if ($addon->is_popular) <x-pill tone="good">{{ __('Popular') }}</x-pill>@endif @if ($addon->description)<br><span class="muted" style="font-size:.85rem">{{ $addon->description }}</span>@endif</span>
+                                <span class="price" x-text="@js($addonPrices->all())[cycle] ?? ''"></span>
+                            </label>
+                        @endforeach
+                    </div>
+                </fieldset>
             @endif
 
             @error('product_id')<div class="flash" data-tone="crit">{{ $message }}</div>@enderror

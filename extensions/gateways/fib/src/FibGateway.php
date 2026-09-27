@@ -121,20 +121,19 @@ class FibGateway extends Gateway
             return null;
         }
 
-        $intent->update(['status' => PaymentIntent::STATUS_PAID]);
+        $result = $this->resultFor($intent, (int) round((float) $response->json('amount.amount', 0) * 100), 'IQD', $intent->reference, ['paid_by' => $response->json('paidBy.name')]);
 
-        return new PaymentResult(
-            invoiceId: $intent->invoice_id,
-            amount: (int) round((float) $response->json('amount.amount', 0) * 100),
-            currency: 'IQD',
-            reference: $intent->reference,
-            meta: ['paid_by' => $response->json('paidBy.name')],
-        );
+        if ($result !== null) {
+            $intent->update(['status' => PaymentIntent::STATUS_PAID]);
+        }
+
+        return $result;
     }
 
     private function createPayment(Invoice $invoice): PaymentIntent
     {
-        $amount = $this->wholeUnits($invoice->balance());
+        $quote = $this->quote($invoice);
+        $amount = $this->wholeUnits($quote['amount']);
 
         $response = $this->api()->post($this->baseUrl().'/protected/v1/payments', [
             'monetaryValue' => ['amount' => $amount, 'currency' => 'IQD'],
@@ -152,7 +151,7 @@ class FibGateway extends Gateway
             'gateway' => $this->slug(),
             'reference' => $response->json('paymentId'),
             'amount' => $invoice->balance(),
-            'currency' => 'IQD',
+            'currency' => $invoice->currency,
             'status' => PaymentIntent::STATUS_PENDING,
             'expires_at' => $response->json('validUntil') ? Carbon::parse($response->json('validUntil')) : now()->addMinutes(15),
             'meta' => [
@@ -160,7 +159,7 @@ class FibGateway extends Gateway
                 'readable_code' => $response->json('readableCode'),
                 'personal_app_link' => $response->json('personalAppLink'),
                 'business_app_link' => $response->json('businessAppLink'),
-            ],
+            ] + $this->chargeDetails($quote, $amount * 100),
         ]);
     }
 

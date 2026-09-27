@@ -72,7 +72,7 @@ class TwoFactorChallengeController extends Controller
     }
 
     /**
-     * "dana@example.com" becomes "d***@example.com".
+     * "raz@example.com" becomes "r***@example.com".
      */
     public static function maskEmail(string $email): string
     {

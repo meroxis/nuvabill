@@ -1,6 +1,9 @@
 <?php
 
+use App\Http\Controllers\PackageAssetController;
 use App\Http\Controllers\WebhookController;
+use App\Http\Middleware\ApplyCouponFromLink;
+use App\Http\Middleware\ApplyThemePreview;
 use App\Http\Middleware\EnsureAdminPermission;
 use App\Http\Middleware\EnsureClientIsActive;
 use App\Http\Middleware\EnsureClientTwoFactor;
@@ -35,12 +38,19 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::post('webhooks/{gateway}', WebhookController::class)
                 ->where('gateway', '[a-z0-9_-]+')
                 ->name('webhooks.gateway');
+
+            // Theme, order form and extension files. No session or cookies: these are static files.
+            Route::get('package-assets/{kind}/{slug}/{path}', PackageAssetController::class)
+                ->whereIn('kind', ['themes', 'orderforms', 'extensions'])
+                ->where('slug', '[a-z0-9][a-z0-9_-]*')
+                ->where('path', '[A-Za-z0-9_./-]+')
+                ->name('package.asset');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(SecurityHeaders::class);
 
-        $middleware->web(append: [RedirectToInstaller::class, ProtectDemo::class]);
+        $middleware->web(append: [RedirectToInstaller::class, ProtectDemo::class, ApplyThemePreview::class, ApplyCouponFromLink::class]);
 
         // The proxy list comes from config/trustedproxy.php. Only the visitor IP and HTTPS
         // headers are read, so a visitor cannot fake the host name in links and emails.

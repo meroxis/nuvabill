@@ -22,7 +22,7 @@ class ServiceController extends Controller
     {
         $this->authorizeOwner($request, $service);
 
-        $service->load('product', 'server', 'invoiceItems.invoice');
+        $service->load('product', 'server', 'invoiceItems.invoice', 'addons', 'coupon');
 
         return view('theme::client.services.show', [
             'service' => $service,

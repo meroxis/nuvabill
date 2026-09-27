@@ -14,7 +14,7 @@ class Order extends Model
     /** @use HasFactory<OrderFactory> */
     use HasFactory;
 
-    protected $fillable = ['number', 'client_id', 'invoice_id', 'status', 'needs_review', 'fraud_reasons', 'currency', 'total', 'ip_address', 'notes'];
+    protected $fillable = ['number', 'client_id', 'invoice_id', 'status', 'needs_review', 'fraud_reasons', 'currency', 'total', 'ip_address', 'notes', 'coupon_id', 'discount'];
 
     /**
      * @var array<string, mixed>
@@ -30,6 +30,7 @@ class Order extends Model
             'total' => 'integer',
             'needs_review' => 'boolean',
             'fraud_reasons' => 'array',
+            'discount' => 'integer',
         ];
     }
 
@@ -63,5 +64,13 @@ class Order extends Model
     public function domains(): HasMany
     {
         return $this->hasMany(Domain::class);
+    }
+
+    /**
+     * @return BelongsTo<Coupon, $this>
+     */
+    public function coupon(): BelongsTo
+    {
+        return $this->belongsTo(Coupon::class);
     }
 }

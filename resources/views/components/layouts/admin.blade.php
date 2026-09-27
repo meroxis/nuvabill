@@ -12,7 +12,8 @@
         ['route' => 'admin.tickets.index', 'match' => 'admin.tickets.*', 'icon' => 'ticket', 'label' => __('Support'), 'show' => $can('support.manage'), 'count' => $ticketsAwaitingReply],
     ], fn (array $item): bool => $item['show']);
     $setup = array_filter([
-        ['route' => 'admin.products.index', 'match' => ['admin.products.*', 'admin.product-groups.*'], 'icon' => 'store', 'label' => __('Products'), 'show' => $can('products.manage')],
+        ['route' => 'admin.products.index', 'match' => ['admin.products.*', 'admin.product-groups.*', 'admin.product-addons.*'], 'icon' => 'store', 'label' => __('Products'), 'show' => $can('products.manage')],
+        ['route' => 'admin.coupons.index', 'match' => 'admin.coupons.*', 'icon' => 'tag', 'label' => __('Coupons'), 'show' => $can('coupons.manage')],
         ['route' => 'admin.servers.index', 'match' => 'admin.servers.*', 'icon' => 'server', 'label' => __('Servers'), 'show' => $can('products.manage')],
         ['route' => 'admin.settings.edit', 'match' => ['admin.settings.*'], 'icon' => 'settings', 'label' => __('Settings'), 'show' => $can('settings.manage') || $can('staff.manage')],
         ['route' => 'admin.updates.index', 'match' => 'admin.updates.*', 'icon' => 'refresh', 'label' => __('Updates'), 'show' => $can('system.update'), 'count' => $updateAvailable ? 1 : null],
@@ -24,6 +25,7 @@
 <head>
     <title>{{ $title }} · {{ setting('company.name') }}</title>
     @include('partials.head', ['assets' => ['resources/css/admin.css', 'resources/js/app.js']])
+    <x-extension-head area="admin" />
 </head>
 <body>
 <div class="admin-shell" x-data="{ menu: false }" @keydown.escape.window="menu = false">

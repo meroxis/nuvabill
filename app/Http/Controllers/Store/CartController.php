@@ -22,9 +22,15 @@ class CartController extends Controller
     {
         $currency = $this->currency();
 
+        $lines = $cart->lines($currency);
+
         return view('theme::cart', [
-            'lines' => $cart->lines($currency),
-            'total' => $cart->total($currency),
+            'lines' => $lines,
+            'total' => $lines->sum(fn ($line): int => $line->dueToday()),
+            'discount' => $lines->sum(fn ($line): int => $line->discount),
+            'coupon' => $cart->coupon($currency),
+            'couponCode' => $cart->couponCode(),
+            'couponProblem' => $cart->couponProblem($currency),
             'currency' => $currency,
         ]);
     }
@@ -38,6 +44,8 @@ class CartController extends Controller
             'billing_cycle' => ['required', Rule::enum(BillingCycle::class)],
             'domain' => ['nullable', 'string', 'max:190', 'not_in:!'],
             'register_domain' => ['sometimes', 'boolean'],
+            'addons' => ['sometimes', 'array', 'max:20'],
+            'addons.*' => ['integer'],
         ], ['domain.not_in' => __('Enter a domain like example.com.')]);
 
         $product = Product::query()->with('prices')->findOrFail($data['product_id']);
@@ -61,7 +69,7 @@ class CartController extends Controller
             $this->addRegistration($cart, $checker, $domain, 1);
         }
 
-        $cart->add($product, $cycle, $domain);
+        $cart->add($product, $cycle, $domain, array_map('intval', $data['addons'] ?? []));
 
         return redirect()->route('cart.show')->with('status', __(':product added to your cart.', ['product' => $product->name]));
     }
@@ -95,6 +103,26 @@ class CartController extends Controller
         }
 
         return redirect()->route('cart.show')->with('status', __(':domain added to your cart.', ['domain' => $data['domain']]));
+    }
+
+    public function coupon(Request $request, Cart $cart): RedirectResponse
+    {
+        $code = (string) $request->validate(['code' => ['nullable', 'string', 'max:40']])['code'];
+        $cart->setCoupon($code);
+
+        if ($code === '') {
+            return back()->with('status', __('Coupon removed.'));
+        }
+
+        $problem = $cart->couponProblem($this->currency());
+
+        if ($problem !== null) {
+            $cart->setCoupon(null);
+
+            return back()->withErrors(['code' => $problem])->withInput();
+        }
+
+        return back()->with('status', __('Coupon :code applied.', ['code' => $cart->couponCode()]));
     }
 
     public function destroy(int $index, Cart $cart): RedirectResponse

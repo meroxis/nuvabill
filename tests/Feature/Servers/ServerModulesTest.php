@@ -117,7 +117,7 @@ class ServerModulesTest extends TestCase
             'plesk.example.test:8443/enterprise/control/agent.php' => Http::response('<?xml version="1.0"?><packet><server><create_session><result><status>ok</status><id>abc123</id></result></create_session></server></packet>'),
         ]);
 
-        $service = $this->service('plesk', 'plesk.example.test', ['plan' => 'Default Domain'], ['status' => ServiceStatus::Pending, 'domain' => 'danasbakery.com'], ['ip_address' => '203.0.113.9', 'port' => 8443]);
+        $service = $this->service('plesk', 'plesk.example.test', ['plan' => 'Default Domain'], ['status' => ServiceStatus::Pending, 'domain' => 'razstudio.com'], ['ip_address' => '203.0.113.9', 'port' => 8443]);
 
         $created = app(Provisioner::class)->create($service);
         $this->assertTrue($created->success, $created->message);
@@ -145,7 +145,7 @@ class ServerModulesTest extends TestCase
             '*/api/v2/clients/12' => Http::response(['id' => 12]),
         ]);
 
-        $service = $this->service('plesk', 'plesk.example.test', ['plan' => 'Missing'], ['status' => ServiceStatus::Pending, 'domain' => 'danasbakery.com'], ['ip_address' => '203.0.113.9', 'port' => 8443]);
+        $service = $this->service('plesk', 'plesk.example.test', ['plan' => 'Missing'], ['status' => ServiceStatus::Pending, 'domain' => 'razstudio.com'], ['ip_address' => '203.0.113.9', 'port' => 8443]);
 
         $result = app(Provisioner::class)->create($service);
 

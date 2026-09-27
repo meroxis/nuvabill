@@ -5,6 +5,7 @@ namespace App\Provisioning;
 use App\Contracts\HasClientPanel;
 use App\Contracts\ServerModule;
 use App\Enums\ServiceStatus;
+use App\Events\ServiceActivated;
 use App\Extensions\ExtensionManager;
 use App\Extensions\Servers\Module;
 use App\Extensions\Servers\ModuleResult;
@@ -68,6 +69,8 @@ class Provisioner
 
         Activity::log('service.created', "Service #{$service->id} ({$service->label()}) set up: {$result->message}", $service);
         $this->mailer->send('service.welcome', $service->client, TemplateMailer::serviceContext($service));
+
+        ServiceActivated::dispatch($service);
 
         return $result;
     }

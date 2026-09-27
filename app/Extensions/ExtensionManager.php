@@ -5,6 +5,7 @@ namespace App\Extensions;
 use App\Contracts\DomainRegistrar;
 use App\Contracts\PaymentGateway;
 use App\Contracts\ServerModule;
+use App\Extensions\Addons\Addon;
 use App\Models\Extension;
 use App\Support\Installation;
 use Illuminate\Database\QueryException;
@@ -37,6 +38,11 @@ class ExtensionManager
      * @var Collection<string, Extension>|null
      */
     private ?Collection $records = null;
+
+    /**
+     * @var Collection<string, Addon>|null
+     */
+    private ?Collection $activeAddons = null;
 
     public function __construct(private string $path) {}
 
@@ -135,6 +141,7 @@ class ExtensionManager
         $record = $this->record($slug);
         $record->update(['settings' => $settings, 'is_enabled' => $enabled]);
         $this->records = null;
+        $this->activeAddons = null;
     }
 
     public function gateway(string $slug): PaymentGateway
@@ -166,7 +173,7 @@ class ExtensionManager
             ->map(fn (ExtensionManifest $manifest): ?PaymentGateway => $this->tryMake(fn () => $this->gateway($manifest->slug)))
             ->filter(fn (?PaymentGateway $gateway): bool => $gateway !== null
                 && $gateway->isConfigured()
-                && ($currency === null || $gateway->supportsCurrency($currency)));
+                && ($currency === null || $gateway->chargeCurrencyFor($currency) !== null));
     }
 
     public function serverModule(string $slug): ServerModule
@@ -236,6 +243,84 @@ class ExtensionManager
         return $this->ofType(ExtensionManifest::TYPE_REGISTRAR)->map(fn (ExtensionManifest $manifest): string => $manifest->name);
     }
 
+    public function addon(string $slug): Addon
+    {
+        $manifest = $this->find($slug);
+
+        if ($manifest === null || $manifest->type !== ExtensionManifest::TYPE_ADDON) {
+            throw new InvalidArgumentException("Add-on [{$slug}] was not found.");
+        }
+
+        $addon = new ($manifest->class)($manifest, $this->settings($slug));
+
+        if (! $addon instanceof Addon) {
+            throw new InvalidArgumentException("[{$manifest->class}] must extend ".Addon::class.'.');
+        }
+
+        return $addon;
+    }
+
+    /**
+     * Add-ons that are switched on and fully set up, keyed by slug. Made once per request.
+     *
+     * @return Collection<string, Addon>
+     */
+    public function activeAddons(): Collection
+    {
+        return $this->activeAddons ??= $this->ofType(ExtensionManifest::TYPE_ADDON)
+            ->filter(fn (ExtensionManifest $manifest): bool => $this->isEnabled($manifest->slug))
+            ->map(fn (ExtensionManifest $manifest): ?Addon => $this->tryMake(fn () => $this->addon($manifest->slug)))
+            ->filter(fn (?Addon $addon): bool => $addon !== null && $addon->isConfigured());
+    }
+
+    /**
+     * Let every active add-on register its listeners. A broken add-on is reported and skipped.
+     */
+    public function bootAddons(): void
+    {
+        foreach ($this->activeAddons() as $addon) {
+            $this->tryMake(function () use ($addon): bool {
+                $addon->boot();
+
+                return true;
+            });
+        }
+    }
+
+    /**
+     * The HTML every active add-on adds to the <head> of pages in an area ("client" or "admin").
+     */
+    public function headHtml(string $area): string
+    {
+        return $this->activeAddons()
+            ->map(fn (Addon $addon): string => (string) $this->tryMake(fn (): string => $addon->headHtml($area)))
+            ->filter()
+            ->implode("\n");
+    }
+
+    /**
+     * Content security policy sources asked for by active add-ons, merged by directive.
+     *
+     * @return array<string, list<string>>
+     */
+    public function contentSecurityPolicy(): array
+    {
+        $sources = [];
+
+        foreach ($this->activeAddons() as $addon) {
+            foreach ((array) $this->tryMake(fn (): array => $addon->contentSecurityPolicy()) as $directive => $values) {
+                foreach ((array) $values as $value) {
+                    // Only plain host sources: no quotes, spaces or semicolons that could change the policy.
+                    if (is_string($value) && preg_match('#^(https|wss)://[a-z0-9.*-]+(:\d+)?(/[\w./-]*)?$#i', $value)) {
+                        $sources[$directive][] = $value;
+                    }
+                }
+            }
+        }
+
+        return array_map(fn (array $values): array => array_values(array_unique($values)), $sources);
+    }
+
     /**
      * Extensions with a views folder can ship Blade views, used as "ext-{slug}::name".
      */
@@ -257,6 +342,7 @@ class ExtensionManager
     {
         $this->manifests = null;
         $this->records = null;
+        $this->activeAddons = null;
     }
 
     /**

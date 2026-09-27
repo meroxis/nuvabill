@@ -35,6 +35,14 @@
         'power' => '<path d="M12 3.5V11"/><path d="M7 6.3a7.5 7.5 0 1 0 10 0"/>',
         'chevron-down' => '<path d="m6 9 6 6 6-6"/>',
         'zap' => '<path d="M13 3 4 14h7l-1 7 9-11h-7z"/>',
+        'tag' => '<path d="M20 12 12 20 4 12V4h8z"/><circle cx="8.5" cy="8.5" r="1.3"/>',
+        'package' => '<path d="m3.5 7.5 8.5-4.5 8.5 4.5v9L12 21l-8.5-4.5z"/><path d="m3.5 7.5 8.5 4.5 8.5-4.5M12 12v9M8 5.2l8.5 4.6"/>',
+        'code' => '<path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13.5 6l-3 12"/>',
+        'star' => '<path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
+        'brush' => '<path d="M14 4.5 19.5 10 11 18.5H5.5V13z"/><path d="m12 6.5 5.5 5.5"/>',
+        'key' => '<circle cx="8" cy="15" r="4"/><path d="m11 12 8.5-8.5M16 7l2.5 2.5M14 9l1.5 1.5"/>',
+        'layers' => '<path d="m12 3 9 5-9 5-9-5z"/><path d="m3 13 9 5 9-5"/>',
+        'trash' => '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
     ];
 @endphp
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" {{ $attributes }}>{!! $paths[$name] ?? $paths['dots'] !!}</svg>
