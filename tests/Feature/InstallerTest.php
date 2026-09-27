@@ -9,6 +9,22 @@ class InstallerTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_sqlite_uses_the_default_database_file_when_the_installer_leaves_the_name_empty(): void
+    {
+        $original = [$_SERVER['DB_DATABASE'] ?? null, $_ENV['DB_DATABASE'] ?? null];
+
+        try {
+            foreach (['null', ''] as $value) {
+                $_SERVER['DB_DATABASE'] = $_ENV['DB_DATABASE'] = $value;
+                $config = require config_path('database.php');
+
+                $this->assertSame(database_path('database.sqlite'), $config['connections']['sqlite']['database']);
+            }
+        } finally {
+            [$_SERVER['DB_DATABASE'], $_ENV['DB_DATABASE']] = $original;
+        }
+    }
+
     public function test_a_fresh_copy_sends_visitors_to_the_installer(): void
     {
         config(['nuvabill.installed' => false]);
