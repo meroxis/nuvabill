@@ -2,24 +2,22 @@
 
 namespace App\Models;
 
-use App\Billing\Wallet;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * Money received from (or refunded to) a client.
+ * One change to a client's wallet: positive when money is added, negative when it is spent.
+ * "balance" is the wallet balance right after the change.
  */
-class Transaction extends Model
+class CreditTransaction extends Model
 {
-    protected $fillable = ['client_id', 'invoice_id', 'gateway', 'reference', 'type', 'amount', 'fee', 'currency', 'meta', 'paid_at'];
+    protected $fillable = ['client_id', 'amount', 'balance', 'currency', 'description', 'invoice_id', 'admin_id'];
 
     protected function casts(): array
     {
         return [
             'amount' => 'integer',
-            'fee' => 'integer',
-            'meta' => 'array',
-            'paid_at' => 'datetime',
+            'balance' => 'integer',
         ];
     }
 
@@ -40,10 +38,10 @@ class Transaction extends Model
     }
 
     /**
-     * The payment method for lists: "Wallet" for wallet payments, otherwise the gateway name.
+     * @return BelongsTo<Admin, $this>
      */
-    public function gatewayLabel(): string
+    public function admin(): BelongsTo
     {
-        return $this->gateway === Wallet::GATEWAY ? __('Wallet') : $this->gateway;
+        return $this->belongsTo(Admin::class);
     }
 }

@@ -112,6 +112,16 @@ class Client extends Authenticatable
     }
 
     /**
+     * Changes to the wallet balance, newest last.
+     *
+     * @return HasMany<CreditTransaction, $this>
+     */
+    public function creditTransactions(): HasMany
+    {
+        return $this->hasMany(CreditTransaction::class);
+    }
+
+    /**
      * @return HasMany<Order, $this>
      */
     public function orders(): HasMany

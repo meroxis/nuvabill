@@ -28,6 +28,7 @@ class InvoicePaidHandler
     public function __construct(
         private Provisioner $provisioner,
         private TemplateMailer $mailer,
+        private Wallet $wallet,
     ) {}
 
     public function handle(Invoice $invoice): void
@@ -41,6 +42,10 @@ class InvoicePaidHandler
 
             if ($item->domain !== null && in_array($item->type, InvoiceItem::DOMAIN_TYPES, true)) {
                 $this->handleDomainItem($item, $item->domain);
+            }
+
+            if ($item->type === InvoiceItem::TYPE_CREDIT && $item->amount > 0) {
+                $this->wallet->change($invoice->client, $item->amount, __('Added funds with invoice :number', ['number' => $invoice->displayNumber()]), $invoice);
             }
         }
 

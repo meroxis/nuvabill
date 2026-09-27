@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Billing\Wallet;
 use App\Enums\ClientStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ClientRequest;
@@ -9,10 +10,12 @@ use App\Mail\TemplateMailer;
 use App\Models\ActivityLog;
 use App\Models\Client;
 use App\Support\Activity;
+use App\Support\Money;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Illuminate\View\View;
+use RuntimeException;
 
 class ClientController extends Controller
 {
@@ -71,7 +74,31 @@ class ClientController extends Controller
             'client' => $client,
             'unpaid' => $client->unpaidInvoicesTotal(),
             'activity' => ActivityLog::query()->where('client_id', $client->id)->with('actor')->latest('id')->limit(10)->get(),
+            'walletEntries' => $client->creditTransactions()->with('admin')->latest('id')->limit(6)->get(),
         ]);
+    }
+
+    /**
+     * Add money to a client's wallet, or take it away with a negative amount.
+     */
+    public function wallet(Request $request, Client $client, Wallet $wallet): RedirectResponse
+    {
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'not_in:0', 'min:-1000000', 'max:1000000'],
+            'reason' => ['required', 'string', 'max:190'],
+        ]);
+
+        $amount = Money::toMinor($data['amount']);
+
+        try {
+            $wallet->change($client, $amount, $data['reason'], admin: $request->user('admin'));
+        } catch (RuntimeException $exception) {
+            return back()->withErrors(['amount' => $exception->getMessage()])->withInput();
+        }
+
+        Activity::log('wallet.changed', (($amount > 0 ? 'Added ' : 'Removed ').money(abs($amount), $client->currency))." (wallet): {$data['reason']}", $client, $client);
+
+        return back()->with('status', __('Wallet updated. New balance: :amount', ['amount' => money($client->credit, $client->currency)]));
     }
 
     public function edit(Client $client): View

@@ -76,7 +76,7 @@
                         @foreach ($client->transactions as $transaction)
                             <tr>
                                 <td style="white-space:nowrap">{{ $transaction->paid_at->format('d M Y') }}</td>
-                                <td>{{ $transaction->gateway }}</td>
+                                <td>{{ $transaction->gatewayLabel() }}</td>
                                 <td class="mono faint">{{ \Illuminate\Support\Str::limit($transaction->reference ?? '—', 24) }}</td>
                                 <td class="end num">{{ money($transaction->amount, $transaction->currency) }}</td>
                             </tr>
@@ -98,11 +98,39 @@
                         {{ collect([$client->address_1, $client->address_2, trim($client->postcode.' '.$client->city), $client->state, \App\Support\Countries::name($client->country)])->filter()->implode(', ') ?: '—' }}
                     </dd>
                     <dt>{{ __('Currency') }}</dt><dd>{{ $client->currency }}</dd>
+                    @if ($client->tax_id || $client->tax_exempt)
+                        <dt>{{ setting('tax.id_label') }}</dt><dd>{{ $client->tax_id ?: '—' }}@if ($client->tax_exempt) <x-pill>{{ __('Tax exempt') }}</x-pill>@endif</dd>
+                    @endif
                 </dl>
                 @if ($client->notes)
                     <div class="flash" data-tone="warn" style="margin-top:1rem"><span class="message-body">{{ $client->notes }}</span></div>
                 @endif
             </section>
+
+            @if ($admin->hasPermission('billing.view'))
+                <section class="card" style="display:grid;gap:.8rem">
+                    <div class="card-header" style="margin:0"><h2>{{ __('Wallet') }}</h2><b class="num">{{ money($client->credit, $client->currency) }}</b></div>
+                    @if ($walletEntries->isNotEmpty())
+                        <ul class="list-plain">
+                            @foreach ($walletEntries as $entry)
+                                <li class="feed-item">
+                                    <span>{{ $entry->description }}@if ($entry->admin) <span class="faint">· {{ $entry->admin->name }}</span>@endif</span>
+                                    <span class="num" style="white-space:nowrap;color:{{ $entry->amount >= 0 ? 'var(--nb-good)' : 'inherit' }}">{{ $entry->amount >= 0 ? '+' : '' }}{{ money($entry->amount, $entry->currency) }}</span>
+                                </li>
+                            @endforeach
+                        </ul>
+                    @endif
+                    @if ($admin->hasPermission('billing.manage'))
+                        <form method="POST" action="{{ route('admin.clients.wallet', $client) }}" style="display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:8px;align-items:end">
+                            @csrf
+                            <x-input name="amount" type="number" step="0.01" :label="__('Amount')" required placeholder="10.00" />
+                            <x-input name="reason" :label="__('Reason')" required :placeholder="__('For example Refund for downtime')" />
+                            <button class="btn" type="submit">{{ __('Save') }}</button>
+                        </form>
+                        <p class="help" style="margin:0">{{ __('Use a minus to take money away, for example -5.00.') }}</p>
+                    @endif
+                </section>
+            @endif
 
             <section class="card">
                 <div class="card-header"><h2>{{ __('Tickets') }}</h2></div>

@@ -112,6 +112,7 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
     Route::middleware('admin.can:billing.manage')->group(function (): void {
         Route::get('invoices/create', [InvoiceController::class, 'create'])->name('invoices.create');
         Route::post('invoices', [InvoiceController::class, 'store'])->name('invoices.store');
+        Route::post('clients/{client}/wallet', [ClientController::class, 'wallet'])->name('clients.wallet');
         Route::post('invoices/{invoice}/payments', [InvoiceController::class, 'recordPayment'])->name('invoices.payments.store');
         Route::post('invoices/{invoice}/refund', [InvoiceController::class, 'refund'])->name('invoices.refund');
         Route::post('invoices/{invoice}/publish', [InvoiceController::class, 'publish'])->name('invoices.publish');

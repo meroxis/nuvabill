@@ -33,6 +33,7 @@ class OrderPlacer
         private PaymentRecorder $payments,
         private TemplateMailer $mailer,
         private FraudChecker $fraud,
+        private Wallet $wallet,
     ) {}
 
     /**
@@ -148,6 +149,8 @@ class OrderPlacer
 
         if ($order->invoice->total === 0) {
             $this->payments->settleFreeInvoice($order->invoice);
+        } elseif ($this->wallet->applyAutomatically($order->invoice) > 0) {
+            $order->invoice->refresh();
         }
 
         $this->mailer->send('order.confirmation', $client, TemplateMailer::invoiceContext($order->invoice) + [

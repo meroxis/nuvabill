@@ -3,7 +3,12 @@
 @section('title', __('Invoices'))
 
 @section('content')
-    <div class="page-title"><div><h1>{{ __('Invoices') }}</h1></div></div>
+    <div class="page-title">
+        <div><h1>{{ __('Invoices') }}</h1></div>
+        @if (setting('wallet.enabled') || auth('web')->user()->credit > 0)
+            <a class="btn" href="{{ route('client.wallet') }}"><x-icon name="card" />{{ __('Wallet: :amount', ['amount' => money(auth('web')->user()->credit, auth('web')->user()->currency)]) }}</a>
+        @endif
+    </div>
 
     <section class="card card-flush">
         @if ($invoices->isEmpty())

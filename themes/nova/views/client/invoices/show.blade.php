@@ -38,6 +38,15 @@
             @if ($invoice->isPayable())
                 <div class="summary-row total" style="border:0;padding:0"><span>{{ __('Amount due') }}</span><span class="num">{{ money($invoice->balance(), $invoice->currency) }}</span></div>
 
+                @php $walletCredit = (int) auth('web')->user()->credit; @endphp
+                @if ($walletCredit > 0 && auth('web')->user()->currency === $invoice->currency && ! app(\App\Billing\Wallet::class)->isTopUp($invoice))
+                    <form method="POST" action="{{ route('client.invoices.wallet', $invoice) }}" style="display:grid;gap:.35rem">
+                        @csrf
+                        <button class="btn btn-block" type="submit"><x-icon name="card" />{{ __('Pay :amount from my wallet', ['amount' => money(min($walletCredit, $invoice->balance()), $invoice->currency)]) }}</button>
+                        <span class="muted" style="font-size:.8rem;text-align:center">{{ __('Wallet balance: :amount', ['amount' => money($walletCredit, $invoice->currency)]) }}</span>
+                    </form>
+                @endif
+
                 @if ($instructions)
                     <div class="flash" data-tone="info" style="display:block">
                         <div class="prose-sm">{!! $instructions !!}</div>

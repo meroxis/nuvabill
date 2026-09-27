@@ -26,6 +26,7 @@ class RenewalGenerator
     public function __construct(
         private InvoiceManager $invoices,
         private TemplateMailer $mailer,
+        private Wallet $wallet,
     ) {}
 
     /**
@@ -72,6 +73,7 @@ class RenewalGenerator
 
             Activity::log('invoice.renewal', "Renewal invoice {$invoice->number} created", $invoice, $group['client']);
             $this->mailer->send('invoice.created', $group['client'], TemplateMailer::invoiceContext($invoice));
+            $this->wallet->applyAutomatically($invoice);
         }
 
         return count($groups);
@@ -155,8 +157,9 @@ class RenewalGenerator
 
         Activity::log('invoice.renewal', "Renewal invoice {$invoice->number} created for {$domain->name}", $invoice, $domain->client);
         $this->mailer->send('invoice.created', $domain->client, TemplateMailer::invoiceContext($invoice));
+        $this->wallet->applyAutomatically($invoice);
 
-        return $invoice;
+        return $invoice->refresh();
     }
 
     /**

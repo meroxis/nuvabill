@@ -18,7 +18,10 @@ use RuntimeException;
  */
 class RefundIssuer
 {
-    public function __construct(private ExtensionManager $extensions) {}
+    public function __construct(
+        private ExtensionManager $extensions,
+        private Wallet $wallet,
+    ) {}
 
     /**
      * Refund everything paid on the invoice, up to its total, and mark it Refunded.
@@ -76,7 +79,7 @@ class RefundIssuer
      */
     public function canRefundThroughGateway(Transaction $payment): bool
     {
-        return $this->refundingGateway($payment) !== null;
+        return $payment->gateway === Wallet::GATEWAY || $this->refundingGateway($payment) !== null;
     }
 
     /**
@@ -84,6 +87,10 @@ class RefundIssuer
      */
     private function refundPayment(Transaction $payment, int $amount, bool $throughGateway): int
     {
+        if ($throughGateway && $payment->gateway === Wallet::GATEWAY) {
+            return $this->refundToWallet($payment, $amount);
+        }
+
         $gateway = $throughGateway ? $this->refundingGateway($payment) : null;
         $result = $gateway?->refund($payment, $amount);
         $refunded = $result?->amount ?? $amount;
@@ -101,6 +108,29 @@ class RefundIssuer
         ]);
 
         return $refunded;
+    }
+
+    /**
+     * Money paid from the wallet goes back into it.
+     */
+    private function refundToWallet(Transaction $payment, int $amount): int
+    {
+        $payment->loadMissing('invoice.client');
+        $entry = $this->wallet->change($payment->invoice->client, $amount, __('Refund of invoice :number', ['number' => $payment->invoice->displayNumber()]), $payment->invoice);
+
+        Transaction::create([
+            'client_id' => $payment->client_id,
+            'invoice_id' => $payment->invoice_id,
+            'gateway' => Wallet::GATEWAY,
+            'reference' => 'wallet-'.$entry->id,
+            'type' => 'refund',
+            'amount' => -$amount,
+            'currency' => $payment->currency,
+            'meta' => ['refund_of' => $payment->id, 'through_gateway' => true],
+            'paid_at' => now(),
+        ]);
+
+        return $amount;
     }
 
     private function refundingGateway(Transaction $payment): ?PaymentGateway

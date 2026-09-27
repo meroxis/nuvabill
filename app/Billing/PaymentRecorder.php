@@ -67,7 +67,7 @@ class PaymentRecorder
                 $overpaid = $invoice->amount_paid - $invoice->total;
 
                 if ($overpaid > 0) {
-                    $invoice->client()->increment('credit', $overpaid);
+                    app(Wallet::class)->change($invoice->client, $overpaid, __('Overpayment on invoice :number', ['number' => $invoice->displayNumber()]), $invoice);
                 }
             }
 

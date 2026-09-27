@@ -95,7 +95,7 @@
                 <ul class="list-plain">
                     @forelse ($invoice->transactions as $transaction)
                         <li class="feed-item">
-                            <span><b class="num">{{ money($transaction->amount, $transaction->currency) }}</b> · {{ $transaction->gateway }}
+                            <span><b class="num">{{ money($transaction->amount, $transaction->currency) }}</b> · {{ $transaction->gatewayLabel() }}
                                 @if ($transaction->type === 'refund')<x-pill>{{ __('Refund') }}</x-pill>@endif
                                 @if ($transaction->reference)<br><span class="mono faint">{{ $transaction->reference }}</span>@endif
                             </span>

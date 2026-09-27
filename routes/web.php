@@ -14,6 +14,7 @@ use App\Http\Controllers\Client\PaymentController;
 use App\Http\Controllers\Client\ServiceController;
 use App\Http\Controllers\Client\TicketController;
 use App\Http\Controllers\Client\TwoFactorController;
+use App\Http\Controllers\Client\WalletController;
 use App\Http\Controllers\PreviewController;
 use App\Http\Controllers\Store\CartController;
 use App\Http\Controllers\Store\CheckoutController;
@@ -103,6 +104,10 @@ Route::middleware(['auth:web', 'client.active', 'client.two-factor'])->prefix('c
     Route::post('invoices/{invoice}/pay', [PaymentController::class, 'store'])->name('invoices.pay');
     Route::get('invoices/{invoice}/return/{gateway}', [PaymentController::class, 'return'])->name('invoices.return');
     Route::get('invoices/{invoice}/payment-status', [PaymentController::class, 'status'])->middleware('throttle:30,1')->name('invoices.payment-status');
+    Route::post('invoices/{invoice}/pay-from-wallet', [WalletController::class, 'pay'])->middleware('throttle:10,1')->name('invoices.wallet');
+
+    Route::get('wallet', [WalletController::class, 'show'])->name('wallet');
+    Route::post('wallet', [WalletController::class, 'store'])->middleware('throttle:10,1')->name('wallet.store');
 
     Route::get('tickets', [TicketController::class, 'index'])->name('tickets.index');
     Route::get('tickets/new', [TicketController::class, 'create'])->name('tickets.create');
