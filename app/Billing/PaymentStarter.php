@@ -4,6 +4,7 @@ namespace App\Billing;
 
 use App\Extensions\ExtensionManager;
 use App\Models\Invoice;
+use App\Support\Activity;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Str;
 use Throwable;
@@ -34,6 +35,8 @@ class PaymentStarter
             );
         } catch (Throwable $exception) {
             report($exception);
+            // Staff see the gateway's own reason in the activity log, without reading server logs.
+            Activity::log('payment.failed', "{$gateway->name()} could not start a payment for invoice {$invoice->displayNumber()}: ".Str::limit($exception->getMessage(), 300), $invoice, $invoice->client);
 
             return redirect()->route('client.invoices.show', $invoice)->with('error', __(':gateway is not available right now. Try another payment method or contact us.', ['gateway' => $gateway->name()]));
         }

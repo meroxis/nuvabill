@@ -120,6 +120,20 @@ class IraqiGatewaysTest extends TestCase
         $this->assertSame(3000000, $invoice->fresh()->amount_paid);
     }
 
+    public function test_when_wayl_refuses_the_client_sees_a_short_message_and_staff_see_the_reason(): void
+    {
+        $this->enableGateway('wayl', ['api_token' => 'wrong-token', 'mode' => 'live']);
+        Http::fake(['api.thewayl.com/*' => Http::response(['success' => false, 'message' => 'Invalid authentication key'], 401)]);
+
+        [$client, $invoice] = $this->invoice(3000000);
+
+        $this->actingAs($client, 'web')->post(route('client.invoices.pay', $invoice), ['gateway' => 'wayl'])
+            ->assertRedirect(route('client.invoices.show', $invoice))
+            ->assertSessionHas('error', 'Wayl is not available right now. Try another payment method or contact us.');
+
+        $this->assertDatabaseHas('activity_logs', ['action' => 'payment.failed', 'description' => 'Wayl could not start a payment for invoice '.$invoice->displayNumber().': Wayl could not create the payment link: Invalid authentication key']);
+    }
+
     public function test_iraqi_gateways_are_only_offered_for_dinar_invoices(): void
     {
         $this->enableGateway('fib', ['client_id' => 'shop', 'client_secret' => 'secret']);
