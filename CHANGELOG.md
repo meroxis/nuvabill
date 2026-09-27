@@ -4,6 +4,11 @@ What changed in each Nuvabill release. The release workflow copies the section f
 release, and the **Updates** page in the admin area shows it. Write for hosting companies, in plain words.
 Add `[security]` to a section to let installs apply it automatically as a security fix.
 
+## 0.4.3
+
+- **Fix for MySQL and MariaDB:** installing (and the one-line server install) stopped while making the product add-on tables, because an index name was longer than MySQL allows. The index now has a short name, and sites where that step stopped halfway finish it on the next update.
+- A new test builds every database change for MySQL, so this kind of problem is caught before a release.
+
 ## 0.4.2
 
 - **Backups:** `php artisan nuvabill:backup` backs up the whole site (every file and the database), or only the database with `--database`. Add `--password=…` to encrypt it with AES-256. Each backup has a RESTORE.txt with the steps to put the site back.
