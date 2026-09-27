@@ -64,4 +64,52 @@
             <div class="form-actions"><button class="btn btn-primary" type="submit">{{ __('Change password') }}</button></div>
         </form>
     </div>
+
+    <section class="card" style="display:grid;gap:1rem;margin-top:14px">
+        <div class="card-header" style="margin:0">
+            <h2>{{ __('API keys') }}</h2>
+            <a class="row-link" href="https://nuvabill.com/docs/api/" target="_blank" rel="noopener" style="font-size:.85rem">{{ __('API guide') }}</a>
+        </div>
+        <p class="muted" style="margin:0">{{ __('Connect your own tools to Nuvabill with the REST API at :url. A key can do what your role allows, and nothing more.', ['url' => url('/api/v1')]) }}</p>
+
+        @if ($newApiKey)
+            <div class="flash" data-tone="good" style="display:grid;gap:.4rem">
+                <b>{{ __('Your new key. Copy it now: it is shown only once.') }}</b>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                    <code class="mono" style="overflow-wrap:anywhere;flex:1">{{ $newApiKey }}</code>
+                    <button type="button" class="btn btn-sm" data-copy="{{ $newApiKey }}" data-copied="{{ __('Copied') }}">{{ __('Copy key') }}</button>
+                </div>
+            </div>
+        @endif
+
+        @if ($apiTokens->isNotEmpty())
+            <div class="table-wrap"><table class="table">
+                <thead><tr><th>{{ __('Name') }}</th><th>{{ __('Access') }}</th><th>{{ __('Key') }}</th><th>{{ __('Last used') }}</th><th></th></tr></thead>
+                <tbody>
+                @foreach ($apiTokens as $token)
+                    <tr>
+                        <td>{{ $token->name }}</td>
+                        <td>{{ $token->can_write ? __('Read and write') : __('Read only') }}</td>
+                        <td class="mono">nb_…{{ $token->hint }}</td>
+                        <td>{{ $token->last_used_at?->diffForHumans() ?? __('Never') }}</td>
+                        <td class="end">
+                            <form method="POST" action="{{ route('admin.profile.api-keys.destroy', $token) }}" data-confirm="{{ __('Delete this key? Anything using it stops working.') }}">
+                                @csrf
+                                @method('DELETE')
+                                <button class="btn btn-sm btn-ghost" type="submit" aria-label="{{ __('Delete :name', ['name' => $token->name]) }}"><x-icon name="trash" /></button>
+                            </form>
+                        </td>
+                    </tr>
+                @endforeach
+                </tbody>
+            </table></div>
+        @endif
+
+        <form method="POST" action="{{ route('admin.profile.api-keys.store') }}" style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+            @csrf
+            <x-input name="name" :label="__('New key name')" required :placeholder="__('For example Accounting sync')" style="min-width:240px" />
+            <x-checkbox name="can_write" :label="__('Can change data')" :help="__('Off: the key can only read.')" />
+            <button class="btn btn-primary" type="submit"><x-icon name="key" />{{ __('Create key') }}</button>
+        </form>
+    </section>
 </x-layouts.admin>

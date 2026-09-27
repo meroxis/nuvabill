@@ -25,10 +25,13 @@ use App\Support\Settings;
 use App\Support\Themes;
 use App\View\Composers\AdminLayoutComposer;
 use Illuminate\Auth\Notifications\ResetPassword;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Http\Request;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -82,6 +85,8 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->make(Themes::class)->register();
         $this->app->make(ExtensionManager::class)->registerViews();
+
+        RateLimiter::for('api-v1', fn (Request $request): Limit => Limit::perMinute(120)->by($request->bearerToken() ? hash('sha256', $request->bearerToken()) : (string) $request->ip()));
 
         if (Installation::isInstalled()) {
             $this->applySettingsToConfig();

@@ -4,6 +4,7 @@ use App\Http\Controllers\PackageAssetController;
 use App\Http\Controllers\WebhookController;
 use App\Http\Middleware\ApplyCouponFromLink;
 use App\Http\Middleware\ApplyThemePreview;
+use App\Http\Middleware\AuthenticateApiToken;
 use App\Http\Middleware\EnsureAdminPermission;
 use App\Http\Middleware\EnsureClientIsActive;
 use App\Http\Middleware\EnsureClientTwoFactor;
@@ -18,6 +19,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\Route;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -35,6 +37,12 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->prefix('install')
                 ->name('install.')
                 ->group(base_path('routes/install.php'));
+
+            // REST API: no session or cookies; a Bearer key signs in as its staff member.
+            Route::middleware([AuthenticateApiToken::class, 'throttle:api-v1', SubstituteBindings::class])
+                ->prefix('api/v1')
+                ->name('api.')
+                ->group(base_path('routes/api.php'));
 
             Route::post('webhooks/{gateway}', WebhookController::class)
                 ->where('gateway', '[a-z0-9_-]+')
