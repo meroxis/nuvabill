@@ -68,11 +68,18 @@
                     <a href="{{ route('client.invoices.index') }}" @if (request()->routeIs('client.invoices.*')) aria-current="page" @endif>{{ __('Billing') }}</a>
                     <a href="{{ route('client.tickets.index') }}" @if (request()->routeIs('client.tickets.*')) aria-current="page" @endif>{{ __('Support') }}</a>
                     <a href="{{ route('store.index') }}" @if (request()->routeIs('store.*')) aria-current="page" @endif>{{ __('Store') }}</a>
+                    @if (config('nuvabill.marketplace.store'))
+                        <a href="{{ route('marketplace.index') }}" @if (request()->routeIs('marketplace.*', 'developer.*')) aria-current="page" @endif>{{ __('Marketplace') }}</a>
+                    @endif
                     <a class="nav-only-mobile" href="{{ route('client.account.edit') }}" @if (request()->routeIs('client.account.*')) aria-current="page" @endif>{{ __('Account') }}</a>
                 @else
                     <a href="{{ route('store.index') }}" @if (request()->routeIs('store.index', 'store.group', 'store.product')) aria-current="page" @endif><x-icon name="home" />{{ __('Store') }}</a>
                     @if ($sellsDomains)
                         <a href="{{ route('store.domains') }}" @if (request()->routeIs('store.domains')) aria-current="page" @endif>{{ __('Domains') }}</a>
+                    @endif
+                    @if (config('nuvabill.marketplace.store'))
+                        <a href="{{ route('marketplace.index') }}" @if (request()->routeIs('marketplace.index', 'marketplace.show')) aria-current="page" @endif>{{ __('Marketplace') }}</a>
+                        <a href="{{ route('marketplace.developers') }}" @if (request()->routeIs('marketplace.developers')) aria-current="page" @endif>{{ __('Developers') }}</a>
                     @endif
                     <a href="{{ route('client.login') }}" @if (request()->routeIs('client.login', 'client.register', 'client.password.*')) aria-current="page" @endif>{{ __('Client area') }}</a>
                 @endif
