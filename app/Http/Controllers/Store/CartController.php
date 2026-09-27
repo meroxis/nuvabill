@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Store;
 
 use App\Billing\Cart;
+use App\Billing\Taxes;
 use App\Domains\AvailabilityChecker;
 use App\Domains\DomainName;
 use App\Enums\BillingCycle;
@@ -18,15 +19,17 @@ use Illuminate\View\View;
 
 class CartController extends Controller
 {
-    public function show(Cart $cart): View
+    public function show(Request $request, Cart $cart, Taxes $taxes): View
     {
         $currency = $this->currency();
 
         $lines = $cart->lines($currency);
+        $tax = $taxes->forCart($lines, $request->user('web'));
 
         return view('theme::cart', [
             'lines' => $lines,
-            'total' => $lines->sum(fn ($line): int => $line->dueToday()),
+            'total' => $tax['total'],
+            'tax' => $tax,
             'discount' => $lines->sum(fn ($line): int => $line->discount),
             'coupon' => $cart->coupon($currency),
             'couponCode' => $cart->couponCode(),

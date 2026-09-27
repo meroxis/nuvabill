@@ -46,7 +46,7 @@
                         @endforeach
                         <tr><td class="end muted">{{ __('Subtotal') }}</td><td class="end num">{{ money($invoice->subtotal, $invoice->currency) }}</td></tr>
                         @if ($invoice->tax)
-                            <tr><td class="end muted">{{ __('Tax') }}</td><td class="end num">{{ money($invoice->tax, $invoice->currency) }}</td></tr>
+                            <tr><td class="end muted">{{ $invoice->taxLabel() }}</td><td class="end num">{{ money($invoice->tax, $invoice->currency) }}</td></tr>
                         @endif
                         <tr><td class="end"><b>{{ __('Total') }}</b></td><td class="end num"><b>{{ money($invoice->total, $invoice->currency) }}</b></td></tr>
                         <tr><td class="end muted">{{ __('Paid') }}</td><td class="end num">{{ money($invoice->amount_paid, $invoice->currency) }}</td></tr>

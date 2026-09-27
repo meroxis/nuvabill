@@ -106,6 +106,8 @@ class TemplateMailer
             'invoice' => [
                 'id' => $invoice->id,
                 'number' => $invoice->displayNumber(),
+                'subtotal' => money($invoice->subtotal, $invoice->currency),
+                'tax' => money($invoice->tax, $invoice->currency),
                 'total' => money($invoice->total, $invoice->currency),
                 'balance' => money($invoice->balance(), $invoice->currency),
                 'due_date' => $invoice->due_at->format('d M Y'),

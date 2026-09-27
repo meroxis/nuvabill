@@ -26,6 +26,7 @@ class Product extends Model
         'type',
         'description',
         'is_visible',
+        'taxable',
         'requires_domain',
         'server_module',
         'server_id',
@@ -35,12 +36,20 @@ class Product extends Model
         'sort_order',
     ];
 
+    /**
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'taxable' => true,
+    ];
+
     protected function casts(): array
     {
         return [
             'type' => ProductType::class,
             'auto_setup' => AutoSetup::class,
             'is_visible' => 'boolean',
+            'taxable' => 'boolean',
             'requires_domain' => 'boolean',
             'module_config' => 'array',
             'stock' => 'integer',

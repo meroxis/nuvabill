@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Billing\Taxes;
 use App\Enums\InvoiceStatus;
 use Database\Factories\InvoiceFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -21,6 +22,9 @@ class Invoice extends Model
         'currency',
         'subtotal',
         'tax',
+        'tax_name',
+        'tax_rate',
+        'tax_inclusive',
         'total',
         'amount_paid',
         'issued_at',
@@ -47,6 +51,8 @@ class Invoice extends Model
             'status' => InvoiceStatus::class,
             'subtotal' => 'integer',
             'tax' => 'integer',
+            'tax_rate' => 'integer',
+            'tax_inclusive' => 'boolean',
             'total' => 'integer',
             'amount_paid' => 'integer',
             'issued_at' => 'immutable_date',
@@ -97,12 +103,34 @@ class Invoice extends Model
     }
 
     /**
-     * Recalculate the totals from the line items. Does not save.
+     * Recalculate the totals from the line items with the tax rate the invoice was created with.
+     * Invoices without a rate (for example imported ones) keep the tax they have. Does not save.
      */
     public function recalculate(): void
     {
-        $this->subtotal = (int) $this->items()->sum('amount');
-        $this->total = $this->subtotal + $this->tax;
+        $items = $this->items()->get(['amount', 'taxed']);
+        $this->subtotal = (int) $items->sum('amount');
+
+        if ($this->tax_rate !== null) {
+            $this->tax = Taxes::amount((int) $items->where('taxed', true)->sum('amount'), $this->tax_rate, (bool) $this->tax_inclusive);
+        }
+
+        $this->total = $this->tax_inclusive ? $this->subtotal : $this->subtotal + $this->tax;
+    }
+
+    /**
+     * The tax line as shown on invoices, for example "VAT (20%)" or "VAT (20%) included", or null when there is no tax.
+     */
+    public function taxLabel(): ?string
+    {
+        if ($this->tax_rate === null && $this->tax === 0) {
+            return null;
+        }
+
+        $name = $this->tax_name ?: __('Tax');
+        $label = $this->tax_rate !== null ? $name.' ('.TaxRule::formatRate($this->tax_rate).')' : $name;
+
+        return $this->tax_inclusive ? __(':tax included', ['tax' => $label]) : $label;
     }
 
     public function displayNumber(): string

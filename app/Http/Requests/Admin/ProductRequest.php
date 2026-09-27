@@ -44,6 +44,7 @@ class ProductRequest extends FormRequest
             'description' => ['nullable', 'string', 'max:5000'],
             'is_visible' => ['boolean'],
             'requires_domain' => ['boolean'],
+            'taxable' => ['boolean'],
             'server_module' => ['nullable', Rule::in($modules)],
             'server_id' => ['nullable', 'exists:servers,id'],
             'module_config' => ['nullable', 'array'],

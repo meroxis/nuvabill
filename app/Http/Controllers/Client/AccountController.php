@@ -54,6 +54,7 @@ class AccountController extends Controller
             'state' => ['nullable', 'string', 'max:100'],
             'postcode' => ['nullable', 'string', 'max:20'],
             'country' => ['required', Rule::in(array_keys(Countries::all()))],
+            'tax_id' => ['nullable', 'string', 'max:64'],
         ]));
 
         Activity::log('client.profile', 'Client updated their details', $client);

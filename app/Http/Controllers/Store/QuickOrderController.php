@@ -8,6 +8,7 @@ use App\Billing\CartLine;
 use App\Billing\ExchangeRates;
 use App\Billing\OrderPlacer;
 use App\Billing\PaymentStarter;
+use App\Billing\Taxes;
 use App\Domains\AvailabilityChecker;
 use App\Domains\DomainName;
 use App\Domains\DomainSearch;
@@ -54,7 +55,7 @@ class QuickOrderController extends Controller
      * What the order costs with the choices so far, including any coupon and the amount each
      * payment method charges.
      */
-    public function quote(Request $request, ExtensionManager $extensions, ExchangeRates $rates): JsonResponse
+    public function quote(Request $request, ExtensionManager $extensions, ExchangeRates $rates, Taxes $taxes): JsonResponse
     {
         $data = $this->validateOrder($request, forQuote: true);
         $currency = $this->currency();
@@ -63,7 +64,9 @@ class QuickOrderController extends Controller
 
         $client = $request->user('web');
         $lines = $cart->lines($currency, $client);
-        $total = (int) $lines->sum(fn (CartLine $line): int => $line->dueToday());
+        $country = preg_match('/^[A-Za-z]{2}$/', (string) $request->input('country')) ? (string) $request->input('country') : null;
+        $tax = $taxes->forCart($lines, $client, $country, $request->string('state')->limit(100, '')->toString());
+        $total = $tax['total'];
         $productLine = $lines->first(fn (CartLine $line): bool => ! $line->isDomain());
         $monthly = $product->priceFor($currency, BillingCycle::Monthly);
         $coupon = $cart->coupon($currency, $client);
@@ -81,6 +84,7 @@ class QuickOrderController extends Controller
             'subtotal' => money((int) $lines->sum(fn (CartLine $line): int => $line->subtotal()), $currency),
             'discount' => (int) $lines->sum(fn (CartLine $line): int => $line->discount),
             'discount_label' => money((int) $lines->sum(fn (CartLine $line): int => $line->discount), $currency),
+            'tax' => $tax['label'] !== null ? ['label' => $tax['inclusive'] ? __(':tax included', ['tax' => $tax['label']]) : $tax['label'], 'amount' => money($tax['tax'], $currency)] : null,
             'total' => $total,
             'total_label' => money($total, $currency),
             'saving' => $saving > 0 ? money($saving, $currency) : null,

@@ -19,6 +19,7 @@
                 <x-textarea name="description" :label="__('Description')" :value="$product->description" rows="4" class="span-2" :help="__('One feature per line shows as a list in the store.')" />
                 <x-checkbox name="is_visible" :label="__('Show in the store')" :checked="$product->is_visible" />
                 <x-checkbox name="requires_domain" :label="__('Ask the client for a domain name')" :checked="$product->requires_domain" />
+                <x-checkbox name="taxable" :label="__('Charge tax on this product')" :help="__('Only when taxes are on in Settings → Taxes.')" :checked="$product->taxable ?? true" />
             </div>
         </section>
 

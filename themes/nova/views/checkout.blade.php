@@ -57,6 +57,9 @@
             @elseif ($couponProblem)
                 <p class="error" style="margin:0">{{ $couponProblem }}</p>
             @endif
+            @if ($tax['label'])
+                <div class="summary-row"><span>{{ $tax['inclusive'] ? __(':tax included', ['tax' => $tax['label']]) : $tax['label'] }}</span><span class="num">{{ money($tax['tax'], $currency) }}</span></div>
+            @endif
             <div class="summary-row total"><span>{{ __('Total due today') }}</span><span class="num">{{ money($total, $currency) }}</span></div>
         </aside>
     </div>

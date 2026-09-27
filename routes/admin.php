@@ -28,6 +28,7 @@ use App\Http\Controllers\Admin\ServiceController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\SocialLoginController;
 use App\Http\Controllers\Admin\StaffController;
+use App\Http\Controllers\Admin\TaxController;
 use App\Http\Controllers\Admin\TicketController;
 use App\Http\Controllers\Admin\TldPriceController;
 use App\Http\Controllers\Admin\UpdateController;
@@ -145,6 +146,12 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
 
         Route::get('currencies', [CurrencyController::class, 'edit'])->name('currencies.edit');
         Route::put('currencies', [CurrencyController::class, 'update'])->name('currencies.update');
+
+        Route::get('taxes', [TaxController::class, 'index'])->name('taxes.index');
+        Route::put('taxes', [TaxController::class, 'settings'])->name('taxes.settings');
+        Route::post('taxes/rules', [TaxController::class, 'store'])->name('taxes.store');
+        Route::put('taxes/rules/{taxRule}', [TaxController::class, 'update'])->name('taxes.update');
+        Route::delete('taxes/rules/{taxRule}', [TaxController::class, 'destroy'])->name('taxes.destroy');
 
         Route::get('gateways', [GatewayController::class, 'index'])->name('gateways.index');
         Route::get('gateways/{gateway}', [GatewayController::class, 'edit'])->name('gateways.edit');

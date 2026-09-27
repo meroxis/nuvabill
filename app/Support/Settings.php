@@ -23,6 +23,7 @@ class Settings
         'company.email' => 'billing@example.com',
         'company.address' => '',
         'company.phone' => '',
+        'company.tax_id' => '',
 
         'billing.currency' => 'USD',
         'billing.invoice_prefix' => 'INV-',
@@ -30,6 +31,31 @@ class Settings
         'billing.payment_terms_days' => 7,
 
         'currency.rates' => [],
+
+        'tax.enabled' => false,
+        'tax.inclusive' => false,
+        'tax.domains' => true,
+        'tax.id_label' => 'VAT number',
+
+        'wallet.enabled' => true,
+        'wallet.min_deposit' => 5,
+        'wallet.max_deposit' => 1000,
+        'wallet.auto_apply' => true,
+
+        'quotes.prefix' => 'Q-',
+        'quotes.valid_days' => 30,
+
+        'affiliates.enabled' => false,
+        'affiliates.percent' => 10,
+        'affiliates.hold_days' => 30,
+        'affiliates.cookie_days' => 60,
+        'affiliates.recurring' => false,
+
+        'license.white_label_key' => '',
+        'license.white_label' => null,
+
+        'locale.default' => 'en',
+        'locale.enabled' => ['en', 'ar', 'ckb'],
 
         'marketplace.developer_share' => 83,
 

@@ -21,7 +21,7 @@
                         <tr><td>{{ $item->description }}</td><td class="end num">{{ money($item->amount, $invoice->currency) }}</td></tr>
                     @endforeach
                     @if ($invoice->tax)
-                        <tr><td class="end muted">{{ __('Tax') }}</td><td class="end num">{{ money($invoice->tax, $invoice->currency) }}</td></tr>
+                        <tr><td class="end muted">{{ $invoice->taxLabel() }}</td><td class="end num">{{ money($invoice->tax, $invoice->currency) }}</td></tr>
                     @endif
                     <tr><td class="end"><b>{{ __('Total') }}</b></td><td class="end num"><b>{{ money($invoice->total, $invoice->currency) }}</b></td></tr>
                     @if ($invoice->amount_paid > 0)

@@ -21,6 +21,9 @@
                 <x-input name="state" :label="__('State or region')" :value="$client->state" autocomplete="address-level1" />
                 <x-input name="postcode" :label="__('Postcode')" :value="$client->postcode" autocomplete="postal-code" />
                 <x-select name="country" :label="__('Country')" :options="$countries" :value="$client->country" required />
+                @if (setting('tax.enabled') || $client->tax_id)
+                    <x-input name="tax_id" :label="setting('tax.id_label')" :value="$client->tax_id" :help="__('Shown on your invoices. Optional.')" />
+                @endif
             </div>
             <div class="form-actions"><button class="btn btn-primary" type="submit">{{ __('Save details') }}</button></div>
         </form>

@@ -14,8 +14,12 @@ use Illuminate\Support\Facades\DB;
  */
 class InvoiceManager
 {
+    public function __construct(private Taxes $taxes) {}
+
     /**
-     * @param  list<array{type?: string, description: string, amount: int, service_id?: int|null, domain_id?: int|null, period_start?: CarbonInterface|string|null, period_end?: CarbonInterface|string|null}>  $items
+     * Tax follows the client's tax rule at the time of the invoice; each line can set "taxed" itself.
+     *
+     * @param  list<array{type?: string, description: string, amount: int, taxed?: bool, service_id?: int|null, domain_id?: int|null, period_start?: CarbonInterface|string|null, period_end?: CarbonInterface|string|null}>  $items
      */
     public function create(
         Client $client,
@@ -26,6 +30,8 @@ class InvoiceManager
         ?string $currency = null,
     ): Invoice {
         return DB::transaction(function () use ($client, $items, $dueAt, $status, $notes, $currency): Invoice {
+            $rule = $this->taxes->ruleFor($client);
+
             $invoice = Invoice::create([
                 'client_id' => $client->id,
                 'status' => $status,
@@ -33,6 +39,9 @@ class InvoiceManager
                 'issued_at' => today(),
                 'due_at' => $dueAt ?? today(),
                 'notes' => $notes,
+                'tax_name' => $rule?->name,
+                'tax_rate' => $rule?->rate,
+                'tax_inclusive' => $rule !== null && $this->taxes->inclusive(),
             ]);
 
             foreach ($items as $item) {
@@ -40,6 +49,7 @@ class InvoiceManager
                     'type' => $item['type'] ?? 'manual',
                     'description' => $item['description'],
                     'amount' => $item['amount'],
+                    'taxed' => $rule !== null && $this->taxes->isTaxable($item),
                     'service_id' => $item['service_id'] ?? null,
                     'domain_id' => $item['domain_id'] ?? null,
                     'period_start' => $item['period_start'] ?? null,

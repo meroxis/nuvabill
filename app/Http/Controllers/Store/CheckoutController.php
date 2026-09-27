@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Store;
 
 use App\Billing\Cart;
 use App\Billing\OrderPlacer;
+use App\Billing\Taxes;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -26,11 +27,13 @@ class CheckoutController extends Controller
         $currency = $client?->currency ?? (string) setting('billing.currency');
 
         $lines = $cart->lines($currency, $client);
+        $tax = app(Taxes::class)->forCart($lines, $client);
 
         return view('theme::checkout', [
             'client' => $client,
             'lines' => $lines,
-            'total' => $lines->sum(fn ($line): int => $line->dueToday()),
+            'total' => $tax['total'],
+            'tax' => $tax,
             'discount' => $lines->sum(fn ($line): int => $line->discount),
             'coupon' => $cart->coupon($currency, $client),
             'couponProblem' => $cart->couponProblem($currency, $client),

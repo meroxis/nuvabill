@@ -78,6 +78,7 @@ class InvoiceController extends Controller
             'items' => ['required', 'array', 'min:1', 'max:50'],
             'items.*.description' => ['required', 'string', 'max:255'],
             'items.*.amount' => ['required', 'numeric', 'min:-1000000', 'max:1000000'],
+            'items.*.taxed' => ['sometimes', 'boolean'],
             'draft' => ['sometimes', 'boolean'],
             'send_email' => ['sometimes', 'boolean'],
         ]);
@@ -95,6 +96,7 @@ class InvoiceController extends Controller
             array_map(fn (array $item): array => [
                 'description' => $item['description'],
                 'amount' => Money::toMinor($item['amount']),
+                'taxed' => (bool) ($item['taxed'] ?? true),
             ], array_values($data['items'])),
             dueAt: CarbonImmutable::parse($data['due_at']),
             status: $request->boolean('draft') ? InvoiceStatus::Draft : InvoiceStatus::Unpaid,

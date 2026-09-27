@@ -20,6 +20,11 @@ class InvoiceItem extends Model
      */
     public const TYPE_DISCOUNT = 'discount';
 
+    /**
+     * Money a client adds to their wallet. Never taxed.
+     */
+    public const TYPE_CREDIT = 'credit';
+
     public const TYPE_DOMAIN_REGISTER = 'domain_register';
 
     public const TYPE_DOMAIN_TRANSFER = 'domain_transfer';
@@ -33,12 +38,13 @@ class InvoiceItem extends Model
      */
     public const DOMAIN_TYPES = [self::TYPE_DOMAIN_REGISTER, self::TYPE_DOMAIN_TRANSFER, self::TYPE_DOMAIN_RENEW];
 
-    protected $fillable = ['invoice_id', 'service_id', 'domain_id', 'type', 'description', 'amount', 'period_start', 'period_end'];
+    protected $fillable = ['invoice_id', 'service_id', 'domain_id', 'type', 'description', 'amount', 'taxed', 'period_start', 'period_end'];
 
     protected function casts(): array
     {
         return [
             'amount' => 'integer',
+            'taxed' => 'boolean',
             'period_start' => 'immutable_date',
             'period_end' => 'immutable_date',
         ];

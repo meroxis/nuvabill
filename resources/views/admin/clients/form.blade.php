@@ -25,6 +25,8 @@
             <x-select name="country" :label="__('Country')" :options="\App\Support\Countries::all()" :value="$client->country" :placeholder="__('Choose a country')" />
             <x-select name="status" :label="__('Status')" :options="collect(\App\Enums\ClientStatus::cases())->mapWithKeys(fn ($s) => [$s->value => $s->label()])->all()" :value="$client->status" required />
             <x-input name="password" type="password" :label="$editing ? __('New password') : __('Password')" :help="$editing ? __('Leave empty to keep the current password.') : __('Leave empty and the client can set one with “Forgot password”.')" autocomplete="new-password" />
+            <x-input name="tax_id" :label="setting('tax.id_label')" :value="$client->tax_id" />
+            <x-checkbox name="tax_exempt" :label="__('Tax exempt')" :help="__('No tax on this client\'s invoices, for example a business with a valid VAT number in another country.')" :checked="(bool) $client->tax_exempt" />
             <x-textarea name="notes" :label="__('Staff notes')" :value="$client->notes" :help="__('Only staff can see these notes.')" class="span-2" rows="3" />
             @unless ($editing)
                 <x-checkbox name="send_welcome" :label="__('Send the welcome email')" :checked="true" class="span-2" />

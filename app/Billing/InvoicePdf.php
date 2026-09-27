@@ -23,6 +23,7 @@ class InvoicePdf
                 'email' => setting('company.email'),
                 'address' => setting('company.address'),
                 'phone' => setting('company.phone'),
+                'tax_id' => setting('company.tax_id'),
             ],
             'accent' => setting('branding.accent'),
             'showPoweredBy' => Branding::showPoweredBy(),

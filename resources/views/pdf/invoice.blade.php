@@ -32,6 +32,7 @@
                 <div class="company">{{ $company['name'] }}</div>
                 @if ($company['address'])<div class="muted" style="white-space: pre-line">{{ $company['address'] }}</div>@endif
                 <div class="muted">{{ $company['email'] }}@if ($company['phone']) · {{ $company['phone'] }}@endif</div>
+                @if ($company['tax_id'])<div class="muted">{{ setting('tax.id_label') }}: {{ $company['tax_id'] }}</div>@endif
             </td>
             <td class="right">
                 <div class="title">{{ __('INVOICE') }}</div>
@@ -51,6 +52,7 @@
                 <div>{{ collect([$invoice->client->address_1, $invoice->client->address_2])->filter()->implode(', ') }}</div>
                 <div>{{ collect([trim($invoice->client->postcode.' '.$invoice->client->city), $invoice->client->state, \App\Support\Countries::name($invoice->client->country)])->filter()->implode(', ') }}</div>
                 <div class="muted">{{ $invoice->client->email }}</div>
+                @if ($invoice->client->tax_id)<div class="muted">{{ setting('tax.id_label') }}: {{ $invoice->client->tax_id }}</div>@endif
             </td>
             <td class="right">
                 <table>
@@ -76,7 +78,7 @@
     <table class="totals">
         <tr><td class="muted">{{ __('Subtotal') }}</td><td class="right">{{ money($invoice->subtotal, $invoice->currency) }}</td></tr>
         @if ($invoice->tax > 0)
-            <tr><td class="muted">{{ __('Tax') }}</td><td class="right">{{ money($invoice->tax, $invoice->currency) }}</td></tr>
+            <tr><td class="muted">{{ $invoice->taxLabel() }}</td><td class="right">{{ money($invoice->tax, $invoice->currency) }}</td></tr>
         @endif
         <tr class="grand"><td>{{ __('Total') }}</td><td class="right">{{ money($invoice->total, $invoice->currency) }}</td></tr>
         @if ($invoice->amount_paid > 0)

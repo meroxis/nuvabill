@@ -39,6 +39,8 @@ class Client extends Authenticatable
         'currency',
         'status',
         'notes',
+        'tax_exempt',
+        'tax_id',
     ];
 
     public const TWO_FACTOR_APP = 'totp';
@@ -67,6 +69,7 @@ class Client extends Authenticatable
             'password' => 'hashed',
             'status' => ClientStatus::class,
             'credit' => 'integer',
+            'tax_exempt' => 'boolean',
             'has_password' => 'boolean',
             'two_factor_secret' => 'encrypted',
             'two_factor_recovery_codes' => 'encrypted:array',

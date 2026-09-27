@@ -47,6 +47,9 @@
                 @if ($discount)
                     <div class="summary-row" style="color:var(--nb-good)"><span>{{ __('You save') }}</span><span class="num">-{{ money($discount, $currency) }}</span></div>
                 @endif
+                @if ($tax['label'])
+                    <div class="summary-row"><span>{{ $tax['inclusive'] ? __(':tax included', ['tax' => $tax['label']]) : $tax['label'] }}</span><span class="num">{{ money($tax['tax'], $currency) }}</span></div>
+                @endif
                 <div class="summary-row total"><span>{{ __('Total due today') }}</span><span class="num">{{ money($total, $currency) }}</span></div>
                 <a class="btn btn-primary btn-block" href="{{ route('checkout.show') }}">{{ __('Continue to checkout') }}</a>
                 <a class="btn btn-block btn-ghost" href="{{ route('store.index') }}">{{ __('Keep shopping') }}</a>
