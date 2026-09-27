@@ -112,7 +112,8 @@ class StoreTest extends TestCase
 
         $this->getJson(route('marketplace.api.catalog', ['nuvabill' => '0.3.0']))->assertOk()->assertJsonPath('items.0.slug', 'aurora')->assertJsonPath('items.0.price', 5900);
 
-        $this->postJson(route('marketplace.api.download'), ['slug' => 'aurora', 'site' => 'billing.example.org'])->assertForbidden();
+        $this->postJson(route('marketplace.api.download'), ['slug' => 'aurora', 'site' => 'billing.example.org'])->assertForbidden()
+            ->assertJsonPath('message', 'Aurora is a paid item. Enter the license key from your purchase.');
 
         $response = $this->postJson(route('marketplace.api.download'), ['slug' => 'aurora', 'license_key' => $license->key, 'site' => 'https://www.billing.example.org/admin', 'nuvabill' => '0.3.0'])->assertOk();
         $this->assertSame('billing.example.org', $license->fresh()->site);

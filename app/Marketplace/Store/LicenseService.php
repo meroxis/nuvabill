@@ -90,6 +90,10 @@ class LicenseService
         $site = License::normalizeSite($site);
         $license = filled($key) ? License::query()->where('key', strtoupper(trim((string) $key)))->first() : null;
 
+        if (blank($key)) {
+            return ['valid' => false, 'status' => 'unknown', 'message' => __(':item is a paid item. Enter the license key from your purchase.', ['item' => $item->name]), 'license' => null];
+        }
+
         if ($license === null || $license->marketplace_item_id !== $item->id) {
             return ['valid' => false, 'status' => 'unknown', 'message' => __('This license key is not for :item.', ['item' => $item->name]), 'license' => null];
         }
