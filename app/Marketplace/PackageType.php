@@ -16,6 +16,12 @@ enum PackageType: string
     case Registrar = 'registrar';
     case Addon = 'addon';
 
+    /**
+     * A license for Nuvabill itself, such as the White-label license. It has no package to install
+     * and only counts while its yearly subscription is paid.
+     */
+    case License = 'license';
+
     public function label(): string
     {
         return match ($this) {
@@ -25,6 +31,7 @@ enum PackageType: string
             self::Server => __('Server module'),
             self::Registrar => __('Domain registrar'),
             self::Addon => __('Extension'),
+            self::License => __('Nuvabill license'),
         };
     }
 

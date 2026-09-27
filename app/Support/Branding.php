@@ -5,8 +5,8 @@ namespace App\Support;
 /**
  * Decides where the "Powered by Nuvabill" credit appears.
  *
- * The Community edition always shows it on the client area, invoices and emails, as its license
- * requires. White-label licenses that remove it arrive with the license server in v0.4.
+ * The Community edition shows it on the client area, invoices and emails, as its license requires.
+ * A valid White-label license from the marketplace store removes it ({@see WhiteLabel}).
  */
 class Branding
 {
@@ -16,6 +16,7 @@ class Branding
 
     public static function showPoweredBy(): bool
     {
-        return true;
+        // Before installation there are no settings yet: show the credit.
+        return rescue(fn (): bool => ! app(WhiteLabel::class)->isActive(), true, report: false);
     }
 }

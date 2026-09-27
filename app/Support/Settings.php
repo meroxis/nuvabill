@@ -120,7 +120,7 @@ class Settings
      *
      * @var list<string>
      */
-    public const SECRET_KEYS = ['mail.password', 'import.whmcs', 'social.google', 'social.github', 'social.facebook', 'security.captcha_secret'];
+    public const SECRET_KEYS = ['license.white_label_key', 'mail.password', 'import.whmcs', 'social.google', 'social.github', 'social.facebook', 'security.captcha_secret'];
 
     /**
      * @var array<string, mixed>|null

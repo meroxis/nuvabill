@@ -204,6 +204,10 @@ class PackageArchive
                     ? $type
                     : (PackageType::tryFrom((string) ($manifest['type'] ?? '')) ?? throw new RuntimeException(__('extension.json has an unknown type.')));
 
+                if ($this->type === PackageType::License) {
+                    throw new RuntimeException(__('extension.json has an unknown type.'));
+                }
+
                 if (! preg_match('/^[a-z0-9][a-z0-9_-]{1,63}$/', $this->slug())) {
                     throw new RuntimeException(__('The package slug may only use lowercase letters, numbers, dashes and underscores.'));
                 }

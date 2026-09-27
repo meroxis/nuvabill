@@ -25,6 +25,7 @@ Route::middleware('web')->group(function (): void {
     Route::get('marketplace', [MarketplacePageController::class, 'index'])->name('marketplace.index');
     Route::get('marketplace/{item}', [MarketplacePageController::class, 'show'])->name('marketplace.show');
     Route::get('developers', [MarketplacePageController::class, 'developers'])->name('marketplace.developers');
+    Route::get('white-label', [MarketplacePageController::class, 'whiteLabel'])->name('marketplace.white-label');
 
     Route::middleware(['auth:web', 'client.active', 'client.two-factor'])->group(function (): void {
         Route::post('client/licenses/{license}/move', [LicenseController::class, 'move'])->middleware('throttle:5,1')->name('client.licenses.move');

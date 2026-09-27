@@ -34,6 +34,7 @@ use App\Http\Controllers\Admin\TaxController;
 use App\Http\Controllers\Admin\TicketController;
 use App\Http\Controllers\Admin\TldPriceController;
 use App\Http\Controllers\Admin\UpdateController;
+use App\Http\Controllers\Admin\WhiteLabelController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -166,6 +167,10 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
 
         Route::get('currencies', [CurrencyController::class, 'edit'])->name('currencies.edit');
         Route::put('currencies', [CurrencyController::class, 'update'])->name('currencies.update');
+
+        Route::get('license', [WhiteLabelController::class, 'edit'])->name('license.edit');
+        Route::put('license', [WhiteLabelController::class, 'update'])->middleware('throttle:10,1')->name('license.update');
+        Route::post('license/check', [WhiteLabelController::class, 'check'])->middleware('throttle:10,1')->name('license.check');
 
         Route::get('taxes', [TaxController::class, 'index'])->name('taxes.index');
         Route::put('taxes', [TaxController::class, 'settings'])->name('taxes.settings');

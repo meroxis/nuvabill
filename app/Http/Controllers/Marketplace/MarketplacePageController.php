@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Marketplace;
 use App\Http\Controllers\Controller;
 use App\Marketplace\PackageType;
 use App\Models\MarketplaceItem;
+use App\Support\WhiteLabel;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -58,6 +59,17 @@ class MarketplacePageController extends Controller
             'price' => $item->product?->prices->first(),
             'share' => (int) setting('marketplace.developer_share', 83),
         ]);
+    }
+
+    /**
+     * The White-label license that removes the "Powered by Nuvabill" credit, sold as a yearly license.
+     */
+    public function whiteLabel(): View
+    {
+        $item = MarketplaceItem::query()->where('slug', WhiteLabel::SLUG)->where('status', MarketplaceItem::STATUS_LIVE)->with('product.prices')->first();
+        abort_if($item === null || $item->product === null, 404);
+
+        return view('theme::marketplace.white-label', ['item' => $item, 'price' => $item->product->prices->first()]);
     }
 
     public function developers(): View

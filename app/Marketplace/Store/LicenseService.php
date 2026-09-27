@@ -3,6 +3,7 @@
 namespace App\Marketplace\Store;
 
 use App\Mail\TemplateMailer;
+use App\Marketplace\PackageType;
 use App\Models\License;
 use App\Models\MarketplaceItem;
 use App\Models\Service;
@@ -107,6 +108,10 @@ class LicenseService
 
         if (! $license->isActive()) {
             return ['valid' => false, 'status' => 'revoked', 'message' => __('This license was cancelled. Contact us if you think this is wrong.'), 'license' => $license];
+        }
+
+        if ($item->type === PackageType::License && $license->updates_until !== null && $license->updates_until->endOfDay()->isPast()) {
+            return ['valid' => false, 'status' => 'expired', 'message' => __('This license ended on :date. Renew it from your account on :store.', ['date' => $license->updates_until->format('d M Y'), 'store' => parse_url((string) config('app.url'), PHP_URL_HOST)]), 'license' => $license];
         }
 
         if (! $matched) {

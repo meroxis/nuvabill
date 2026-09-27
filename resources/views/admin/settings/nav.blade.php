@@ -17,6 +17,7 @@
         <a class="chip" href="{{ route('admin.settings.roles.index') }}" @if (request()->routeIs('admin.settings.roles.*')) aria-current="true" @endif>{{ __('Roles') }}</a>
     @endif
     @if ($admin->hasPermission('settings.manage'))
+        <a class="chip" href="{{ route('admin.settings.license.edit') }}" @if (request()->routeIs('admin.settings.license.*')) aria-current="true" @endif>{{ __('License') }}</a>
         <a class="chip" href="{{ route('admin.settings.activity') }}" @if (request()->routeIs('admin.settings.activity')) aria-current="true" @endif>{{ __('Activity log') }}</a>
         <a class="chip" href="{{ route('admin.settings.import.index') }}" @if (request()->routeIs('admin.settings.import.*')) aria-current="true" @endif>{{ __('Import') }}</a>
     @endif

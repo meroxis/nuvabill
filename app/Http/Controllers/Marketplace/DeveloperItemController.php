@@ -135,7 +135,7 @@ class DeveloperItemController extends Controller
      */
     private function types(): array
     {
-        return collect(PackageType::cases())->mapWithKeys(fn (PackageType $type): array => [$type->value => $type->label()])->all();
+        return collect(PackageType::cases())->reject(fn (PackageType $type): bool => $type === PackageType::License)->mapWithKeys(fn (PackageType $type): array => [$type->value => $type->label()])->all();
     }
 
     /**
@@ -148,7 +148,7 @@ class DeveloperItemController extends Controller
         return $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'slug' => $item ? ['nullable'] : ['required', 'string', 'max:64', 'regex:/^[a-z0-9][a-z0-9_-]*$/', Rule::unique('marketplace_items', 'slug')],
-            'type' => $item ? ['nullable'] : ['required', Rule::enum(PackageType::class)],
+            'type' => $item ? ['nullable'] : ['required', Rule::enum(PackageType::class)->except(PackageType::License)],
             'category' => ['nullable', Rule::in(MarketplaceItem::CATEGORIES)],
             'summary' => ['required', 'string', 'max:200'],
             'description' => ['nullable', 'string', 'max:5000'],
