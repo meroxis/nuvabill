@@ -1,5 +1,6 @@
 <?php
 
+use App\Extensions\ExtensionManager;
 use App\Support\Demo;
 use App\Support\Installation;
 use Illuminate\Support\Facades\Schedule;
@@ -29,5 +30,8 @@ if (Installation::isInstalled()) {
         Schedule::command('nuvabill:update --auto')->dailyAt('03:00')->withoutOverlapping();
 
         Schedule::command('nuvabill:marketplace-licenses')->dailyAt('04:20')->withoutOverlapping();
+
+        // Scheduled work of switched-on add-ons, for example off-site backups.
+        app(ExtensionManager::class)->scheduleAddons(Schedule::getFacadeRoot());
     }
 }

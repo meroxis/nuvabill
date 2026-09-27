@@ -173,9 +173,12 @@ class MarketplaceController extends Controller
     {
         $manifest = $this->addonManifest($slug);
 
+        $addon = $this->extensions->addon($slug);
+
         return view('admin.marketplace.settings', [
             'manifest' => $manifest,
-            'fields' => $this->extensions->addon($slug)->settingsFields(),
+            'fields' => $addon->settingsFields(),
+            'panel' => $this->extensions->isEnabled($slug) ? (string) rescue(fn (): string => $addon->settingsHtml(), '') : '',
             'values' => $this->extensions->settings($slug),
             'enabled' => $this->extensions->isEnabled($slug),
         ]);
@@ -201,7 +204,8 @@ class MarketplaceController extends Controller
         }
 
         $input = $request->validate($rules, [], collect($fields)->mapWithKeys(fn (array $field, string $key): array => ["settings.{$key}" => $field['label']])->all());
-        $settings = [];
+        // Keep values the add-on saved for itself, such as a connection token.
+        $settings = $current;
 
         foreach ($fields as $key => $field) {
             $value = $input['settings'][$key] ?? null;

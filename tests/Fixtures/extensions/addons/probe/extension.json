@@ -1,0 +1,10 @@
+{
+    "slug": "probe",
+    "type": "addon",
+    "name": "Probe add-on",
+    "version": "1.0.0",
+    "namespace": "Tests\\Fixtures\\Addons\\",
+    "class": "Tests\\Fixtures\\Addons\\ProbeAddon",
+    "description": "An add-on that only exists in the test suite.",
+    "permissions": ["admin-settings", "admin-page", "schedule"]
+}

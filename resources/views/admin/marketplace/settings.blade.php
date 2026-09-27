@@ -21,4 +21,8 @@
             <a class="btn" href="{{ route('admin.marketplace.show', $manifest->slug) }}">{{ __('Cancel') }}</a>
         </div>
     </form>
+
+    @if ($panel !== '')
+        <div style="max-width:860px;margin-top:14px">{!! $panel !!}</div>
+    @endif
 </x-layouts.admin>

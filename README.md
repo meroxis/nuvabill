@@ -227,6 +227,9 @@ Nuvabill checks for new versions every day. Every release is **signed**: the upd
 backs up your files and database first, and **rolls back automatically** if something fails.
 Security fixes can install themselves at night.
 
+**Backups** of the whole site, or of the database only, with `php artisan nuvabill:backup` (add `--password` to encrypt
+them). The free **Google Drive backup** add-on on the Marketplace runs them on a schedule and keeps the newest copies.
+
 ![Updates](.github/screenshots/updates.png)
 
 ### Marketplace: themes, order forms and add-ons
@@ -326,7 +329,10 @@ Payment gateways extend `App\Extensions\Gateways\Gateway`. Server modules extend
 
 **Add-ons** (`"type": "addon"`, in `extensions/addons/`) extend `App\Extensions\Addons\Addon`. In `boot()` they can
 listen to `OrderPlaced`, `InvoicePaid`, `ServiceActivated`, `TicketOpened` and `TicketReplied` (in `App\Events`),
-add HTML to page heads with `headHtml()` and allow extra hosts with `contentSecurityPolicy()`.
+add HTML to page heads with `headHtml()` and allow extra hosts with `contentSecurityPolicy()`. Since 0.4.2 they can
+also run on a schedule (`schedule()`), add admin pages under `/admin/addons/{slug}/` (`adminRoutes()`), show a panel on
+their settings page (`settingsHtml()`), keep their own values with `remember()`, and ship `lang/ar.json` and
+`lang/ckb.json` translations. `App\Support\SiteBackup` makes whole-site or database backups for backup add-ons.
 
 List what your package does in `"permissions"`, for example `["events", "http:api.example.com"]`. Staff see it before installing.
 </details>

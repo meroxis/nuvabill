@@ -1,5 +1,6 @@
 <?php
 
+use App\Extensions\ExtensionManager;
 use App\Http\Controllers\Admin\ActivityController;
 use App\Http\Controllers\Admin\AffiliateController;
 use App\Http\Controllers\Admin\ApiKeyController;
@@ -245,6 +246,10 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::get('{slug}/settings', [MarketplaceController::class, 'settings'])->name('settings');
         Route::put('{slug}/settings', [MarketplaceController::class, 'saveSettings'])->name('settings.update');
     })->where(['slug' => '[a-z0-9][a-z0-9_-]*']);
+
+    // Admin pages of switched-on add-ons, for example "Connect Google Drive".
+    Route::middleware('admin.can:marketplace.manage')->prefix('addons')->name('addons.')
+        ->group(fn () => rescue(fn () => app(ExtensionManager::class)->registerAddonRoutes(), report: false));
 
     Route::middleware('admin.can:system.update')->prefix('updates')->name('updates.')->group(function (): void {
         Route::get('/', [UpdateController::class, 'index'])->name('index');

@@ -3,7 +3,9 @@
 namespace App\Extensions\Addons;
 
 use App\Events\OrderPlaced;
+use App\Extensions\ExtensionManager;
 use App\Extensions\ExtensionManifest;
+use Illuminate\Console\Scheduling\Schedule;
 
 /**
  * Base class for add-on extensions: features that are not a gateway, server module or registrar,
@@ -11,7 +13,8 @@ use App\Extensions\ExtensionManifest;
  *
  * An add-on is booted on every request while it is switched on. In boot() it can listen to
  * events such as {@see OrderPlaced}, and it can add HTML to page heads and extra
- * sources to the content security policy.
+ * sources to the content security policy. Since Nuvabill 0.4.2 it can also run on a schedule,
+ * add admin pages and show a panel on its settings page.
  */
 abstract class Addon
 {
@@ -78,8 +81,52 @@ abstract class Addon
         return [];
     }
 
+    /**
+     * Scheduled work, run by the site's cron job. Give closures a name, for example
+     * $schedule->call(fn () => $this->sync())->hourly()->name('my-addon-sync')->withoutOverlapping().
+     * List "schedule" in the manifest's permissions.
+     */
+    public function schedule(Schedule $schedule): void {}
+
+    /**
+     * Admin pages, registered under /admin/addons/{slug}/ for staff who may manage the marketplace.
+     * Give them short names, for example Route::get('connect', ...)->name('connect'), and link to them
+     * with route($this->routeName('connect')).
+     * List "admin-page" in the manifest's permissions.
+     */
+    public function adminRoutes(): void {}
+
+    /**
+     * HTML shown under the settings form, for example a connection status and buttons.
+     */
+    public function settingsHtml(): string
+    {
+        return '';
+    }
+
+    /**
+     * The full route name for one of this add-on's admin pages.
+     */
+    public function routeName(string $name): string
+    {
+        return 'admin.addons.'.$this->slug().'.'.$name;
+    }
+
     protected function setting(string $key, mixed $default = null): mixed
     {
         return $this->settings[$key] ?? $default;
+    }
+
+    /**
+     * Save values the add-on keeps for itself, such as a connection token or the time of the last run.
+     * They are stored encrypted with the add-on's settings and survive saving the settings form.
+     *
+     * @param  array<string, mixed>  $values
+     */
+    protected function remember(array $values): void
+    {
+        $extensions = app(ExtensionManager::class);
+        $this->settings = array_merge($extensions->settings($this->slug()), $values);
+        $extensions->saveSettings($this->slug(), $this->settings, $extensions->isEnabled($this->slug()));
     }
 }

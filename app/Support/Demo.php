@@ -61,6 +61,7 @@ class Demo
         'admin.marketplace.deactivate',
         'admin.marketplace.license',
         'admin.marketplace.settings.update',
+        'admin.addons.*',
         'admin.servers.*',
         'admin.services.module',
         'admin.invoices.refund',

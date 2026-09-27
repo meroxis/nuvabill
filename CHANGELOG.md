@@ -4,6 +4,12 @@ What changed in each Nuvabill release. The release workflow copies the section f
 release, and the **Updates** page in the admin area shows it. Write for hosting companies, in plain words.
 Add `[security]` to a section to let installs apply it automatically as a security fix.
 
+## 0.4.2
+
+- **Backups:** `php artisan nuvabill:backup` backs up the whole site (every file and the database), or only the database with `--database`. Add `--password=…` to encrypt it with AES-256. Each backup has a RESTORE.txt with the steps to put the site back.
+- **Google Drive backup**, free on the Marketplace: back up the whole site and the database only, each on its own schedule (or switched off), to your own Google Drive, keeping the newest copies.
+- For developers: add-ons can now run on a schedule, add admin pages, show a panel on their settings page, keep their own values (such as a connection token) and ship Arabic and Kurdish translations. New permission codes: `schedule` and `backups`.
+
 ## 0.4.1
 
 - **Install with a single command:** `curl -fsSL https://nuvabill.com/install.sh | bash`. On a fresh Ubuntu or Debian server it also sets up Nginx, PHP, MariaDB, a free SSL certificate and the cron job. On a server that already runs PHP, such as cPanel Terminal, it installs into a folder and adds the cron job. Every download is checked against the release signature first.

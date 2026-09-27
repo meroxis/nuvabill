@@ -233,6 +233,8 @@
         display: grid;
         gap: 0.35rem;
         min-width: 0;
+        /* A field next to a taller one (with help text) keeps its own height. */
+        align-content: start;
     }
 
     .field > label,

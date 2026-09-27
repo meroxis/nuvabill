@@ -8,9 +8,12 @@ use App\Contracts\ServerModule;
 use App\Extensions\Addons\Addon;
 use App\Models\Extension;
 use App\Support\Installation;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Lang;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
 use InvalidArgumentException;
 use Throwable;
@@ -322,7 +325,8 @@ class ExtensionManager
     }
 
     /**
-     * Extensions with a views folder can ship Blade views, used as "ext-{slug}::name".
+     * Extensions with a views folder can ship Blade views, used as "ext-{slug}::name", and a lang
+     * folder with JSON translations (lang/ar.json, lang/ckb.json) for their own texts.
      */
     public function registerViews(): void
     {
@@ -332,6 +336,40 @@ class ExtensionManager
             if (is_dir($views)) {
                 View::addNamespace('ext-'.$manifest->slug, $views);
             }
+
+            $lang = $manifest->path.DIRECTORY_SEPARATOR.'lang';
+
+            if (is_dir($lang)) {
+                Lang::addJsonPath($lang);
+            }
+        }
+    }
+
+    /**
+     * Let every active add-on add its scheduled work. A broken add-on is reported and skipped.
+     */
+    public function scheduleAddons(Schedule $schedule): void
+    {
+        foreach ($this->activeAddons() as $addon) {
+            $this->tryMake(function () use ($addon, $schedule): bool {
+                $addon->schedule($schedule);
+
+                return true;
+            });
+        }
+    }
+
+    /**
+     * Admin pages of active add-ons, under /admin/addons/{slug}/. Call inside the admin route group.
+     */
+    public function registerAddonRoutes(): void
+    {
+        foreach ($this->activeAddons() as $slug => $addon) {
+            $this->tryMake(function () use ($slug, $addon): bool {
+                Route::prefix($slug)->name($slug.'.')->group(fn () => $addon->adminRoutes());
+
+                return true;
+            });
         }
     }
 
