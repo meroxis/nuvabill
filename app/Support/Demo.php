@@ -37,6 +37,7 @@ class Demo
         'admin.settings.gateways.update',
         'admin.settings.currencies.update',
         'admin.settings.taxes.settings',
+        'admin.affiliates.settings',
         'admin.settings.taxes.store',
         'admin.settings.taxes.update',
         'admin.settings.taxes.destroy',

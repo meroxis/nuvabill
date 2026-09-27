@@ -2,6 +2,7 @@
 
 use App\Auth\Social\SocialLogin;
 use App\Http\Controllers\Client\AccountController;
+use App\Http\Controllers\Client\AffiliateController;
 use App\Http\Controllers\Client\Auth\LoginController;
 use App\Http\Controllers\Client\Auth\PasswordResetController;
 use App\Http\Controllers\Client\Auth\RegisterController;
@@ -112,6 +113,10 @@ Route::middleware(['auth:web', 'client.active', 'client.two-factor'])->prefix('c
     Route::get('quotes/{quote}/pdf', [QuoteController::class, 'pdf'])->name('quotes.pdf');
     Route::post('quotes/{quote}/accept', [QuoteController::class, 'accept'])->middleware('throttle:10,1')->name('quotes.accept');
     Route::post('quotes/{quote}/decline', [QuoteController::class, 'decline'])->middleware('throttle:10,1')->name('quotes.decline');
+
+    Route::get('affiliate', [AffiliateController::class, 'show'])->name('affiliate');
+    Route::post('affiliate', [AffiliateController::class, 'join'])->middleware('throttle:5,1')->name('affiliate.join');
+    Route::post('affiliate/withdraw', [AffiliateController::class, 'withdraw'])->middleware('throttle:5,1')->name('affiliate.withdraw');
 
     Route::get('wallet', [WalletController::class, 'show'])->name('wallet');
     Route::post('wallet', [WalletController::class, 'store'])->middleware('throttle:10,1')->name('wallet.store');

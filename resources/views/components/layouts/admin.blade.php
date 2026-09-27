@@ -15,6 +15,7 @@
     $setup = array_filter([
         ['route' => 'admin.products.index', 'match' => ['admin.products.*', 'admin.product-groups.*', 'admin.product-addons.*'], 'icon' => 'store', 'label' => __('Products'), 'show' => $can('products.manage')],
         ['route' => 'admin.coupons.index', 'match' => 'admin.coupons.*', 'icon' => 'tag', 'label' => __('Coupons'), 'show' => $can('coupons.manage')],
+        ['route' => 'admin.affiliates.index', 'match' => 'admin.affiliates.*', 'icon' => 'star', 'label' => __('Affiliates'), 'show' => $can('affiliates.manage')],
         ['route' => 'admin.servers.index', 'match' => 'admin.servers.*', 'icon' => 'server', 'label' => __('Servers'), 'show' => $can('products.manage')],
         ['route' => 'admin.marketplace.index', 'match' => 'admin.marketplace.*', 'icon' => 'puzzle', 'label' => __('Marketplace'), 'show' => $can('marketplace.manage'), 'count' => $marketplaceUpdates ?: null],
         ['route' => 'admin.settings.edit', 'match' => ['admin.settings.*'], 'icon' => 'settings', 'label' => __('Settings'), 'show' => $can('settings.manage') || $can('staff.manage')],

@@ -70,6 +70,7 @@ class RefundIssuer
         }
 
         Activity::log('invoice.refunded', "Refunded invoice {$invoice->displayNumber()}", $invoice);
+        app(Affiliates::class)->cancelForRefund($invoice);
 
         return $invoice;
     }

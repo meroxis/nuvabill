@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Billing\Affiliates;
 use App\Domains\Rdap;
+use App\Events\InvoicePaid;
 use App\Extensions\ExtensionManager;
 use App\Models\ActivityLog;
 use App\Models\Admin;
@@ -25,6 +27,7 @@ use App\View\Composers\AdminLayoutComposer;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Pagination\Paginator;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\View;
@@ -83,6 +86,8 @@ class AppServiceProvider extends ServiceProvider
         if (Installation::isInstalled()) {
             $this->applySettingsToConfig();
             $this->app->make(ExtensionManager::class)->bootAddons();
+            // A problem with an affiliate commission must never stop a payment.
+            Event::listen(InvoicePaid::class, fn (InvoicePaid $event) => rescue(fn () => $this->app->make(Affiliates::class)->onInvoicePaid($event->invoice)));
         }
 
         if (Demo::isEnabled()) {

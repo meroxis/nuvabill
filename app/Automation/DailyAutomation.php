@@ -2,6 +2,7 @@
 
 namespace App\Automation;
 
+use App\Billing\Affiliates;
 use App\Billing\InvoicePaidHandler;
 use App\Billing\RenewalGenerator;
 use App\Domains\DomainProvisioner;
@@ -28,6 +29,7 @@ class DailyAutomation
         private Provisioner $provisioner,
         private DomainProvisioner $domains,
         private TemplateMailer $mailer,
+        private Affiliates $affiliates,
     ) {}
 
     /**
@@ -36,7 +38,7 @@ class DailyAutomation
     private const DOMAIN_SYNC_LIMIT = 25;
 
     /**
-     * @return array{invoices: int, reminders: int, suspended: int, terminated: int, failed: int, domains_expired: int}
+     * @return array{invoices: int, reminders: int, suspended: int, terminated: int, failed: int, domains_expired: int, commissions: int}
      */
     public function run(?CarbonInterface $today = null): array
     {
@@ -49,6 +51,7 @@ class DailyAutomation
             'terminated' => 0,
             'failed' => 0,
             'domains_expired' => 0,
+            'commissions' => $this->affiliates->release($today),
         ];
 
         $this->syncDomains();

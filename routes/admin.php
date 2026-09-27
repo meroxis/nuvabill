@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\ActivityController;
+use App\Http\Controllers\Admin\AffiliateController;
 use App\Http\Controllers\Admin\Auth\LoginController;
 use App\Http\Controllers\Admin\Auth\PasswordResetController;
 use App\Http\Controllers\Admin\Auth\TwoFactorChallengeController;
@@ -69,6 +70,14 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
     Route::middleware('admin.can:clients.view')->group(function (): void {
         Route::get('clients', [ClientController::class, 'index'])->name('clients.index');
         Route::get('clients/{client}', [ClientController::class, 'show'])->whereNumber('client')->name('clients.show');
+    });
+
+    Route::middleware('admin.can:affiliates.manage')->prefix('affiliates')->name('affiliates.')->group(function (): void {
+        Route::get('/', [AffiliateController::class, 'index'])->name('index');
+        Route::put('settings', [AffiliateController::class, 'settings'])->name('settings');
+        Route::get('{affiliate}', [AffiliateController::class, 'show'])->whereNumber('affiliate')->name('show');
+        Route::put('{affiliate}', [AffiliateController::class, 'update'])->whereNumber('affiliate')->name('update');
+        Route::post('commissions/{commission}/{action}', [AffiliateController::class, 'commission'])->whereIn('action', ['release', 'cancel', 'paid'])->name('commission');
     });
 
     Route::middleware('admin.can:clients.manage')->group(function (): void {

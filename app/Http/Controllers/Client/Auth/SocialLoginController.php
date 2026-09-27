@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Client\Auth;
 use App\Auth\Social\Provider;
 use App\Auth\Social\SocialLogin;
 use App\Auth\Social\SocialUser;
+use App\Billing\Affiliates;
 use App\Enums\ClientStatus;
 use App\Http\Controllers\Controller;
 use App\Mail\TemplateMailer;
@@ -143,6 +144,7 @@ class SocialLoginController extends Controller
         $client->forceFill(['has_password' => false, 'email_verified_at' => $user->emailVerified ? now() : null])->save();
 
         Activity::log('client.registered', "{$client->name} created an account with {$driver->name()}", $client, $client, $client);
+        app(Affiliates::class)->recordReferral($client, request()->cookie(Affiliates::COOKIE));
         $mailer->send('client.welcome', $client, ['login_url' => route('client.login'), 'reset_url' => route('client.password.request')]);
 
         return $client;

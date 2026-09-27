@@ -43,6 +43,12 @@
                         <div class="account-dropdown" x-show="account" x-cloak>
                             <a href="{{ route('client.account.edit') }}"><x-icon name="user" />{{ __('Your details') }}</a>
                             <a href="{{ route('client.account.edit') }}#two-factor"><x-icon name="shield" />{{ __('Security') }}</a>
+                            @if (setting('wallet.enabled') || $client->credit > 0)
+                                <a href="{{ route('client.wallet') }}"><x-icon name="card" />{{ __('Wallet') }}</a>
+                            @endif
+                            @if (setting('affiliates.enabled'))
+                                <a href="{{ route('client.affiliate') }}"><x-icon name="star" />{{ __('Affiliate program') }}</a>
+                            @endif
                             <a href="{{ route('client.invoices.index') }}"><x-icon name="receipt" />{{ __('Invoices') }}</a>
                             <form method="POST" action="{{ route('client.logout') }}">
                                 @csrf
