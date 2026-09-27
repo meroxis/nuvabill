@@ -24,7 +24,7 @@
                     <tr>
                         <td><a class="row-link mono" href="{{ route('admin.orders.show', $order) }}">#{{ $order->number }}</a><div class="faint" style="font-size:.8rem">{{ trans_choice(':count item|:count items', $order->services_count, ['count' => $order->services_count]) }}</div></td>
                         <td>{{ $order->client->name }}</td>
-                        <td style="white-space:nowrap">{{ $order->created_at->format('d M Y H:i') }}</td>
+                        <td style="white-space:nowrap">{{ $order->created_at->translatedFormat('d M Y H:i') }}</td>
                         <td class="end num">{{ money($order->total, $order->currency) }}</td>
                         <td>@if ($order->invoice)<x-status :value="$order->invoice->status" />@else — @endif</td>
                         <td><x-status :value="$order->status" /></td>

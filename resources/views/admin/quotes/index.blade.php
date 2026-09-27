@@ -27,7 +27,7 @@
                         <td><a class="row-link mono" href="{{ route('admin.quotes.show', $quote) }}">{{ $quote->displayNumber() }}</a></td>
                         <td>{{ $quote->client->name }}</td>
                         <td>{{ $quote->subject }}</td>
-                        <td class="num" style="white-space:nowrap">{{ $quote->valid_until->format('d M Y') }}</td>
+                        <td class="num" style="white-space:nowrap">{{ $quote->valid_until->translatedFormat('d M Y') }}</td>
                         <td class="end num">{{ money($quote->total, $quote->currency) }}</td>
                         <td><x-status :value="$quote->displayStatus()" /></td>
                     </tr>

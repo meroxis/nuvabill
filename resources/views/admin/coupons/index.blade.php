@@ -35,7 +35,7 @@
                             @if (! empty($coupon->billing_cycles))<div class="faint" style="font-size:.8rem">{{ collect($coupon->billing_cycles)->map(fn ($cycle) => \App\Enums\BillingCycle::tryFrom($cycle)?->label())->filter()->implode(', ') }}</div>@endif
                         </td>
                         <td class="end num">{{ $coupon->uses }}@if ($coupon->max_uses) / {{ $coupon->max_uses }}@endif</td>
-                        <td style="white-space:nowrap">{{ $coupon->ends_at?->format('d M Y') ?? __('No end') }}</td>
+                        <td style="white-space:nowrap">{{ $coupon->ends_at?->translatedFormat('d M Y') ?? __('No end') }}</td>
                         <td>
                             @if ($coupon->isExpired())<x-pill>{{ __('Ended') }}</x-pill>
                             @elseif ($coupon->isScheduled())<x-pill tone="info">{{ __('Scheduled') }}</x-pill>

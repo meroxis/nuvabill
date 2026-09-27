@@ -18,7 +18,7 @@
                 <thead><tr><th>{{ __('Description') }}</th><th class="end">{{ __('Amount') }}</th></tr></thead>
                 <tbody>
                     @foreach ($quote->items as $item)
-                        <tr><td>{{ $item->description }}</td><td class="end num">{{ money($item->amount, $quote->currency) }}</td></tr>
+                        <tr><td><bdi>{{ $item->description }}</bdi></td><td class="end num">{{ money($item->amount, $quote->currency) }}</td></tr>
                     @endforeach
                     @if ($quote->tax > 0)
                         <tr><td class="end muted">{{ $quote->taxLabel() }}</td><td class="end num">{{ money($quote->tax, $quote->currency) }}</td></tr>
@@ -35,7 +35,7 @@
             <div class="summary-row total" style="border:0;padding:0"><span>{{ __('Total') }}</span><span class="num">{{ money($quote->total, $quote->currency) }}</span></div>
 
             @if ($quote->canBeAccepted())
-                <p class="muted" style="margin:0">{{ __('Valid until :date. When you accept, we create an invoice for you to pay.', ['date' => $quote->valid_until->format('d M Y')]) }}</p>
+                <p class="muted" style="margin:0">{{ __('Valid until :date. When you accept, we create an invoice for you to pay.', ['date' => $quote->valid_until->translatedFormat('d M Y')]) }}</p>
                 <form method="POST" action="{{ route('client.quotes.accept', $quote) }}">
                     @csrf
                     <button class="btn btn-primary btn-block" type="submit"><x-icon name="check" />{{ __('Accept quote') }}</button>
@@ -45,12 +45,12 @@
                     <button class="btn btn-block btn-ghost" type="submit">{{ __('Decline') }}</button>
                 </form>
             @elseif ($quote->displayStatus()->value === 'expired')
-                <p class="muted" style="margin:0">{{ __('This quote expired on :date. Open a ticket and we will send you a new one.', ['date' => $quote->valid_until->format('d M Y')]) }}</p>
+                <p class="muted" style="margin:0">{{ __('This quote expired on :date. Open a ticket and we will send you a new one.', ['date' => $quote->valid_until->translatedFormat('d M Y')]) }}</p>
             @elseif ($quote->invoice)
-                <p class="muted" style="margin:0">{{ __('You accepted this quote on :date.', ['date' => $quote->accepted_at->format('d M Y')]) }}</p>
+                <p class="muted" style="margin:0">{{ __('You accepted this quote on :date.', ['date' => $quote->accepted_at->translatedFormat('d M Y')]) }}</p>
                 <a class="btn btn-primary btn-block" href="{{ route('client.invoices.show', $quote->invoice) }}">{{ $quote->invoice->isPayable() ? __('Pay the invoice') : __('View the invoice') }}</a>
             @elseif ($quote->declined_at)
-                <p class="muted" style="margin:0">{{ __('You declined this quote on :date.', ['date' => $quote->declined_at->format('d M Y')]) }}</p>
+                <p class="muted" style="margin:0">{{ __('You declined this quote on :date.', ['date' => $quote->declined_at->translatedFormat('d M Y')]) }}</p>
             @endif
         </aside>
     </div>

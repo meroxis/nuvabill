@@ -11,7 +11,7 @@
             <h1 style="margin-top:.2rem"><span class="mono" style="font-size:1.4rem">{{ $invoice->displayNumber() }}</span> <x-status :value="$status" style="vertical-align:middle" />
                 @if ($invoice->isOverdue())<x-pill tone="crit" style="vertical-align:middle">{{ __('Overdue') }}</x-pill>@endif
             </h1>
-            <p><a href="{{ route('admin.clients.show', $invoice->client) }}">{{ $invoice->client->name }}</a> · {{ __('Due :date', ['date' => $invoice->due_at->format('d M Y')]) }}</p>
+            <p><a href="{{ route('admin.clients.show', $invoice->client) }}">{{ $invoice->client->name }}</a> · {{ __('Due :date', ['date' => $invoice->due_at->translatedFormat('d M Y')]) }}</p>
         </div>
         <div class="form-actions">
             <a class="btn" href="{{ route('admin.invoices.pdf', $invoice) }}" target="_blank"><x-icon name="download" />{{ __('PDF') }}</a>
@@ -99,7 +99,7 @@
                                 @if ($transaction->type === 'refund')<x-pill>{{ __('Refund') }}</x-pill>@endif
                                 @if ($transaction->reference)<br><span class="mono faint">{{ $transaction->reference }}</span>@endif
                             </span>
-                            <time>{{ $transaction->paid_at->format('d M Y') }}</time>
+                            <time>{{ $transaction->paid_at->translatedFormat('d M Y') }}</time>
                         </li>
                     @empty
                         <li class="muted">{{ __('No payments yet.') }}</li>
@@ -109,9 +109,9 @@
 
             <section class="card">
                 <dl class="dl">
-                    <dt>{{ __('Issued') }}</dt><dd>{{ $invoice->issued_at->format('d M Y') }}</dd>
-                    <dt>{{ __('Due') }}</dt><dd>{{ $invoice->due_at->format('d M Y') }}</dd>
-                    <dt>{{ __('Paid') }}</dt><dd>{{ $invoice->paid_at?->format('d M Y H:i') ?? '—' }}</dd>
+                    <dt>{{ __('Issued') }}</dt><dd>{{ $invoice->issued_at->translatedFormat('d M Y') }}</dd>
+                    <dt>{{ __('Due') }}</dt><dd>{{ $invoice->due_at->translatedFormat('d M Y') }}</dd>
+                    <dt>{{ __('Paid') }}</dt><dd>{{ $invoice->paid_at?->translatedFormat('d M Y H:i') ?? '—' }}</dd>
                     <dt>{{ __('Reminders sent') }}</dt><dd>{{ $invoice->reminder_count }}</dd>
                 </dl>
             </section>

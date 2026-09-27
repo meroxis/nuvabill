@@ -14,7 +14,7 @@
             <tbody>
             @forelse ($entries as $entry)
                 <tr>
-                    <td style="white-space:nowrap" class="num">{{ $entry->created_at->format('d M Y H:i') }}</td>
+                    <td style="white-space:nowrap" class="num">{{ $entry->created_at->translatedFormat('d M Y H:i') }}</td>
                     <td>{{ $entry->description }}</td>
                     <td>{{ $entry->actorName() }}</td>
                     <td>@if ($entry->client)<a href="{{ route('admin.clients.show', $entry->client) }}">{{ $entry->client->name }}</a>@endif</td>

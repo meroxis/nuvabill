@@ -5,6 +5,7 @@ namespace App\Billing;
 use App\Models\Invoice;
 use App\Models\Quote;
 use App\Support\Branding;
+use App\Support\Locales;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
@@ -17,7 +18,7 @@ class InvoicePdf
     {
         $invoice->loadMissing('items', 'client', 'transactions');
 
-        return $this->pdf(view('pdf.invoice', ['invoice' => $invoice] + $this->shared())->render());
+        return Locales::inEnglish(fn (): string => $this->pdf(view('pdf.invoice', ['invoice' => $invoice] + $this->shared())->render()));
     }
 
     /**
@@ -59,7 +60,7 @@ class InvoicePdf
     {
         $quote->loadMissing('items', 'client');
 
-        return $this->pdf(view('pdf.quote', ['quote' => $quote] + $this->shared())->render());
+        return Locales::inEnglish(fn (): string => $this->pdf(view('pdf.quote', ['quote' => $quote] + $this->shared())->render()));
     }
 
     public function quoteFilename(Quote $quote): string

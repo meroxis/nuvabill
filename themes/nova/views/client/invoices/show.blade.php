@@ -7,7 +7,7 @@
         <div>
             <p class="eyebrow">{{ __('Invoice') }}</p>
             <h1 style="margin-top:.3rem"><span class="mono">{{ $invoice->displayNumber() }}</span> <x-status :value="$invoice->status" style="vertical-align:middle" /></h1>
-            <p>{{ __('Issued :issued · Due :due', ['issued' => $invoice->issued_at->format('d M Y'), 'due' => $invoice->due_at->format('d M Y')]) }}</p>
+            <p>{{ __('Issued :issued · Due :due', ['issued' => $invoice->issued_at->translatedFormat('d M Y'), 'due' => $invoice->due_at->translatedFormat('d M Y')]) }}</p>
         </div>
         <a class="btn" href="{{ route('client.invoices.pdf', $invoice) }}"><x-icon name="download" />{{ __('Download PDF') }}</a>
     </div>
@@ -18,7 +18,7 @@
                 <thead><tr><th>{{ __('Description') }}</th><th class="end">{{ __('Amount') }}</th></tr></thead>
                 <tbody>
                     @foreach ($invoice->items as $item)
-                        <tr><td>{{ $item->description }}</td><td class="end num">{{ money($item->amount, $invoice->currency) }}</td></tr>
+                        <tr><td><bdi>{{ $item->description }}</bdi></td><td class="end num">{{ money($item->amount, $invoice->currency) }}</td></tr>
                     @endforeach
                     @if ($invoice->tax)
                         <tr><td class="end muted">{{ $invoice->taxLabel() }}</td><td class="end num">{{ money($invoice->tax, $invoice->currency) }}</td></tr>
@@ -95,7 +95,7 @@
                     </form>
                 @endif
             @elseif ($invoice->status === \App\Enums\InvoiceStatus::Paid)
-                <div class="flash"><span>{{ __('Paid on :date. Thank you!', ['date' => $invoice->paid_at?->format('d M Y')]) }}</span></div>
+                <div class="flash"><span>{{ __('Paid on :date. Thank you!', ['date' => $invoice->paid_at?->translatedFormat('d M Y')]) }}</span></div>
             @elseif ($invoice->status === \App\Enums\InvoiceStatus::Refunded)
                 <div class="flash"><span>{{ __('This invoice was refunded.') }}</span></div>
             @endif
@@ -104,7 +104,7 @@
                 <div style="display:grid;gap:.4rem">
                     <span class="label">{{ __('Payments') }}</span>
                     @foreach ($invoice->transactions as $transaction)
-                        <div class="summary-row"><span>{{ $transaction->paid_at->format('d M Y') }}@if ($transaction->type === 'refund') · {{ __('Refund') }}@endif</span><span class="num">{{ money($transaction->amount, $transaction->currency) }}</span></div>
+                        <div class="summary-row"><span>{{ $transaction->paid_at->translatedFormat('d M Y') }}@if ($transaction->type === 'refund') · {{ __('Refund') }}@endif</span><span class="num">{{ money($transaction->amount, $transaction->currency) }}</span></div>
                     @endforeach
                 </div>
             @endif

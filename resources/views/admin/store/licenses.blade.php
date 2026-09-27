@@ -16,7 +16,7 @@
                     <td>{{ $license->item->name }}</td>
                     <td>{{ $license->client->email }}</td>
                     <td>{{ $license->site ?? '—' }}</td>
-                    <td>{{ $license->updates_until?->format('d M Y') ?? '—' }}</td>
+                    <td>{{ $license->updates_until?->translatedFormat('d M Y') ?? '—' }}</td>
                     <td>@if ($license->isActive())<x-pill tone="good">{{ __('Active') }}</x-pill>@else<x-pill tone="crit">{{ __('Revoked') }}</x-pill>@endif</td>
                 </tr>
             @empty

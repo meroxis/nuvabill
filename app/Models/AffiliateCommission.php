@@ -59,7 +59,7 @@ class AffiliateCommission extends Model
     public function statusLabel(): string
     {
         return match ($this->status) {
-            self::STATUS_PENDING => __('On hold until :date', ['date' => $this->available_at->format('d M Y')]),
+            self::STATUS_PENDING => __('On hold until :date', ['date' => $this->available_at->translatedFormat('d M Y')]),
             self::STATUS_AVAILABLE => __('Available'),
             self::STATUS_PAID => __('Paid'),
             default => __('Cancelled'),

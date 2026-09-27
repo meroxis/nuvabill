@@ -69,6 +69,8 @@ class LegalLinksTest extends TestCase
             'terminate_days' => 30,
             'accent' => '#0B7A70',
             'theme' => 'nova',
+            'locale_default' => 'en',
+            'locale_enabled' => ['en', 'ar', 'ckb'],
         ];
     }
 }

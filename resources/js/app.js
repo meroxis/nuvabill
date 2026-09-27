@@ -49,6 +49,15 @@ document.addEventListener('submit', (event) => {
 });
 
 /**
+ * Selects that save as soon as they change, like the language switcher: <select data-autosubmit>.
+ */
+document.addEventListener('change', (event) => {
+    if (event.target instanceof HTMLSelectElement && event.target.dataset.autosubmit !== undefined && event.target.form) {
+        event.target.form.requestSubmit();
+    }
+});
+
+/**
  * Copy buttons: <button data-copy="text to copy">.
  */
 document.addEventListener('click', async (event) => {

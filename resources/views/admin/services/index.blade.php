@@ -29,7 +29,7 @@
                         <td><a class="row-link" href="{{ route('admin.services.show', $service) }}">{{ $service->domain ?: $service->product->name }}</a><div class="faint" style="font-size:.8rem">{{ $service->product->name }}@if ($service->username) · {{ $service->username }}@endif</div></td>
                         <td>{{ $service->client->name }}</td>
                         <td class="num" style="white-space:nowrap">{{ money($service->recurring_amount, $service->currency) }}{{ $service->billing_cycle->suffix() }}</td>
-                        <td class="num" style="white-space:nowrap">{{ $service->next_due_date?->format('d M Y') ?? '—' }}</td>
+                        <td class="num" style="white-space:nowrap">{{ $service->next_due_date?->translatedFormat('d M Y') ?? '—' }}</td>
                         <td><x-status :value="$service->status" /></td>
                     </tr>
                 @endforeach

@@ -60,6 +60,19 @@
                     <p class="help">{{ __('Used for buttons and links in your client area and emails.') }}</p>
                 </div>
                 <x-select name="theme" :label="__('Client area theme')" :options="$themes" :value="$settings['theme.active']" required />
+                <x-select name="locale_default" :label="__('Default language')" :options="$languages" :value="$settings['locale.default']" required :help="__('For visitors who have not picked a language yet.')" />
+                <fieldset class="field" style="border:0;padding:0;margin:0">
+                    <legend style="font-weight:600;font-size:.9rem;margin-bottom:.4rem">{{ __('Languages clients can pick') }}</legend>
+                    <div style="display:flex;gap:14px;flex-wrap:wrap">
+                        @foreach ($languages as $code => $name)
+                            <label class="check" for="f-locale-{{ $code }}">
+                                <input id="f-locale-{{ $code }}" type="checkbox" name="locale_enabled[]" value="{{ $code }}" @checked(in_array($code, (array) old('locale_enabled', $settings['locale.enabled']), true))>
+                                <span>{{ $name }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                    <p class="help">{{ __('Arabic and Kurdish pages read right to left. Invoices, PDFs and emails stay in English.') }}</p>
+                </fieldset>
             </div>
         </section>
 

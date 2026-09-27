@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Support\Activity;
+use App\Support\Locales;
 use App\Support\Settings;
 use App\Support\Themes;
 use Illuminate\Http\RedirectResponse;
@@ -32,6 +33,7 @@ class SettingsController extends Controller
             'settings' => app(Settings::class)->all(),
             'currencies' => array_combine(self::CURRENCIES, self::CURRENCIES),
             'themes' => $themes->all()->map(fn (array $theme): string => $theme['name'])->all(),
+            'languages' => collect(Locales::ALL)->map(fn (array $locale): string => $locale['native'] === $locale['name'] ? $locale['name'] : "{$locale['native']} ({$locale['name']})")->all(),
             'cronCommand' => '* * * * * cd '.base_path().' && '.PHP_BINARY.' artisan schedule:run >> /dev/null 2>&1',
         ]);
     }
@@ -55,6 +57,9 @@ class SettingsController extends Controller
             'theme' => ['required', Rule::in($themes->all()->keys()->all())],
             'terms_url' => ['nullable', 'url', 'max:255'],
             'privacy_url' => ['nullable', 'url', 'max:255'],
+            'locale_default' => ['required', Rule::in(array_keys(Locales::ALL))],
+            'locale_enabled' => ['nullable', 'array'],
+            'locale_enabled.*' => [Rule::in(array_keys(Locales::ALL))],
         ]);
 
         $settings->setMany([
@@ -77,6 +82,8 @@ class SettingsController extends Controller
             'theme.active' => $data['theme'],
             'orders.accept_terms_url' => $data['terms_url'] ?? '',
             'company.privacy_url' => $data['privacy_url'] ?? '',
+            'locale.default' => $data['locale_default'],
+            'locale.enabled' => array_values(array_unique([$data['locale_default'], ...($data['locale_enabled'] ?? [])])),
         ]);
 
         Activity::log('settings.updated', 'System settings changed');

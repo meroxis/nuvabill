@@ -34,8 +34,8 @@
             <section class="card" style="display:grid;gap:1rem">
                 <h2 style="font-size:1.05rem">{{ __('Details') }}</h2>
                 <dl class="dl">
-                    <dt>{{ __('Registered') }}</dt><dd>{{ $domain->registered_at?->format('d M Y') ?? '—' }}</dd>
-                    <dt>{{ __('Expires') }}</dt><dd>{{ $domain->expires_at?->format('d M Y') ?? '—' }}</dd>
+                    <dt>{{ __('Registered') }}</dt><dd>{{ $domain->registered_at?->translatedFormat('d M Y') ?? '—' }}</dd>
+                    <dt>{{ __('Expires') }}</dt><dd>{{ $domain->expires_at?->translatedFormat('d M Y') ?? '—' }}</dd>
                     <dt>{{ __('Renewal price') }}</dt><dd>{{ money($domain->recurring_amount, $domain->currency) }} · {{ trans_choice(':count year|:count years', $domain->years, ['count' => $domain->years]) }}</dd>
                 </dl>
                 <form method="POST" action="{{ route('client.domains.auto-renew', $domain) }}" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">

@@ -546,3 +546,65 @@
         gap: 0.35rem;
     }
 }
+
+@layer components {
+    .language-switcher {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        color: inherit;
+    }
+
+    .language-switcher svg {
+        width: 15px;
+        height: 15px;
+        flex: none;
+    }
+
+    .language-switcher select {
+        appearance: none;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        font-size: 0.85rem;
+        padding: 4px 2px;
+        cursor: pointer;
+    }
+
+    .language-switcher select option {
+        color: var(--nb-ink);
+        background: var(--nb-surface);
+    }
+}
+
+/*
+ * Right-to-left languages (Arabic, Kurdish). The layout uses logical properties, so only a few
+ * things change here: fonts with Arabic letters, no letter spacing (it breaks joined letters),
+ * and arrows that point the other way.
+ */
+[dir='rtl'] {
+    --nb-font-body: 'Figtree', 'Segoe UI', Tahoma, 'Noto Sans Arabic', 'Geeza Pro', system-ui, sans-serif;
+    --nb-font-display: 'Figtree', 'Segoe UI', Tahoma, 'Noto Sans Arabic', 'Geeza Pro', system-ui, sans-serif;
+}
+
+[dir='rtl'] *,
+[dir='rtl'] *::before,
+[dir='rtl'] *::after {
+    letter-spacing: 0 !important;
+}
+
+[dir='rtl'] svg[data-icon='chevron-right'],
+[dir='rtl'] svg[data-icon='chevron-left'],
+[dir='rtl'] svg[data-icon='logout'] {
+    transform: scaleX(-1);
+}
+
+[dir='rtl'] .mono,
+[dir='rtl'] code,
+[dir='rtl'] input[type='email'],
+[dir='rtl'] input[type='url'],
+[dir='rtl'] input[type='tel'] {
+    direction: ltr;
+    unicode-bidi: plaintext;
+}

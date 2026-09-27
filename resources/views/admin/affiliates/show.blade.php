@@ -61,7 +61,7 @@
                 <div class="card-header"><h2>{{ __('Referred clients') }}</h2></div>
                 <ul class="list-plain">
                     @forelse ($referrals as $referral)
-                        <li class="feed-item"><a class="row-link" href="{{ route('admin.clients.show', $referral->client) }}">{{ $referral->client->name }}</a><time>{{ $referral->created_at->format('d M Y') }}</time></li>
+                        <li class="feed-item"><a class="row-link" href="{{ route('admin.clients.show', $referral->client) }}">{{ $referral->client->name }}</a><time>{{ $referral->created_at->translatedFormat('d M Y') }}</time></li>
                     @empty
                         <li class="muted">{{ __('Nobody signed up through this link yet.') }}</li>
                     @endforelse

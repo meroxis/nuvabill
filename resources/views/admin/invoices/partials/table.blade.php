@@ -21,7 +21,7 @@
                             <td>{{ $invoice->client->name }}</td>
                         @endif
                         <td class="num" style="white-space:nowrap">
-                            {{ $invoice->due_at->format('d M Y') }}
+                            {{ $invoice->due_at->translatedFormat('d M Y') }}
                             @if ($invoice->isOverdue())<x-pill tone="crit">{{ __('Overdue') }}</x-pill>@endif
                         </td>
                         <td class="end num">{{ money($invoice->total, $invoice->currency) }}</td>

@@ -10,8 +10,8 @@
 
     <div class="page-title">
         <div>
-            <p class="eyebrow"><a href="{{ route('store.group', $group) }}">{{ $group->name }}</a></p>
-            <h1 style="margin-top:.3rem">{{ $product->name }}</h1>
+            <p class="eyebrow"><a href="{{ route('store.group', $group) }}"><bdi>{{ $group->name }}</bdi></a></p>
+            <h1 style="margin-top:.3rem"><bdi>{{ $product->name }}</bdi></h1>
         </div>
     </div>
 
@@ -72,7 +72,7 @@
             @if ($features->isNotEmpty())
                 <ul class="features">
                     @foreach ($features as $feature)
-                        <li>{{ $feature }}</li>
+                        <li><bdi>{{ $feature }}</bdi></li>
                     @endforeach
                 </ul>
             @else

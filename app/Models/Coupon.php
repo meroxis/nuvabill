@@ -87,7 +87,7 @@ class Coupon extends Model
         }
 
         if ($this->starts_at !== null && $today->lt($this->starts_at)) {
-            return __('This coupon starts on :date.', ['date' => $this->starts_at->format('d M Y')]);
+            return __('This coupon starts on :date.', ['date' => $this->starts_at->translatedFormat('d M Y')]);
         }
 
         if ($this->max_uses !== null && $this->uses >= $this->max_uses) {

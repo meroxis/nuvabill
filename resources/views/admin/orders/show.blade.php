@@ -3,7 +3,7 @@
         <div>
             <p class="eyebrow">{{ __('Order') }}</p>
             <h1 style="margin-top:.2rem"><span class="mono">#{{ $order->number }}</span> <x-status :value="$order->status" style="vertical-align:middle" /></h1>
-            <p><a href="{{ route('admin.clients.show', $order->client) }}">{{ $order->client->name }}</a> · {{ $order->created_at->format('d M Y H:i') }} · {{ __('IP :ip', ['ip' => $order->ip_address ?? '—']) }}</p>
+            <p><a href="{{ route('admin.clients.show', $order->client) }}">{{ $order->client->name }}</a> · {{ $order->created_at->translatedFormat('d M Y H:i') }} · {{ __('IP :ip', ['ip' => $order->ip_address ?? '—']) }}</p>
         </div>
         @if ($order->status === \App\Enums\OrderStatus::Pending)
             <div class="form-actions">

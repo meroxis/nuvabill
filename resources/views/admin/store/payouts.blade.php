@@ -48,7 +48,7 @@
             <section class="card" style="display:grid;gap:.5rem">
                 <h2 style="font-size:1rem">{{ __('Recent payouts') }}</h2>
                 @forelse ($payouts as $payout)
-                    <div class="summary-row"><span>{{ $payout->developer->name }}<br><span class="faint" style="font-size:.8rem">{{ $payout->paid_at?->format('d M Y') }} {{ $payout->reference }}</span></span><span class="num">{{ money($payout->amount, $payout->currency) }}</span></div>
+                    <div class="summary-row"><span>{{ $payout->developer->name }}<br><span class="faint" style="font-size:.8rem">{{ $payout->paid_at?->translatedFormat('d M Y') }} {{ $payout->reference }}</span></span><span class="num">{{ money($payout->amount, $payout->currency) }}</span></div>
                 @empty
                     <p class="muted" style="margin:0">{{ __('None yet.') }}</p>
                 @endforelse

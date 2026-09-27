@@ -5,7 +5,7 @@
 @section('content')
     <div class="page-title">
         <div>
-            <p class="eyebrow">{{ $service->product->name }}</p>
+            <p class="eyebrow"><bdi>{{ $service->product->name }}</bdi></p>
             <h1 style="margin-top:.3rem">{{ $service->domain ?: $service->product->name }} <x-status :value="$service->status" style="vertical-align:middle" /></h1>
         </div>
         @if ($canLogin && $service->status === \App\Enums\ServiceStatus::Active)
@@ -34,7 +34,7 @@
         <section class="card" style="display:grid;gap:1rem">
             <h2 style="font-size:1.05rem">{{ __('Details') }}</h2>
             <dl class="dl">
-                <dt>{{ __('Plan') }}</dt><dd>{{ $service->product->name }}</dd>
+                <dt>{{ __('Plan') }}</dt><dd><bdi>{{ $service->product->name }}</bdi></dd>
                 @if ($service->domain)<dt>{{ __('Domain') }}</dt><dd>{{ $service->domain }}</dd>@endif
                 @if ($service->username)<dt>{{ __('Username') }}</dt><dd class="mono">{{ $service->username }}</dd>@endif
                 @if ($service->password)
@@ -52,8 +52,8 @@
                     @endif
                 @endif
                 <dt>{{ __('Billing') }}</dt><dd>{{ money($service->recurring_amount ?: $service->first_payment_amount, $service->currency) }} · {{ $service->billing_cycle->label() }}</dd>
-                <dt>{{ __('Next payment') }}</dt><dd>{{ $service->next_due_date?->format('d M Y') ?? '—' }}</dd>
-                <dt>{{ __('Since') }}</dt><dd>{{ $service->registration_date->format('d M Y') }}</dd>
+                <dt>{{ __('Next payment') }}</dt><dd>{{ $service->next_due_date?->translatedFormat('d M Y') ?? '—' }}</dd>
+                <dt>{{ __('Since') }}</dt><dd>{{ $service->registration_date->translatedFormat('d M Y') }}</dd>
                 @foreach ($service->addons->where('status', \App\Models\ServiceAddon::STATUS_ACTIVE) as $addon)
                     <dt>{{ __('Add-on') }}</dt><dd>{{ $addon->name }}@if ($addon->recurring_amount) · {{ money($addon->recurring_amount, $service->currency) }}@endif</dd>
                 @endforeach

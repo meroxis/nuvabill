@@ -20,7 +20,7 @@
     <div class="thread">
         @foreach ($ticket->replies as $reply)
             <article class="reply {{ $reply->isFromStaff() ? 'staff' : '' }}">
-                <header><b>{{ $reply->isFromStaff() ? $reply->authorName().' · '.setting('company.name') : __('You') }}</b><time datetime="{{ $reply->created_at->toIso8601String() }}">{{ $reply->created_at->format('d M Y H:i') }}</time></header>
+                <header><b>{{ $reply->isFromStaff() ? $reply->authorName().' · '.setting('company.name') : __('You') }}</b><time datetime="{{ $reply->created_at->toIso8601String() }}">{{ $reply->created_at->translatedFormat('d M Y H:i') }}</time></header>
                 <div class="message-body">{{ $reply->message }}</div>
             </article>
         @endforeach

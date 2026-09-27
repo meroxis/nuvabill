@@ -13,8 +13,8 @@
         <section style="display:grid;gap:14px">
             <div class="page-title">
                 <div>
-                    <h2 style="font-size:1.35rem">{{ $group->name }}</h2>
-                    @if ($group->description)<p>{{ $group->description }}</p>@endif
+                    <h2 style="font-size:1.35rem"><bdi>{{ $group->name }}</bdi></h2>
+                    @if ($group->description)<p><bdi>{{ $group->description }}</bdi></p>@endif
                 </div>
                 <a class="btn btn-sm" href="{{ route('store.group', $group) }}">{{ __('See all') }}<x-icon name="chevron-right" /></a>
             </div>

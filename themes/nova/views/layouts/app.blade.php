@@ -6,7 +6,7 @@
     $initials = $client ? mb_strtoupper(mb_substr((string) $client->first_name, 0, 1).mb_substr((string) $client->last_name, 0, 1)) : '';
 @endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" dir="{{ \App\Support\Locales::direction() }}">
 <head>
     <title>@yield('title') · {{ setting('company.name') }}</title>
     <meta name="description" content="@yield('description', setting('company.name'))">
@@ -22,6 +22,7 @@
         <div class="container">
             <span class="topbar-help">{{ __('Need help?') }} <a href="{{ $client ? route('client.tickets.create') : route('client.login') }}">{{ __('Open a support ticket') }}</a></span>
             <div class="topbar-links">
+                <x-language-switcher :action="route('language.update')" :locales="\App\Support\Locales::enabled()" class="topbar-link" />
                 <button class="topbar-link" type="button" onclick="nuvabillToggleTheme()" aria-label="{{ __('Switch light or dark mode') }}"><x-icon name="moon" /></button>
                 <a class="topbar-link" href="{{ route('cart.show') }}" @if (request()->routeIs('cart.*', 'checkout.*')) aria-current="page" @endif><x-icon name="cart" />{{ __('Cart') }} ({{ $cartCount }})</a>
             </div>

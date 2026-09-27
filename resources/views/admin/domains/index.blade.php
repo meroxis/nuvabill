@@ -32,7 +32,7 @@
                         <td><a class="row-link" href="{{ route('admin.domains.show', $domain) }}">{{ $domain->name }}</a>@if ($domain->isTransfer())<div class="faint" style="font-size:.8rem">{{ __('Transfer') }}</div>@endif</td>
                         <td>{{ $domain->client->name }}</td>
                         <td>{{ $domain->registrar ?: __('By hand') }}</td>
-                        <td class="num" style="white-space:nowrap">{{ $domain->expires_at?->format('d M Y') ?? '—' }}</td>
+                        <td class="num" style="white-space:nowrap">{{ $domain->expires_at?->translatedFormat('d M Y') ?? '—' }}</td>
                         <td><x-status :value="$domain->status" /></td>
                     </tr>
                 @endforeach

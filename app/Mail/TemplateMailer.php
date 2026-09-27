@@ -7,6 +7,7 @@ use App\Models\EmailTemplate;
 use App\Models\Invoice;
 use App\Models\Service;
 use App\Models\Ticket;
+use App\Support\Locales;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Throwable;
@@ -57,7 +58,8 @@ class TemplateMailer
         ]);
 
         try {
-            Mail::to($email, $name)->send(new TemplatedMessage($subject, $html));
+            // Email templates are written in English, so the wrapper around them is too.
+            Locales::inEnglish(fn () => Mail::to($email, $name)->send(new TemplatedMessage($subject, $html)));
 
             return true;
         } catch (Throwable $exception) {

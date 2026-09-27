@@ -21,7 +21,7 @@
             <article class="reply {{ $reply->isFromStaff() ? 'staff' : '' }}">
                 <span class="avatar">{{ mb_strtoupper(mb_substr($reply->authorName(), 0, 1)) }}</span>
                 <div class="bubble">
-                    <header><b>{{ $reply->authorName() }}</b><span>{{ $reply->isFromStaff() ? __('Staff') : __('Client') }}</span><time datetime="{{ $reply->created_at->toIso8601String() }}">{{ $reply->created_at->format('d M Y H:i') }}</time></header>
+                    <header><b>{{ $reply->authorName() }}</b><span>{{ $reply->isFromStaff() ? __('Staff') : __('Client') }}</span><time datetime="{{ $reply->created_at->toIso8601String() }}">{{ $reply->created_at->translatedFormat('d M Y H:i') }}</time></header>
                     <div class="message-body">{{ $reply->message }}</div>
                 </div>
             </article>

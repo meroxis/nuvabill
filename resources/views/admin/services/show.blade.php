@@ -15,7 +15,7 @@
     </div>
 
     @if ($status === \App\Enums\ServiceStatus::Suspended && $service->suspension_reason)
-        <div class="flash" data-tone="warn"><span>{{ __('Suspended :date: :reason', ['date' => $service->suspended_at?->format('d M Y'), 'reason' => $service->suspension_reason]) }}</span></div>
+        <div class="flash" data-tone="warn"><span>{{ __('Suspended :date: :reason', ['date' => $service->suspended_at?->translatedFormat('d M Y'), 'reason' => $service->suspension_reason]) }}</span></div>
     @endif
 
     <section class="card">
@@ -67,7 +67,7 @@
         <div style="display:grid;gap:14px;align-content:start">
             <section class="card">
                 <dl class="dl">
-                    <dt>{{ __('Registered') }}</dt><dd>{{ $service->registration_date->format('d M Y') }}</dd>
+                    <dt>{{ __('Registered') }}</dt><dd>{{ $service->registration_date->translatedFormat('d M Y') }}</dd>
                     <dt>{{ __('First payment') }}</dt><dd class="num">{{ money($service->first_payment_amount, $service->currency) }}</dd>
                     <dt>{{ __('Server') }}</dt><dd>{{ $service->server ? $service->server->name.' ('.$service->server->hostname.')' : '—' }}</dd>
                     @foreach ($service->addons as $addon)

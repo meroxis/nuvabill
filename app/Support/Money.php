@@ -12,7 +12,7 @@ class Money
 {
     public static function format(int $minor, string $currency): string
     {
-        return Number::currency($minor / 100, in: $currency, locale: app()->getLocale());
+        return Number::currency($minor / 100, in: $currency, locale: Locales::numberLocale());
     }
 
     /**

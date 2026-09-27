@@ -25,8 +25,8 @@
                 @foreach ($invoices as $invoice)
                     <tr>
                         <td><a class="row-link mono" href="{{ route('client.invoices.show', $invoice) }}">{{ $invoice->displayNumber() }}</a></td>
-                        <td style="white-space:nowrap">{{ $invoice->issued_at->format('d M Y') }}</td>
-                        <td style="white-space:nowrap">{{ $invoice->due_at->format('d M Y') }}</td>
+                        <td style="white-space:nowrap">{{ $invoice->issued_at->translatedFormat('d M Y') }}</td>
+                        <td style="white-space:nowrap">{{ $invoice->due_at->translatedFormat('d M Y') }}</td>
                         <td class="end num">{{ money($invoice->total, $invoice->currency) }}</td>
                         <td>
                             <x-status :value="$invoice->status" />

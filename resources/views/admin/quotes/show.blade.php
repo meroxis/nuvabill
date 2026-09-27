@@ -48,13 +48,13 @@
         <div style="display:grid;gap:14px;align-content:start">
             <section class="card">
                 <dl class="dl">
-                    <dt>{{ __('Valid until') }}</dt><dd>{{ $quote->valid_until->format('d M Y') }}</dd>
-                    <dt>{{ __('Sent') }}</dt><dd>{{ $quote->sent_at?->format('d M Y H:i') ?? '—' }}</dd>
+                    <dt>{{ __('Valid until') }}</dt><dd>{{ $quote->valid_until->translatedFormat('d M Y') }}</dd>
+                    <dt>{{ __('Sent') }}</dt><dd>{{ $quote->sent_at?->translatedFormat('d M Y H:i') ?? '—' }}</dd>
                     @if ($quote->accepted_at)
-                        <dt>{{ __('Accepted') }}</dt><dd>{{ $quote->accepted_at->format('d M Y H:i') }}</dd>
+                        <dt>{{ __('Accepted') }}</dt><dd>{{ $quote->accepted_at->translatedFormat('d M Y H:i') }}</dd>
                     @endif
                     @if ($quote->declined_at)
-                        <dt>{{ __('Declined') }}</dt><dd>{{ $quote->declined_at->format('d M Y H:i') }}</dd>
+                        <dt>{{ __('Declined') }}</dt><dd>{{ $quote->declined_at->translatedFormat('d M Y H:i') }}</dd>
                     @endif
                     @if ($quote->invoice)
                         <dt>{{ __('Invoice') }}</dt><dd><a class="row-link mono" href="{{ route('admin.invoices.show', $quote->invoice) }}">{{ $quote->invoice->displayNumber() }}</a> <x-status :value="$quote->invoice->status" /></dd>

@@ -38,7 +38,7 @@
                                 <td>{{ $client->email }}</td>
                                 <td class="end num">{{ $client->active_services_count }}</td>
                                 <td><x-status :value="$client->status" /></td>
-                                <td class="muted" style="white-space:nowrap">{{ $client->created_at->format('d M Y') }}</td>
+                                <td class="muted" style="white-space:nowrap">{{ $client->created_at->translatedFormat('d M Y') }}</td>
                             </tr>
                         @endforeach
                     </tbody>

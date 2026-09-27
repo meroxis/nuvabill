@@ -122,7 +122,7 @@
             @forelse ($activity as $entry)
                 <li class="feed-item">
                     <span>{{ $entry->description }} <span class="faint">· {{ $entry->actorName() }}</span></span>
-                    <time datetime="{{ $entry->created_at->toIso8601String() }}" title="{{ $entry->created_at->format('d M Y H:i') }}">{{ $entry->created_at->diffForHumans(short: true) }}</time>
+                    <time datetime="{{ $entry->created_at->toIso8601String() }}" title="{{ $entry->created_at->translatedFormat('d M Y H:i') }}">{{ $entry->created_at->diffForHumans(short: true) }}</time>
                 </li>
             @empty
                 <li class="muted" style="padding:1rem 0">{{ __('Nothing has happened yet.') }}</li>

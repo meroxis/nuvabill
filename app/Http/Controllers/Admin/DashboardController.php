@@ -84,7 +84,7 @@ class DashboardController extends Controller
             $month = $start->addMonths($i);
             $value = $totals->get($month->format('Y-m'), 0);
             $bars[] = [
-                'label' => $month->format('M'),
+                'label' => $month->translatedFormat('M'),
                 'value' => $value,
                 'height' => $max > 0 ? max(0, round($value / $max * 100, 2)) : 0,
             ];

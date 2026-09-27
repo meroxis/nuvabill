@@ -6,8 +6,8 @@
     <div class="page-title">
         <div>
             <p class="eyebrow"><a href="{{ route('store.index') }}">{{ __('Store') }}</a></p>
-            <h1 style="margin-top:.3rem">{{ $group->name }}</h1>
-            @if ($group->description)<p>{{ $group->description }}</p>@endif
+            <h1 style="margin-top:.3rem"><bdi>{{ $group->name }}</bdi></h1>
+            @if ($group->description)<p><bdi>{{ $group->description }}</bdi></p>@endif
         </div>
     </div>
 

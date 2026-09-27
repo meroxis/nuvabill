@@ -31,7 +31,7 @@
     ] : [];
 @endphp
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" dir="{{ \App\Support\Locales::direction() }}">
 <head>
     <title>{{ $title }} · {{ setting('company.name') }}</title>
     @include('partials.head', ['assets' => ['resources/css/admin.css', 'resources/js/app.js']])
@@ -113,6 +113,7 @@
                 </div>
             @endif
             <a class="btn btn-sm" href="{{ route('store.index') }}" target="_blank" rel="noopener"><x-icon name="external" />{{ __('View store') }}</a>
+            <x-language-switcher :action="route('admin.language')" :locales="collect(\App\Support\Locales::ALL)->map(fn (array $locale): string => $locale['native'])->all()" class="btn btn-sm" />
             <button class="icon-btn" type="button" onclick="nuvabillToggleTheme()" aria-label="{{ __('Switch light or dark mode') }}"><x-icon name="moon" /></button>
         </header>
 

@@ -4,7 +4,7 @@
 @endphp
 <article class="plan">
     <div>
-        <h3>{{ $product->name }}</h3>
+        <h3><bdi>{{ $product->name }}</bdi></h3>
         <p class="muted" style="margin:.2rem 0 0;font-size:.85rem">{{ $product->type->label() }}</p>
     </div>
     @if ($start)
@@ -19,7 +19,7 @@
     @if ($features->isNotEmpty())
         <ul class="features">
             @foreach ($features as $feature)
-                <li>{{ $feature }}</li>
+                <li><bdi>{{ $feature }}</bdi></li>
             @endforeach
         </ul>
     @endif

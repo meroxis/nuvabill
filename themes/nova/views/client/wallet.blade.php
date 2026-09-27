@@ -23,7 +23,7 @@
                     <tbody>
                     @foreach ($entries as $entry)
                         <tr>
-                            <td style="white-space:nowrap">{{ $entry->created_at->format('d M Y') }}</td>
+                            <td style="white-space:nowrap">{{ $entry->created_at->translatedFormat('d M Y') }}</td>
                             <td>
                                 {{ $entry->description }}
                                 @if ($entry->invoice_id)<br><a class="muted mono" style="font-size:.82rem" href="{{ route('client.invoices.show', $entry->invoice_id) }}">{{ $entry->invoice?->displayNumber() }}</a>@endif

@@ -17,7 +17,7 @@
                 <dt>{{ __('Key') }}</dt><dd class="mono">{{ $license->key }}</dd>
                 <dt>{{ __('Status') }}</dt><dd>@if ($license->isActive())<x-pill tone="good">{{ __('Active') }}</x-pill>@else<x-pill tone="crit">{{ __('Revoked') }}</x-pill> {{ $license->revoked_reason }}@endif</dd>
                 <dt>{{ __('Site') }}</dt><dd>{{ $license->site ?? __('Not used yet') }}</dd>
-                <dt>{{ __('Updates until') }}</dt><dd>{{ $license->updates_until?->format('d M Y') ?? '—' }}</dd>
+                <dt>{{ __('Updates until') }}</dt><dd>{{ $license->updates_until?->translatedFormat('d M Y') ?? '—' }}</dd>
                 <dt>{{ __('Last seen') }}</dt><dd>{{ $license->last_seen_at?->diffForHumans() ?? '—' }}</dd>
                 <dt>{{ __('Sites, 30 days') }}</dt><dd>{{ $recentSites ? implode(', ', $recentSites) : '—' }}</dd>
                 @if ($license->service)<dt>{{ __('Service') }}</dt><dd><a href="{{ route('admin.services.show', $license->service) }}">#{{ $license->service->id }}</a></dd>@endif

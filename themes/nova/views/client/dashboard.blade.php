@@ -37,7 +37,7 @@
                     <x-icon name="alert" />
                     <span>
                         {{ trans_choice('You have :count unpaid invoice for :amount.|You have :count unpaid invoices for :amount.', $unpaidInvoices->count(), ['count' => $unpaidInvoices->count(), 'amount' => money($unpaidTotal, $first->currency)]) }}
-                        {{ $first->isOverdue() ? __('The oldest was due :date.', ['date' => $first->due_at->format('d M Y')]) : __('Due :date.', ['date' => $first->due_at->format('d M Y')]) }}
+                        {{ $first->isOverdue() ? __('The oldest was due :date.', ['date' => $first->due_at->translatedFormat('d M Y')]) : __('Due :date.', ['date' => $first->due_at->translatedFormat('d M Y')]) }}
                         {{ __('Pay to keep your services running.') }}
                     </span>
                     <a class="btn btn-primary btn-sm" href="{{ route('client.invoices.show', $first) }}">{{ __('Pay now') }}</a>
@@ -56,7 +56,7 @@
                             <tr>
                                 <td><a class="row-link" href="{{ route('client.services.show', $service) }}">{{ $service->product->name }}</a>@if ($service->domain)<div class="muted" style="font-size:.84rem">{{ $service->domain }}</div>@endif</td>
                                 <td class="num">{{ money($service->billing_cycle->isRecurring() ? $service->recurring_amount : $service->first_payment_amount, $service->currency) }} <span class="muted">· {{ $service->billing_cycle->label() }}</span></td>
-                                <td class="num">{{ $service->next_due_date?->format('d M Y') ?? '—' }}</td>
+                                <td class="num">{{ $service->next_due_date?->translatedFormat('d M Y') ?? '—' }}</td>
                                 <td><x-status :value="$service->status" /></td>
                                 <td class="end"><a class="btn btn-sm" href="{{ route('client.services.show', $service) }}">{{ __('Manage') }}</a></td>
                             </tr>
@@ -77,11 +77,11 @@
                                 @if ($days === null)
                                     <div class="muted" style="font-size:.84rem">{{ $domain->status->label() }}</div>
                                 @elseif ($days < 0)
-                                    <div style="font-size:.84rem;color:var(--nb-crit);font-weight:600">{{ __('Expired :date', ['date' => $domain->expires_at->format('d M Y')]) }}</div>
+                                    <div style="font-size:.84rem;color:var(--nb-crit);font-weight:600">{{ __('Expired :date', ['date' => $domain->expires_at->translatedFormat('d M Y')]) }}</div>
                                 @elseif ($days <= 30)
                                     <div style="font-size:.84rem;color:var(--nb-warn);font-weight:600">{{ trans_choice('Expires in :count day|Expires in :count days', $days, ['count' => $days]) }}</div>
                                 @else
-                                    <div class="muted" style="font-size:.84rem">{{ __('Expires :date', ['date' => $domain->expires_at->format('d M Y')]) }}</div>
+                                    <div class="muted" style="font-size:.84rem">{{ __('Expires :date', ['date' => $domain->expires_at->translatedFormat('d M Y')]) }}</div>
                                 @endif
                             </div>
                             @if ($days !== null && $days <= 30 && $domain->status->isRenewable())
@@ -101,7 +101,7 @@
                         <div class="panel-row">
                             <div style="min-width:0;flex:1">
                                 <a class="row-link mono" href="{{ route('client.invoices.show', $invoice) }}">{{ $invoice->displayNumber() }}</a>
-                                <div class="muted" style="font-size:.84rem">{{ $invoice->paid_at ? __('Paid :date', ['date' => $invoice->paid_at->format('d M Y')]) : __('Due :date', ['date' => $invoice->due_at->format('d M Y')]) }}</div>
+                                <div class="muted" style="font-size:.84rem">{{ $invoice->paid_at ? __('Paid :date', ['date' => $invoice->paid_at->translatedFormat('d M Y')]) : __('Due :date', ['date' => $invoice->due_at->translatedFormat('d M Y')]) }}</div>
                             </div>
                             <b class="num">{{ money($invoice->total, $invoice->currency) }}</b>
                             <x-status :value="$invoice->status" />

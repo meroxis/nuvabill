@@ -26,7 +26,7 @@
                     <h2 class="mono" style="font-size:1.4rem">v{{ $release->version }}</h2>
                     @if ($release->isSecurity)<x-pill tone="crit">{{ __('Security') }}</x-pill>@endif
                     @if ($release->isPrerelease)<x-pill tone="info">{{ __('Beta') }}</x-pill>@else<x-pill tone="accent">{{ __('Stable') }}</x-pill>@endif
-                    <span class="faint" style="font-size:.85rem">{{ $release->publishedAt ? \Illuminate\Support\Carbon::parse($release->publishedAt)->format('d M Y') : '' }}@if ($release->size) · {{ \Illuminate\Support\Number::fileSize($release->size) }}@endif</span>
+                    <span class="faint" style="font-size:.85rem">{{ $release->publishedAt ? \Illuminate\Support\Carbon::parse($release->publishedAt)->translatedFormat('d M Y') : '' }}@if ($release->size) · {{ \Illuminate\Support\Number::fileSize($release->size) }}@endif</span>
                 </div>
                 <div class="prose-sm" style="max-height:340px;overflow:auto;border:1px solid var(--nb-line);border-radius:8px;padding:.8rem 1rem">
                     {!! \Illuminate\Support\Str::markdown($release->notes ?: __('No release notes.'), ['html_input' => 'escape', 'allow_unsafe_links' => false]) !!}

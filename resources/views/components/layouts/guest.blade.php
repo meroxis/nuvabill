@@ -1,7 +1,7 @@
 @props(['title', 'subtitle' => null, 'wide' => false])
 {{-- Centered single-card layout for staff sign-in pages and the installer. --}}
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ str_replace('_', '-', app()->getLocale()) }}" dir="{{ \App\Support\Locales::direction() }}">
 <head>
     <title>{{ $title }} · {{ \App\Support\Branding::PRODUCT_NAME }}</title>
     <meta name="robots" content="noindex">

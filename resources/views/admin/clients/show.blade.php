@@ -26,7 +26,7 @@
     <div class="kpis">
         <div class="kpi"><small>{{ __('Active services') }}</small><b>{{ $client->services->where('status', \App\Enums\ServiceStatus::Active)->count() }}</b><span>{{ trans_choice(':count in total|:count in total', $client->services->count(), ['count' => $client->services->count()]) }}</span></div>
         <div class="kpi"><small>{{ __('Unpaid') }}</small><b>{{ money($unpaid, $client->currency) }}</b><span>{{ __('Credit: :amount', ['amount' => money($client->credit, $client->currency)]) }}</span></div>
-        <div class="kpi"><small>{{ __('Client since') }}</small><b style="font-size:1.2rem">{{ $client->created_at->format('d M Y') }}</b><span>{{ $client->last_login_at ? __('Last sign in :time', ['time' => $client->last_login_at->diffForHumans()]) : __('Never signed in') }}</span></div>
+        <div class="kpi"><small>{{ __('Client since') }}</small><b style="font-size:1.2rem">{{ $client->created_at->translatedFormat('d M Y') }}</b><span>{{ $client->last_login_at ? __('Last sign in :time', ['time' => $client->last_login_at->diffForHumans()]) : __('Never signed in') }}</span></div>
         <div class="kpi"><small>{{ __('Open tickets') }}</small><b>{{ $client->openTicketsCount() }}</b><span>{{ $client->phone ?: __('No phone number') }}</span></div>
     </div>
 
@@ -51,7 +51,7 @@
                                     <div class="faint" style="font-size:.8rem">{{ $service->domain ?: '#'.$service->id }}</div>
                                 </td>
                                 <td class="num" style="white-space:nowrap">{{ money($service->recurring_amount ?: $service->first_payment_amount, $service->currency) }}{{ $service->billing_cycle->suffix() }}</td>
-                                <td class="num" style="white-space:nowrap">{{ $service->next_due_date?->format('d M Y') ?? '—' }}</td>
+                                <td class="num" style="white-space:nowrap">{{ $service->next_due_date?->translatedFormat('d M Y') ?? '—' }}</td>
                                 <td><x-status :value="$service->status" /></td>
                             </tr>
                         @endforeach
@@ -75,7 +75,7 @@
                         <tbody>
                         @foreach ($client->transactions as $transaction)
                             <tr>
-                                <td style="white-space:nowrap">{{ $transaction->paid_at->format('d M Y') }}</td>
+                                <td style="white-space:nowrap">{{ $transaction->paid_at->translatedFormat('d M Y') }}</td>
                                 <td>{{ $transaction->gatewayLabel() }}</td>
                                 <td class="mono faint">{{ \Illuminate\Support\Str::limit($transaction->reference ?? '—', 24) }}</td>
                                 <td class="end num">{{ money($transaction->amount, $transaction->currency) }}</td>

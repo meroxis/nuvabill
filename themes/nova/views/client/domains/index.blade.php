@@ -18,7 +18,7 @@
                 @foreach ($domains as $domain)
                     <tr>
                         <td><a class="row-link" href="{{ route('client.domains.show', $domain) }}">{{ $domain->name }}</a></td>
-                        <td style="white-space:nowrap">{{ $domain->expires_at?->format('d M Y') ?? '—' }}</td>
+                        <td style="white-space:nowrap">{{ $domain->expires_at?->translatedFormat('d M Y') ?? '—' }}</td>
                         <td>{{ $domain->auto_renew ? __('On') : __('Off') }}</td>
                         <td><x-status :value="$domain->status" /></td>
                     </tr>

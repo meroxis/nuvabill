@@ -63,7 +63,7 @@
                     <tbody>
                     @foreach ($commissions as $commission)
                         <tr>
-                            <td style="white-space:nowrap">{{ $commission->created_at->format('d M Y') }}</td>
+                            <td style="white-space:nowrap">{{ $commission->created_at->translatedFormat('d M Y') }}</td>
                             <td><span class="pill" data-tone="{{ $commission->tone() }}">{{ $commission->statusLabel() }}</span></td>
                             <td class="end num">{{ money($commission->amount, $commission->currency) }}</td>
                         </tr>

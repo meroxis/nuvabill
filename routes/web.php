@@ -19,6 +19,7 @@ use App\Http\Controllers\Client\ServiceController;
 use App\Http\Controllers\Client\TicketController;
 use App\Http\Controllers\Client\TwoFactorController;
 use App\Http\Controllers\Client\WalletController;
+use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\PreviewController;
 use App\Http\Controllers\Store\CartController;
 use App\Http\Controllers\Store\CheckoutController;
@@ -44,6 +45,8 @@ Route::post('cart', [CartController::class, 'store'])->middleware('throttle:30,1
 Route::post('cart/domains', [CartController::class, 'storeDomain'])->middleware('throttle:30,1')->name('cart.domains.store');
 Route::post('cart/coupon', [CartController::class, 'coupon'])->middleware('throttle:15,1')->name('cart.coupon');
 Route::delete('cart/{index}', [CartController::class, 'destroy'])->whereNumber('index')->name('cart.destroy');
+
+Route::post('language', [LanguageController::class, 'client'])->middleware('throttle:30,1')->name('language.update');
 
 Route::get('preview/stop', [PreviewController::class, 'stop'])->name('preview.stop');
 Route::get('preview/{kind}/{slug}', [PreviewController::class, 'start'])->whereIn('kind', ['theme', 'orderform'])->where('slug', '[a-z0-9][a-z0-9_-]*')->name('preview.start');

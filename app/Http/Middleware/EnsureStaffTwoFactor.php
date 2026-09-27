@@ -20,7 +20,7 @@ class EnsureStaffTwoFactor
         if ($admin !== null
             && setting('security.staff_two_factor') === 'required'
             && ! $admin->hasTwoFactorEnabled()
-            && ! $request->routeIs('admin.profile.*', 'admin.logout')
+            && ! $request->routeIs('admin.profile.*', 'admin.language', 'admin.logout')
             && ! Demo::isEnabled()) {
             return redirect()->route('admin.profile.edit')
                 ->with('error', __('Your company requires two-factor login for staff. Set it up below to continue.'));
