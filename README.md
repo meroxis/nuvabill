@@ -25,7 +25,7 @@ Nuvabill sells your hosting plans and domains, bills clients every month, create
 or VPS accounts the moment they pay, suspends late payers, and answers support tickets. It is a modern, open alternative to WHMCS, written from scratch.
 There is **no per-client pricing** and no license fee to run it.
 
-> **Status: v0.2.** Domains, four control panels, two VPS panels, Iraqi payment gateways and a WHMCS importer. See the [roadmap](#roadmap).
+> **Status: v0.3.** A marketplace with one-click installs, coupons, product add-ons, and prices in dollars paid in dinar. See the [roadmap](#roadmap).
 >
 > **Try it:** the [live demo](https://demo.nuvabill.com/admin/login) has sample clients, invoices and tickets. One click signs you in, and the data resets every hour.
 
@@ -85,6 +85,12 @@ That's it. Your store is live at your domain.
 Plans with monthly to three-yearly prices, setup fees, a domain field, cart and checkout. Clients register in one step,
 or with **Google, GitHub or Facebook**.
 
+- **Coupons**: percent or fixed, for the first payment, every payment or a number of payments, limited by product,
+  billing cycle, dates, uses and new clients. Share a link like `yourhost.com/?coupon=WELCOME20` and it is applied for the client.
+- **Product add-ons** such as backups, a dedicated IP or priority support, billed and renewed with the service.
+- Want everything on one page? The **Swift** order form in the marketplace puts plans, domain search, add-ons, coupons,
+  sign-up and payment on one screen.
+
 ![Store](.github/screenshots/store.png)
 
 ### A professional client area
@@ -119,6 +125,8 @@ change nameservers. Without a registrar, availability comes from free RDAP looku
 
 **Stripe Checkout**, **PayPal Checkout** and **bank transfer** are built in, with refunds from the invoice page.
 For Iraq: **FIB** (First Iraqi Bank, with QR code), **FastPay** and **Wayl**. Card numbers never touch your server.
+Show prices in US dollars and charge in Iraqi dinar at **the exchange rate you set** (Settings → Currencies);
+the invoice stays in dollars and is marked paid in full.
 Webhooks are signature-checked, and each payment is recorded exactly once.
 
 ![Payment gateways](.github/screenshots/gateways.png)
@@ -168,11 +176,23 @@ Security fixes can install themselves at night.
 
 ![Updates](.github/screenshots/updates.png)
 
-### Extensions and themes
+### Marketplace: themes, order forms and add-ons
 
-Payment gateways and server modules are drop-in folders in `extensions/`. Client-area themes live in `themes/`.
-The built-in gateways, control panel modules and domain registrars use the same system, so they are complete examples.
-A marketplace for themes and extensions is on the [roadmap](#roadmap).
+Open **Marketplace** in the admin area to browse themes, order forms, gateways and add-ons, and **install them with one click**.
+Try a theme on your own site first with **Live preview**, which only you see.
+
+- Every package is **reviewed by people** and **signed**. Nuvabill refuses anything that was changed after signing.
+- Before you install, you see in plain words what a package can do, for example "Connects to api.telegram.org".
+- Paid items come with a license key for one site. Test sites (`localhost`, `*.test`, `staging.*`, `dev.*`) are always free.
+- Updates show on the Marketplace page and install with one click.
+
+Free to start: the **Paper** and **Midnight** themes, **Team chat alerts** (orders, payments and tickets in Telegram or Discord)
+and a **Live chat widget** (Tawk.to or Crisp). Premium: the **Aurora** client area and the **Swift** one-page order form.
+
+**Developers** can sell their own themes and extensions on [my.nuvabill.com](https://my.nuvabill.com/developers).
+You keep **83%** of every sale. See the [developer guide](https://nuvabill.com/docs/developers/).
+
+![Marketplace](.github/screenshots/marketplace.png)
 
 ---
 
@@ -193,9 +213,9 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 | Version | Focus |
 |---|---|
 | v0.1 | First sale: store, billing, Stripe/PayPal/bank transfer, cPanel, tickets, 2FA, signed updater |
-| **v0.2** | Domains and registrars, DirectAdmin, Plesk, Proxmox, Virtualizor, FIB/FastPay/Wayl, refunds, **WHMCS importer**, fraud checks, social login, CAPTCHA, client 2FA |
-| v0.3 | Taxes, multi-currency, promo codes, quotes, client wallet, affiliates, REST API |
-| v0.4 | White-label licenses, marketplace, extension SDK, right-to-left languages, passkeys |
+| v0.2 | Domains and registrars, DirectAdmin, Plesk, Proxmox, Virtualizor, FIB/FastPay/Wayl, refunds, **WHMCS importer**, fraud checks, social login, CAPTCHA, client 2FA |
+| **v0.3** | **Marketplace** with one-click installs and a developer program, add-on extensions, coupons, product add-ons, exchange rates, one-page ordering |
+| v0.4 | Taxes, quotes, client wallet, affiliates, REST API, white-label licenses, right-to-left languages, passkeys |
 | v0.5 | Automation builder, AI ticket replies, WhatsApp and Telegram bot, admin phone app |
 | v1.0 | Security audit, theme editor, status page, multi-brand, cloud edition |
 
@@ -250,6 +270,23 @@ extensions/gateways/mygateway/
 ```
 
 Payment gateways extend `App\Extensions\Gateways\Gateway`. Server modules extend `App\Extensions\Servers\Module`.
+
+**Add-ons** (`"type": "addon"`, in `extensions/addons/`) extend `App\Extensions\Addons\Addon`. In `boot()` they can
+listen to `OrderPlaced`, `InvoicePaid`, `ServiceActivated`, `TicketOpened` and `TicketReplied` (in `App\Events`),
+add HTML to page heads with `headHtml()` and allow extra hosts with `contentSecurityPolicy()`.
+
+List what your package does in `"permissions"`, for example `["events", "http:api.example.com"]`. Staff see it before installing.
+</details>
+
+<details>
+<summary><strong>Selling on the marketplace</strong></summary>
+
+1. Create a client account on [my.nuvabill.com](https://my.nuvabill.com) and open **Developers → Join**.
+2. Upload your package zip. Automatic checks run first, then our team reviews the code.
+3. When it is approved, the store signs it and it appears in every Nuvabill admin area.
+
+You set the price and the yearly update price. You keep 83% of each sale, and we pay out monthly.
+Read the full [developer guide](https://nuvabill.com/docs/developers/).
 </details>
 
 <details>
