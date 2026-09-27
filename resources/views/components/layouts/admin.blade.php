@@ -15,6 +15,7 @@
         ['route' => 'admin.products.index', 'match' => ['admin.products.*', 'admin.product-groups.*', 'admin.product-addons.*'], 'icon' => 'store', 'label' => __('Products'), 'show' => $can('products.manage')],
         ['route' => 'admin.coupons.index', 'match' => 'admin.coupons.*', 'icon' => 'tag', 'label' => __('Coupons'), 'show' => $can('coupons.manage')],
         ['route' => 'admin.servers.index', 'match' => 'admin.servers.*', 'icon' => 'server', 'label' => __('Servers'), 'show' => $can('products.manage')],
+        ['route' => 'admin.marketplace.index', 'match' => 'admin.marketplace.*', 'icon' => 'puzzle', 'label' => __('Marketplace'), 'show' => $can('marketplace.manage'), 'count' => $marketplaceUpdates ?: null],
         ['route' => 'admin.settings.edit', 'match' => ['admin.settings.*'], 'icon' => 'settings', 'label' => __('Settings'), 'show' => $can('settings.manage') || $can('staff.manage')],
         ['route' => 'admin.updates.index', 'match' => 'admin.updates.*', 'icon' => 'refresh', 'label' => __('Updates'), 'show' => $can('system.update'), 'count' => $updateAvailable ? 1 : null],
     ], fn (array $item): bool => $item['show']);
@@ -97,6 +98,12 @@
         </header>
 
         <main class="admin-content" id="main">
+            @foreach ($licenseWarnings as $warning)
+                <div class="flash" data-tone="warn" role="alert">
+                    <span><b>{{ __(':name is unlicensed.', ['name' => $warning['name']]) }}</b> {{ $warning['message'] }}</span>
+                    @if ($can('marketplace.manage'))<a class="btn btn-sm" href="{{ route('admin.marketplace.show', $warning['slug']) }}">{{ __('Fix it') }}</a>@endif
+                </div>
+            @endforeach
             <x-flash />
             {{ $slot }}
         </main>

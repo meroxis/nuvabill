@@ -27,5 +27,7 @@ if (Installation::isInstalled()) {
         Schedule::command('nuvabill:update --finish-pending')->everyMinute()->withoutOverlapping();
 
         Schedule::command('nuvabill:update --auto')->dailyAt('03:00')->withoutOverlapping();
+
+        Schedule::command('nuvabill:marketplace-licenses')->dailyAt('04:20')->withoutOverlapping();
     }
 }

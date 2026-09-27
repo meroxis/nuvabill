@@ -78,10 +78,11 @@ class AppServiceProvider extends ServiceProvider
         }
 
         if (Demo::isEnabled()) {
-            // The demo never sends email or calls payment, server or update APIs. Free RDAP lookups for domain search are allowed.
+            // The demo never sends email or calls payment, server or update APIs. Free RDAP lookups for domain search
+            // and reading the marketplace catalog are allowed.
             config(['mail.default' => 'log']);
             Http::preventStrayRequests();
-            Http::allowStrayRequests([Rdap::BOOTSTRAP_URL, 'https://rdap.*', 'https://*.rdap.*', 'https://*/rdap/*']);
+            Http::allowStrayRequests([Rdap::BOOTSTRAP_URL, 'https://rdap.*', 'https://*.rdap.*', 'https://*/rdap/*', config('nuvabill.marketplace.url').'/api/marketplace/v1/catalog*']);
             Demo::fakeServers();
         }
     }

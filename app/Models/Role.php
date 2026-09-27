@@ -38,6 +38,7 @@ class Role extends Model
             'settings.manage' => 'Change system settings, gateways and email templates',
             'staff.manage' => 'Manage staff and roles',
             'system.update' => 'Install updates',
+            'marketplace.manage' => 'Install themes and extensions from the marketplace',
         ],
     ];
 

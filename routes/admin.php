@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\EmailTemplateController;
 use App\Http\Controllers\Admin\GatewayController;
 use App\Http\Controllers\Admin\ImportController;
 use App\Http\Controllers\Admin\InvoiceController;
+use App\Http\Controllers\Admin\MarketplaceController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\ProductAddonController;
 use App\Http\Controllers\Admin\ProductController;
@@ -188,6 +189,18 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::resource('staff', StaffController::class)->except(['show', 'destroy'])->parameters(['staff' => 'admin']);
         Route::resource('roles', RoleController::class)->except(['show', 'destroy']);
     });
+
+    Route::middleware('admin.can:marketplace.manage')->prefix('marketplace')->name('marketplace.')->group(function (): void {
+        Route::get('/', [MarketplaceController::class, 'index'])->name('index');
+        Route::get('{slug}', [MarketplaceController::class, 'show'])->name('show');
+        Route::post('{slug}/install', [MarketplaceController::class, 'install'])->middleware('throttle:10,1')->name('install');
+        Route::delete('{slug}', [MarketplaceController::class, 'destroy'])->name('destroy');
+        Route::post('{slug}/activate', [MarketplaceController::class, 'activate'])->name('activate');
+        Route::post('{slug}/deactivate', [MarketplaceController::class, 'deactivate'])->name('deactivate');
+        Route::put('{slug}/license', [MarketplaceController::class, 'license'])->middleware('throttle:10,1')->name('license');
+        Route::get('{slug}/settings', [MarketplaceController::class, 'settings'])->name('settings');
+        Route::put('{slug}/settings', [MarketplaceController::class, 'saveSettings'])->name('settings.update');
+    })->where(['slug' => '[a-z0-9][a-z0-9_-]*']);
 
     Route::middleware('admin.can:system.update')->prefix('updates')->name('updates.')->group(function (): void {
         Route::get('/', [UpdateController::class, 'index'])->name('index');

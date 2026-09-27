@@ -65,6 +65,27 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Marketplace
+    |--------------------------------------------------------------------------
+    |
+    | Themes, order forms and extensions come from the marketplace store. Every
+    | package is signed by the store; the public half of its key is below and
+    | nothing installs from the marketplace without a valid signature.
+    |
+    | "store" is only true on the marketplace store itself (my.nuvabill.com):
+    | it turns on the catalog API, license keys, developer accounts, reviews
+    | and payouts.
+    |
+    */
+
+    'marketplace' => [
+        'url' => rtrim((string) env('NUVABILL_MARKETPLACE_URL', 'https://my.nuvabill.com'), '/'),
+        'public_key' => env('NUVABILL_MARKETPLACE_PUBLIC_KEY', ''),
+        'store' => (bool) env('NUVABILL_MARKETPLACE_STORE', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Paths
     |--------------------------------------------------------------------------
     */
