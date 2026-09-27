@@ -188,26 +188,33 @@ class PasskeyTest extends TestCase
 
     private function ecKey(): OpenSSLAsymmetricKey
     {
-        return openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC, 'config' => $this->opensslConfig()]);
+        return openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC] + $this->opensslConfig());
     }
 
     private function rsaKey(): OpenSSLAsymmetricKey
     {
-        return openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048, 'config' => $this->opensslConfig()]);
+        return openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048] + $this->opensslConfig());
     }
 
     /**
-     * Windows PHP builds cannot make keys without an openssl.cnf, so give them a tiny one.
+     * Windows PHP builds cannot make keys without an openssl.cnf, so give them a tiny one there.
+     * Other systems use their own.
+     *
+     * @return array{config?: string}
      */
-    private function opensslConfig(): string
+    private function opensslConfig(): array
     {
-        $path = sys_get_temp_dir().'/nuvabill-test-openssl.cnf';
-
-        if (! is_file($path)) {
-            file_put_contents($path, "[req]\ndistinguished_name = dn\n[dn]\n");
+        if (PHP_OS_FAMILY !== 'Windows') {
+            return [];
         }
 
-        return $path;
+        $path = sys_get_temp_dir().'/nuvabill-test-openssl-v2.cnf';
+
+        if (! is_file($path)) {
+            file_put_contents($path, "[req]\ndefault_bits = 2048\ndistinguished_name = dn\n[dn]\n");
+        }
+
+        return ['config' => $path];
     }
 
     private function host(): string
