@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Support\Installer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use RuntimeException;
 use Tests\TestCase;
 
 class InstallerTest extends TestCase
@@ -32,6 +34,33 @@ class InstallerTest extends TestCase
         $this->get(route('store.index'))->assertRedirect(route('install.welcome'));
         $this->get(route('admin.login'))->assertRedirect(route('install.welcome'));
         $this->get(route('install.welcome'))->assertOk()->assertSee('Check your server');
+    }
+
+    public function test_the_web_installer_sends_the_form_to_the_installer_steps(): void
+    {
+        config(['nuvabill.installed' => false]);
+        $installer = new class extends Installer
+        {
+            /** @var array<string, mixed>|null */
+            public ?array $database = null;
+
+            public function setUpDatabase(array $data): void
+            {
+                if ($data['host'] === 'wrong.example.test') {
+                    throw new RuntimeException('Could not connect to the database: refused');
+                }
+
+                $this->database = $data;
+            }
+        };
+        $this->app->instance(Installer::class, $installer);
+
+        $form = ['app_url' => 'https://billing.example.test', 'driver' => 'mysql', 'host' => 'wrong.example.test', 'port' => 3306, 'database' => 'nuvabill', 'username' => 'nuvabill', 'password' => 'secret'];
+
+        $this->post(route('install.database.save'), $form)->assertSessionHasErrors(['host' => 'Could not connect to the database: refused']);
+        $this->post(route('install.database.save'), ['host' => 'db.example.test'] + $form)->assertRedirect(route('install.account'));
+        $this->assertSame('db.example.test', $installer->database['host']);
+        $this->assertSame('secret', $installer->database['password']);
     }
 
     public function test_the_installer_is_closed_after_installation(): void

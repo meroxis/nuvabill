@@ -4,6 +4,11 @@ What changed in each Nuvabill release. The release workflow copies the section f
 release, and the **Updates** page in the admin area shows it. Write for hosting companies, in plain words.
 Add `[security]` to a section to let installs apply it automatically as a security fix.
 
+## 0.4.1
+
+- **Install with a single command:** `curl -fsSL https://nuvabill.com/install.sh | bash`. On a fresh Ubuntu or Debian server it also sets up Nginx, PHP, MariaDB, a free SSL certificate and the cron job. On a server that already runs PHP, such as cPanel Terminal, it installs into a folder and adds the cron job. Every download is checked against the release signature first.
+- **Install from the terminal:** `php artisan nuvabill:install` runs the same steps as the web installer, with questions or with options such as `--db=sqlite --email=you@example.com`.
+
 ## 0.4.0
 
 - **Taxes:** add VAT, GST or sales tax rules by country and state (Settings → Taxes). Choose whether your prices already include tax, which products and domains are taxed, and mark clients as tax exempt. Invoices, PDFs and emails show the tax and both tax numbers.

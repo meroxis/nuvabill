@@ -25,13 +25,39 @@ Nuvabill sells your hosting plans and domains, bills clients every month, create
 or VPS accounts the moment they pay, suspends late payers, and answers support tickets. It is a modern, open alternative to WHMCS, written from scratch.
 There is **no per-client pricing** and no license fee to run it.
 
-> **Status: v0.3.** A marketplace with one-click installs, coupons, product add-ons, and prices in dollars paid in dinar. See the [roadmap](#roadmap).
+**Install it with a single command:**
+
+```
+curl -fsSL https://nuvabill.com/install.sh | bash
+```
+
+> **Status: v0.4.** Taxes, a client wallet, quotes, affiliates, a REST API, passkeys, and Arabic and Kurdish with right-to-left pages. See the [roadmap](#roadmap).
 >
 > **Try it:** the [live demo](https://demo.nuvabill.com/admin/login) has sample clients, invoices and tickets. One click signs you in, and the data resets every hour.
 
 ---
 
 ## Getting started
+
+### Install with one line
+
+On a **fresh Ubuntu 22.04/24.04 or Debian 12/13 server**, as root:
+
+```
+curl -fsSL https://nuvabill.com/install.sh | bash
+```
+
+It sets up Nginx, PHP 8.4, MariaDB, a free SSL certificate and the cron job, then asks for your company name and
+your owner account. Give your address up front with `bash -s -- --domain billing.yourhost.com`.
+
+On a server that **already runs PHP 8.3+** (SSH, or **Terminal** in cPanel), the same line installs Nuvabill into a
+`nuvabill` folder, asks a few questions and adds the cron job. Choose the folder with `--dir`. Every download is
+checked against the release signature before anything is unpacked.
+
+Already unpacked Nuvabill yourself? Run `php artisan nuvabill:install` in its folder to install from the terminal
+instead of the browser.
+
+Prefer to upload a zip? Follow the steps below.
 
 ### 1. Check your hosting
 

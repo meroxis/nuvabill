@@ -24,7 +24,7 @@ class PackageRelease extends Command
      */
     private const EXCLUDED = [
         '.git', '.github', '.ai', '.claude', '.idea', '.vscode', 'node_modules', 'tests', 'dist',
-        '.env', '.env.backup', '.phpunit.result.cache', 'phpunit.xml', 'boost.json', 'CLAUDE.md', 'AGENTS.md',
+        '.env', '.env.backup', '.phpunit.result.cache', 'phpunit.xml', 'boost.json', 'CLAUDE.md', 'AGENTS.md', 'install.sh',
         'database/database.sqlite', 'public/hot', 'public/storage',
     ];
 
