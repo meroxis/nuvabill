@@ -27,7 +27,7 @@ class EnvFile
         }
 
         if (preg_match('/^'.preg_quote($key, '/').'=(.*)$/m', (string) file_get_contents($this->path), $match)) {
-            return trim($match[1], " \t\"'");
+            return trim($match[1], " \t\r\"'");
         }
 
         return null;
