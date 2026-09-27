@@ -8,6 +8,13 @@
         <x-captcha form="admin_login" />
         <button class="btn btn-primary btn-block" type="submit">{{ __('Sign in') }}</button>
     </form>
+    <form method="POST" action="{{ route('admin.passkey.login') }}" data-passkey="login" data-options="{{ route('admin.passkey.options') }}" data-failed="{{ __('No passkey was used. Try again, or sign in with your password.') }}" style="margin-top:.8rem" hidden>
+        @csrf
+        <input type="hidden" name="credential">
+        <input type="hidden" name="remember" value="0">
+        <button class="btn btn-block" type="submit"><x-icon name="key" />{{ __('Sign in with a passkey') }}</button>
+        <p class="error" data-passkey-error role="alert" hidden style="margin:.5rem 0 0;color:var(--nb-crit);font-size:.85rem;font-weight:600"></p>
+    </form>
     <x-slot:footer>
         <a href="{{ route('admin.password.request') }}">{{ __('Forgot your password?') }}</a>
     </x-slot:footer>

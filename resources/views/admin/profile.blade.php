@@ -65,6 +65,48 @@
         </form>
     </div>
 
+    <section class="card" id="passkeys" style="display:grid;gap:1rem;margin-top:14px">
+        <div class="card-header" style="margin:0">
+            <h2>{{ __('Passkeys') }}</h2>
+            @if ($passkeys->isNotEmpty())<x-pill tone="good">{{ trans_choice(':count passkey|:count passkeys', $passkeys->count()) }}</x-pill>@endif
+        </div>
+        <p class="muted" style="margin:0">{{ __('Sign in with your fingerprint, face or phone instead of your password and code. Passkeys cannot be stolen by fake sign-in pages.') }}</p>
+
+        @if ($passkeys->isNotEmpty())
+            <div class="table-wrap"><table class="table">
+                <thead><tr><th>{{ __('Name') }}</th><th>{{ __('Added') }}</th><th>{{ __('Last used') }}</th><th></th></tr></thead>
+                <tbody>
+                @foreach ($passkeys as $passkey)
+                    <tr>
+                        <td>{{ $passkey->name }}</td>
+                        <td>{{ $passkey->created_at->toFormattedDateString() }}</td>
+                        <td>{{ $passkey->last_used_at?->diffForHumans() ?? __('Never') }}</td>
+                        <td class="end">
+                            <form method="POST" action="{{ route('admin.profile.passkeys.destroy', $passkey) }}" data-confirm="{{ __('Remove this passkey? You cannot sign in with it any more.') }}">
+                                @csrf
+                                @method('DELETE')
+                                <button class="btn btn-sm btn-ghost" type="submit" aria-label="{{ __('Remove :name', ['name' => $passkey->name]) }}"><x-icon name="trash" /></button>
+                            </form>
+                        </td>
+                    </tr>
+                @endforeach
+                </tbody>
+            </table></div>
+        @endif
+
+        <form method="POST" action="{{ route('admin.profile.passkeys.store') }}" data-passkey="register" data-options="{{ route('admin.profile.passkeys.options') }}" data-failed="{{ __('The passkey was not added. Try again.') }}" data-duplicate="{{ __('This device already has a passkey for your account.') }}" hidden>
+            @csrf
+            <input type="hidden" name="credential">
+            <div style="display:flex;gap:10px;align-items:end;flex-wrap:wrap">
+                <x-input name="name" id="passkey-name" :label="__('Passkey name')" maxlength="100" :placeholder="__('For example My laptop')" />
+                <x-input name="current_password" id="passkey-password" type="password" :label="__('Your password')" required autocomplete="current-password" />
+                <button class="btn btn-primary" type="submit"><x-icon name="key" />{{ __('Add a passkey') }}</button>
+            </div>
+            <p data-passkey-error role="alert" hidden style="margin:.5rem 0 0;color:var(--nb-crit);font-size:.85rem;font-weight:600"></p>
+        </form>
+        <p class="muted" data-passkey-unsupported hidden style="margin:0">{{ __('This browser cannot use passkeys. Try an up-to-date Chrome, Edge, Safari or Firefox.') }}</p>
+    </section>
+
     <section class="card" style="display:grid;gap:1rem;margin-top:14px">
         <div class="card-header" style="margin:0">
             <h2>{{ __('API keys') }}</h2>

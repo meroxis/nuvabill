@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\ActivityController;
 use App\Http\Controllers\Admin\AffiliateController;
 use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\Auth\LoginController;
+use App\Http\Controllers\Admin\Auth\PasskeyLoginController;
 use App\Http\Controllers\Admin\Auth\PasswordResetController;
 use App\Http\Controllers\Admin\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\Admin\ClientController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\Admin\ImportController;
 use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\MarketplaceController;
 use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\PasskeyController;
 use App\Http\Controllers\Admin\ProductAddonController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ProductGroupController;
@@ -52,6 +54,8 @@ Route::middleware('guest:admin')->group(function (): void {
     Route::post('login', [LoginController::class, 'store'])->middleware(['throttle:6,1', 'captcha:admin_login']);
     Route::get('two-factor', [TwoFactorChallengeController::class, 'create'])->name('two-factor.challenge');
     Route::post('two-factor', [TwoFactorChallengeController::class, 'store'])->middleware('throttle:6,1');
+    Route::post('passkey/options', [PasskeyLoginController::class, 'options'])->middleware('throttle:20,1')->name('passkey.options');
+    Route::post('passkey', [PasskeyLoginController::class, 'store'])->middleware('throttle:10,1')->name('passkey.login');
     Route::get('forgot-password', [PasswordResetController::class, 'request'])->name('password.request');
     Route::post('forgot-password', [PasswordResetController::class, 'email'])->middleware(['throttle:3,1', 'captcha:password_reset'])->name('password.email');
     Route::get('reset-password/{token}', [PasswordResetController::class, 'edit'])->name('password.reset');
@@ -70,6 +74,9 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
     Route::delete('profile/two-factor', [ProfileController::class, 'disableTwoFactor'])->name('profile.two-factor.disable');
     Route::post('profile/api-keys', [ApiKeyController::class, 'store'])->middleware('throttle:10,1')->name('profile.api-keys.store');
     Route::delete('profile/api-keys/{apiToken}', [ApiKeyController::class, 'destroy'])->name('profile.api-keys.destroy');
+    Route::post('profile/passkeys/options', [PasskeyController::class, 'options'])->middleware('throttle:6,1')->name('profile.passkeys.options');
+    Route::post('profile/passkeys', [PasskeyController::class, 'store'])->middleware('throttle:10,1')->name('profile.passkeys.store');
+    Route::delete('profile/passkeys/{passkey}', [PasskeyController::class, 'destroy'])->name('profile.passkeys.destroy');
 
     Route::middleware('admin.can:clients.view')->group(function (): void {
         Route::get('clients', [ClientController::class, 'index'])->name('clients.index');

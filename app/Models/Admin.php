@@ -6,6 +6,7 @@ use Database\Factories\AdminFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -76,6 +77,11 @@ class Admin extends Authenticatable
      *
      * @return HasMany<ApiToken, $this>
      */
+    public function passkeys(): MorphMany
+    {
+        return $this->morphMany(Passkey::class, 'owner');
+    }
+
     public function apiTokens(): HasMany
     {
         return $this->hasMany(ApiToken::class);

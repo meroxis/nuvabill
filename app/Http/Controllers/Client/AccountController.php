@@ -27,6 +27,7 @@ class AccountController extends Controller
             'countries' => Countries::all(),
             'socialProviders' => $social->enabled(),
             'socialAccounts' => $client->socialAccounts()->get()->keyBy('provider'),
+            'passkeys' => $client->passkeys()->latest('id')->get(),
             'twoFactor' => [
                 'mode' => (string) setting('security.client_two_factor'),
                 'methods' => (array) setting('security.client_two_factor_methods'),

@@ -27,6 +27,7 @@ class ProfileController extends Controller
                 ? Totp::qrCodeSvg(Totp::provisioningUri((string) $admin->two_factor_secret, $admin->email, (string) setting('company.name')))
                 : null,
             'recoveryCodes' => session('recovery_codes'),
+            'passkeys' => $admin->passkeys()->latest('id')->get(),
             'apiTokens' => $admin->apiTokens()->latest('id')->get(),
             'newApiKey' => session('new_api_key'),
         ]);

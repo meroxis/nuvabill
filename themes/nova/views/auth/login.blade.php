@@ -17,6 +17,13 @@
                 <button class="btn btn-primary btn-block" type="submit">{{ __('Sign in') }}</button>
                 <a href="{{ route('client.password.request') }}" style="font-size:.88rem">{{ __('Forgot your password?') }}</a>
             </form>
+            <form method="POST" action="{{ route('client.passkey.login') }}" data-passkey="login" data-options="{{ route('client.passkey.options') }}" data-failed="{{ __('No passkey was used. Try again, or sign in with your password.') }}" hidden>
+                @csrf
+                <input type="hidden" name="credential">
+                <input type="hidden" name="remember" value="0">
+                <button class="btn btn-block" type="submit"><x-icon name="key" />{{ __('Sign in with a passkey') }}</button>
+                <p data-passkey-error role="alert" hidden style="margin:.5rem 0 0;color:var(--nb-crit);font-size:.85rem;font-weight:600;text-align:center"></p>
+            </form>
             <p class="muted" style="text-align:center;margin:0">{{ __('New customer?') }} <a href="{{ route('client.register') }}">{{ __('Create an account') }}</a></p>
         </div>
     </div>

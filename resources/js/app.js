@@ -70,5 +70,129 @@ document.addEventListener('click', async (event) => {
     }
 });
 
+/**
+ * Passkeys. A form with data-passkey="register" or "login" and data-options="{url}" first asks
+ * the server for options, lets the browser make or use the passkey, then posts the answer in
+ * its hidden "credential" field like a normal form.
+ */
+const base64url = {
+    toBuffer(value) {
+        const base64 = value.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+
+        return Uint8Array.from(atob(padded), (char) => char.charCodeAt(0)).buffer;
+    },
+    fromBuffer(buffer) {
+        let text = '';
+        new Uint8Array(buffer).forEach((byte) => {
+            text += String.fromCharCode(byte);
+        });
+
+        return btoa(text).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    },
+};
+
+function passkeyCredentialJson(credential) {
+    const response = credential.response;
+    const json = {
+        id: credential.id,
+        rawId: base64url.fromBuffer(credential.rawId),
+        type: credential.type,
+        response: { clientDataJSON: base64url.fromBuffer(response.clientDataJSON) },
+    };
+
+    if (response.attestationObject) {
+        json.response.attestationObject = base64url.fromBuffer(response.attestationObject);
+        json.transports = typeof response.getTransports === 'function' ? response.getTransports() : [];
+    } else {
+        json.response.authenticatorData = base64url.fromBuffer(response.authenticatorData);
+        json.response.signature = base64url.fromBuffer(response.signature);
+        json.response.userHandle = response.userHandle ? base64url.fromBuffer(response.userHandle) : null;
+    }
+
+    return JSON.stringify(json);
+}
+
+async function runPasskeyForm(form) {
+    const error = form.querySelector('[data-passkey-error]');
+    const button = form.querySelector('button[type="submit"]');
+    const showError = (message) => {
+        if (error) {
+            error.textContent = message;
+            error.hidden = false;
+        }
+    };
+
+    if (error) {
+        error.hidden = true;
+    }
+    button?.setAttribute('disabled', '');
+
+    try {
+        const password = form.querySelector('input[name="current_password"]');
+        const response = await fetch(form.dataset.options, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': form.querySelector('input[name="_token"]')?.value ?? '',
+            },
+            body: JSON.stringify({ current_password: password ? password.value : null }),
+        });
+        const options = await response.json().catch(() => ({}));
+
+        if (!response.ok) {
+            showError(options.message || form.dataset.failed);
+
+            return;
+        }
+
+        options.challenge = base64url.toBuffer(options.challenge);
+        let credential;
+
+        if (form.dataset.passkey === 'register') {
+            options.user.id = base64url.toBuffer(options.user.id);
+            options.excludeCredentials = (options.excludeCredentials || []).map((item) => ({ ...item, id: base64url.toBuffer(item.id) }));
+            credential = await navigator.credentials.create({ publicKey: options });
+        } else {
+            credential = await navigator.credentials.get({ publicKey: options });
+        }
+
+        form.querySelector('input[name="credential"]').value = passkeyCredentialJson(credential);
+
+        const remember = form.querySelector('input[type="hidden"][name="remember"]');
+        const rememberBox = document.querySelector('input[type="checkbox"][name="remember"]');
+
+        if (remember && rememberBox) {
+            remember.value = rememberBox.checked ? '1' : '0';
+        }
+
+        form.submit();
+    } catch (exception) {
+        showError(exception?.name === 'InvalidStateError' ? (form.dataset.duplicate || form.dataset.failed) : form.dataset.failed);
+    } finally {
+        button?.removeAttribute('disabled');
+    }
+}
+
+document.addEventListener('submit', (event) => {
+    const form = event.target instanceof HTMLFormElement && event.target.dataset.passkey ? event.target : null;
+
+    if (form && !event.defaultPrevented) {
+        event.preventDefault();
+        runPasskeyForm(form);
+    }
+});
+
+if (window.PublicKeyCredential) {
+    document.querySelectorAll('[data-passkey]').forEach((element) => {
+        element.hidden = false;
+    });
+} else {
+    document.querySelectorAll('[data-passkey-unsupported]').forEach((element) => {
+        element.hidden = false;
+    });
+}
+
 window.Alpine = Alpine;
 Alpine.start();
