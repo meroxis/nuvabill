@@ -21,6 +21,7 @@ class Role extends Model
         'Clients' => [
             'clients.view' => 'View clients',
             'clients.manage' => 'Create and edit clients',
+            'affiliates.manage' => 'Manage affiliates and their commissions',
         ],
         'Billing' => [
             'orders.manage' => 'Manage orders',

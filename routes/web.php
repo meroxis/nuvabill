@@ -11,6 +11,7 @@ use App\Http\Controllers\Client\DashboardController;
 use App\Http\Controllers\Client\DomainController;
 use App\Http\Controllers\Client\InvoiceController;
 use App\Http\Controllers\Client\PaymentController;
+use App\Http\Controllers\Client\QuoteController;
 use App\Http\Controllers\Client\ServiceController;
 use App\Http\Controllers\Client\TicketController;
 use App\Http\Controllers\Client\TwoFactorController;
@@ -105,6 +106,12 @@ Route::middleware(['auth:web', 'client.active', 'client.two-factor'])->prefix('c
     Route::get('invoices/{invoice}/return/{gateway}', [PaymentController::class, 'return'])->name('invoices.return');
     Route::get('invoices/{invoice}/payment-status', [PaymentController::class, 'status'])->middleware('throttle:30,1')->name('invoices.payment-status');
     Route::post('invoices/{invoice}/pay-from-wallet', [WalletController::class, 'pay'])->middleware('throttle:10,1')->name('invoices.wallet');
+
+    Route::get('quotes', [QuoteController::class, 'index'])->name('quotes.index');
+    Route::get('quotes/{quote}', [QuoteController::class, 'show'])->name('quotes.show');
+    Route::get('quotes/{quote}/pdf', [QuoteController::class, 'pdf'])->name('quotes.pdf');
+    Route::post('quotes/{quote}/accept', [QuoteController::class, 'accept'])->middleware('throttle:10,1')->name('quotes.accept');
+    Route::post('quotes/{quote}/decline', [QuoteController::class, 'decline'])->middleware('throttle:10,1')->name('quotes.decline');
 
     Route::get('wallet', [WalletController::class, 'show'])->name('wallet');
     Route::post('wallet', [WalletController::class, 'store'])->middleware('throttle:10,1')->name('wallet.store');

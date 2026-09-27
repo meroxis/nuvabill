@@ -20,6 +20,7 @@ use App\Http\Controllers\Admin\ProductAddonController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ProductGroupController;
 use App\Http\Controllers\Admin\ProfileController;
+use App\Http\Controllers\Admin\QuoteController;
 use App\Http\Controllers\Admin\RegistrarController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SecurityController;
@@ -107,9 +108,18 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
         Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->whereNumber('invoice')->name('invoices.show');
         Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'pdf'])->name('invoices.pdf');
+        Route::get('quotes', [QuoteController::class, 'index'])->name('quotes.index');
+        Route::get('quotes/{quote}', [QuoteController::class, 'show'])->whereNumber('quote')->name('quotes.show');
+        Route::get('quotes/{quote}/pdf', [QuoteController::class, 'pdf'])->name('quotes.pdf');
     });
 
     Route::middleware('admin.can:billing.manage')->group(function (): void {
+        Route::get('quotes/create', [QuoteController::class, 'create'])->name('quotes.create');
+        Route::post('quotes', [QuoteController::class, 'store'])->name('quotes.store');
+        Route::get('quotes/{quote}/edit', [QuoteController::class, 'edit'])->name('quotes.edit');
+        Route::put('quotes/{quote}', [QuoteController::class, 'update'])->name('quotes.update');
+        Route::post('quotes/{quote}/send', [QuoteController::class, 'send'])->name('quotes.send');
+        Route::delete('quotes/{quote}', [QuoteController::class, 'destroy'])->name('quotes.destroy');
         Route::get('invoices/create', [InvoiceController::class, 'create'])->name('invoices.create');
         Route::post('invoices', [InvoiceController::class, 'store'])->name('invoices.store');
         Route::post('clients/{client}/wallet', [ClientController::class, 'wallet'])->name('clients.wallet');

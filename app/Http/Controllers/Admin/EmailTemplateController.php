@@ -23,6 +23,8 @@ class EmailTemplateController extends Controller
         'order' => ['order.number', 'order.total', 'admin_url'],
         'service' => ['service.product', 'service.domain', 'service.username', 'service.server', 'service.next_due_date', 'service.amount', 'service.url', 'reason'],
         'ticket' => ['ticket.number', 'ticket.subject', 'ticket.department', 'ticket.status', 'ticket.url', 'reply.message', 'reply.author', 'admin_url'],
+        'quote' => ['quote.number', 'quote.subject', 'quote.total', 'quote.valid_until', 'quote.url'],
+        'affiliate' => ['commission.amount', 'commission.available_on', 'affiliate_url'],
     ];
 
     public function index(): View
@@ -36,7 +38,7 @@ class EmailTemplateController extends Controller
     {
         $group = explode('.', $emailTemplate->key)[0];
         $extra = match ($group) {
-            'admin' => array_merge(self::PLACEHOLDERS['order'], self::PLACEHOLDERS['ticket']),
+            'admin' => array_merge(self::PLACEHOLDERS['order'], self::PLACEHOLDERS['ticket'], str_starts_with($emailTemplate->key, 'admin.quote') ? [...self::PLACEHOLDERS['quote'], 'invoice.number'] : []),
             default => self::PLACEHOLDERS[$group] ?? [],
         };
 

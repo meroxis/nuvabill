@@ -3,12 +3,13 @@
 namespace App\Billing;
 
 use App\Models\Invoice;
+use App\Models\Quote;
 use App\Support\Branding;
 use Dompdf\Dompdf;
 use Dompdf\Options;
 
 /**
- * Renders an invoice as a PDF file.
+ * Renders invoices and quotes as PDF files.
  */
 class InvoicePdf
 {
@@ -16,8 +17,15 @@ class InvoicePdf
     {
         $invoice->loadMissing('items', 'client', 'transactions');
 
-        $html = view('pdf.invoice', [
-            'invoice' => $invoice,
+        return $this->pdf(view('pdf.invoice', ['invoice' => $invoice] + $this->shared())->render());
+    }
+
+    /**
+     * @return array{company: array<string, mixed>, accent: mixed, showPoweredBy: bool}
+     */
+    private function shared(): array
+    {
+        return [
             'company' => [
                 'name' => setting('company.name'),
                 'email' => setting('company.email'),
@@ -27,8 +35,11 @@ class InvoicePdf
             ],
             'accent' => setting('branding.accent'),
             'showPoweredBy' => Branding::showPoweredBy(),
-        ])->render();
+        ];
+    }
 
+    private function pdf(string $html): string
+    {
         $options = new Options;
         $options->setIsRemoteEnabled(false);
         $options->setDefaultFont('DejaVu Sans');
@@ -39,6 +50,21 @@ class InvoicePdf
         $dompdf->render();
 
         return (string) $dompdf->output();
+    }
+
+    /**
+     * The same page style for a quote.
+     */
+    public function renderQuote(Quote $quote): string
+    {
+        $quote->loadMissing('items', 'client');
+
+        return $this->pdf(view('pdf.quote', ['quote' => $quote] + $this->shared())->render());
+    }
+
+    public function quoteFilename(Quote $quote): string
+    {
+        return 'quote-'.preg_replace('/[^A-Za-z0-9_-]/', '', $quote->displayNumber()).'.pdf';
     }
 
     public function filename(Invoice $invoice): string

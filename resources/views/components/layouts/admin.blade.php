@@ -9,6 +9,7 @@
         ['route' => 'admin.services.index', 'match' => 'admin.services.*', 'icon' => 'box', 'label' => __('Services'), 'show' => $can('services.manage')],
         ['route' => 'admin.domains.index', 'match' => 'admin.domains.*', 'icon' => 'globe', 'label' => __('Domains'), 'show' => $can('domains.manage')],
         ['route' => 'admin.invoices.index', 'match' => 'admin.invoices.*', 'icon' => 'receipt', 'label' => __('Invoices'), 'show' => $can('billing.view')],
+        ['route' => 'admin.quotes.index', 'match' => 'admin.quotes.*', 'icon' => 'layers', 'label' => __('Quotes'), 'show' => $can('billing.view')],
         ['route' => 'admin.tickets.index', 'match' => 'admin.tickets.*', 'icon' => 'ticket', 'label' => __('Support'), 'show' => $can('support.manage'), 'count' => $ticketsAwaitingReply],
     ], fn (array $item): bool => $item['show']);
     $setup = array_filter([

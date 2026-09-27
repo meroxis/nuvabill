@@ -112,6 +112,14 @@ class Client extends Authenticatable
     }
 
     /**
+     * @return HasMany<Quote, $this>
+     */
+    public function quotes(): HasMany
+    {
+        return $this->hasMany(Quote::class);
+    }
+
+    /**
      * Changes to the wallet balance, newest last.
      *
      * @return HasMany<CreditTransaction, $this>

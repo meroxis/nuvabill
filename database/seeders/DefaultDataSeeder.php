@@ -24,7 +24,7 @@ class DefaultDataSeeder extends Seeder
     {
         $roles = [
             'Owner' => ['*'],
-            'Billing' => ['clients.view', 'clients.manage', 'orders.manage', 'services.manage', 'domains.manage', 'billing.manage', 'coupons.manage'],
+            'Billing' => ['clients.view', 'clients.manage', 'orders.manage', 'services.manage', 'domains.manage', 'billing.manage', 'coupons.manage', 'affiliates.manage'],
             'Support' => ['clients.view', 'support.manage'],
         ];
 
@@ -320,6 +320,49 @@ class DefaultDataSeeder extends Seeder
                 {{ reply.message }}
 
                 [Reply now]({{ admin_url }})
+                MD,
+            ],
+            'quote.sent' => [
+                'Quote',
+                'Your quote {{ quote.number }} from {{ company.name }}',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                Here is your quote **{{ quote.number }}**: {{ quote.subject }}
+
+                Total: **{{ quote.total }}**, valid until {{ quote.valid_until }}.
+
+                [View and accept the quote]({{ quote.url }})
+
+                Questions? Just reply to this email.
+
+                {{ company.name }}
+                MD,
+            ],
+            'admin.quote_accepted' => [
+                'Staff: quote accepted',
+                'Quote {{ quote.number }} accepted by {{ client.name }}',
+                <<<'MD'
+                {{ client.name }} accepted quote **{{ quote.number }}** ({{ quote.subject }}) for **{{ quote.total }}**.
+
+                Invoice {{ invoice.number }} was created for it.
+
+                [Open the quote]({{ admin_url }})
+                MD,
+            ],
+            'affiliate.commission' => [
+                'Affiliate: new commission',
+                'You earned {{ commission.amount }} from a referral',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                Someone you referred to {{ company.name }} paid an invoice, and you earned **{{ commission.amount }}**.
+
+                It becomes available on {{ commission.available_on }}. Then you can move it to your wallet.
+
+                [See your affiliate account]({{ affiliate_url }})
+
+                {{ company.name }}
                 MD,
             ],
             'marketplace.license' => [

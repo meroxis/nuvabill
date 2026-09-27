@@ -11,6 +11,7 @@ use App\Models\Domain;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Quote;
 use App\Models\Server;
 use App\Models\Service;
 use App\Models\Ticket;
@@ -61,6 +62,7 @@ class AppServiceProvider extends ServiceProvider
             'invoice' => Invoice::class,
             'order' => Order::class,
             'product' => Product::class,
+            'quote' => Quote::class,
             'server' => Server::class,
             'service' => Service::class,
             'ticket' => Ticket::class,
