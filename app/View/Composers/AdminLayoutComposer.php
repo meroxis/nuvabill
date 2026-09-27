@@ -10,7 +10,6 @@ use App\Models\MarketplaceInstall;
 use App\Models\Order;
 use App\Models\Ticket;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 
 /**
@@ -37,7 +36,7 @@ class AdminLayoutComposer
             'marketplaceUpdates' => $this->marketplaceUpdates($installs),
             'licenseWarnings' => $installs->toBase()->filter(fn (MarketplaceInstall $install): bool => $install->hasInvalidLicense())
                 ->map(fn (MarketplaceInstall $install): array => ['slug' => $install->slug, 'name' => $install->name, 'message' => (string) $install->license_message])
-                ->merge(Cache::remember('nuvabill.marketplace.unlicensed', 600, fn () => $this->licenses->unlicensedCopies()->map(fn (array $copy): array => $copy + ['message' => __('This paid copy was not installed from the marketplace, so it has no license.')])->all()))
+                ->merge(collect($this->licenses->cachedUnlicensedCopies())->map(fn (array $copy): array => $copy + ['message' => __('This paid copy was not installed from the marketplace, so it has no license.')]))
                 ->values(),
         ]);
     }

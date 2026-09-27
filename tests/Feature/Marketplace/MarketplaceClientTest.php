@@ -129,6 +129,21 @@ class MarketplaceClientTest extends TestCase
         $this->assertSame('NVB-TEST-KEY1-0001', MarketplaceInstall::query()->sole()->license_key);
     }
 
+    public function test_a_hand_copied_paid_theme_warns_until_it_is_installed_from_the_marketplace(): void
+    {
+        File::ensureDirectoryExists($this->dir.'/themes/aurora');
+        File::put($this->dir.'/themes/aurora/theme.json', json_encode(['slug' => 'aurora', 'name' => 'Aurora', 'version' => '1.0.0', 'paid' => true]));
+        $this->get(route('admin.dashboard'))->assertSee('Aurora is unlicensed.');
+
+        $zip = $this->package('aurora', '1.0.0', 'theme.json', ['slug' => 'aurora', 'name' => 'Aurora', 'version' => '1.0.0', 'paid' => true], [
+            'views/partials/brand-style.blade.php' => '<meta name="theme" content="aurora">',
+        ]);
+        $this->fakeStore('aurora', 'theme', '1.0.0', $zip);
+        $this->post(route('admin.marketplace.install', 'aurora'), ['license_key' => 'NVB-AURO-0000-0001'])->assertSessionHasNoErrors();
+
+        $this->get(route('admin.dashboard'))->assertDontSee('Aurora is unlicensed.');
+    }
+
     public function test_the_daily_check_marks_a_revoked_license_and_warns_staff(): void
     {
         $install = MarketplaceInstall::create(['slug' => 'aurora', 'type' => 'theme', 'name' => 'Aurora', 'version' => '1.0.0', 'license_key' => 'NVB-AURO-0000-0001', 'license_status' => 'valid']);

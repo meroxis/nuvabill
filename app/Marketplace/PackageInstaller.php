@@ -9,6 +9,7 @@ use App\Models\MarketplaceInstall;
 use App\Support\Activity;
 use App\Support\Settings;
 use App\Support\Themes;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
@@ -119,6 +120,7 @@ class PackageInstaller
             'license_status' => filled($licenseKey ?: $install->license_key) ? MarketplaceInstall::LICENSE_VALID : null,
             'license_checked_at' => now(),
         ])->save();
+        Cache::forget(LicenseChecker::UNLICENSED_CACHE_KEY);
 
         Activity::log($previous ? 'marketplace.updated' : 'marketplace.installed', $previous
             ? "Updated {$install->name} from {$previous} to {$install->version}"
@@ -157,6 +159,7 @@ class PackageInstaller
         File::deleteDirectory($type->directory($install->slug));
         $install->delete();
         $this->extensions->refresh();
+        Cache::forget(LicenseChecker::UNLICENSED_CACHE_KEY);
 
         Activity::log('marketplace.removed', "Removed {$install->name} from the marketplace installs");
     }

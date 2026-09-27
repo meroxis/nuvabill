@@ -6,6 +6,7 @@ use App\Models\MarketplaceInstall;
 use App\Support\Activity;
 use App\Support\Themes;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * Checks the license keys of paid themes, order forms and extensions with the marketplace store,
@@ -16,6 +17,11 @@ use Illuminate\Support\Collection;
 class LicenseChecker
 {
     public const GRACE_DAYS = 14;
+
+    /**
+     * Cache key for the list of paid copies that were not installed from the marketplace.
+     */
+    public const UNLICENSED_CACHE_KEY = 'nuvabill.marketplace.unlicensed';
 
     public function __construct(
         private MarketplaceClient $client,
@@ -69,6 +75,21 @@ class LicenseChecker
      *
      * @return Collection<int, array{slug: string, name: string}>
      */
+    /**
+     * The unlicensed copies, remembered for ten minutes so pages stay fast.
+     *
+     * @return list<array{slug: string, name: string}>
+     */
+    public function cachedUnlicensedCopies(): array
+    {
+        return Cache::remember(self::UNLICENSED_CACHE_KEY, 600, fn (): array => $this->unlicensedCopies()->all());
+    }
+
+    public function forgetUnlicensedCopies(): void
+    {
+        Cache::forget(self::UNLICENSED_CACHE_KEY);
+    }
+
     public function unlicensedCopies(): Collection
     {
         $installed = MarketplaceInstall::query()->pluck('slug')->all();
