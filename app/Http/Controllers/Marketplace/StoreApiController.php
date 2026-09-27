@@ -89,7 +89,8 @@ class StoreApiController extends Controller
             'slug' => $item->slug,
             'type' => $item->type->value,
             'version' => $version->version,
-            'url' => URL::temporarySignedRoute('marketplace.api.file', now()->addMinutes(15), ['version' => $version->id, 'license' => $license?->id ?? 0]),
+            // Signed without the scheme and host, so it still works behind a proxy that talks plain HTTP to this server.
+            'url' => url(URL::temporarySignedRoute('marketplace.api.file', now()->addMinutes(15), ['version' => $version->id, 'license' => $license?->id ?? 0], absolute: false)),
             'sha256' => $build['sha256'],
             'signature' => $build['signature'],
         ]);

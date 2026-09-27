@@ -18,6 +18,7 @@ use App\Providers\MarketplaceStoreServiceProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
 use ZipArchive;
 
@@ -139,6 +140,18 @@ class StoreTest extends TestCase
 
         $license->update(['status' => License::STATUS_REVOKED]);
         $this->postJson(route('marketplace.api.licenses.check'), ['slug' => 'aurora', 'license_key' => $license->key, 'site' => 'billing.example.org'])->assertJson(['valid' => false, 'status' => 'revoked']);
+    }
+
+    public function test_download_links_are_https_and_still_work_behind_a_plain_http_proxy(): void
+    {
+        $this->liveItem('paper', 'theme', 0, 0);
+        URL::forceScheme('https');
+
+        $url = $this->postJson(route('marketplace.api.download'), ['slug' => 'paper', 'site' => 'localhost'])->assertOk()->json('url');
+        $this->assertStringStartsWith('https://', $url);
+
+        $this->get(str_replace('https://', 'http://', $url))->assertOk();
+        $this->get(str_replace('https://', 'http://', $url).'1')->assertForbidden();
     }
 
     public function test_buying_an_item_issues_a_license_and_pays_the_developer_their_share(): void

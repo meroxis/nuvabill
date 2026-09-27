@@ -21,7 +21,7 @@ Route::prefix('api/marketplace/v1')->name('marketplace.api.')->middleware(Substi
     Route::post('licenses/check', [StoreApiController::class, 'check'])->middleware('throttle:60,1')->name('licenses.check');
     Route::get('files/{version}/{license}', [StoreApiController::class, 'file'])
         ->whereNumber(['version', 'license'])
-        ->middleware(['signed', 'throttle:30,1'])
+        ->middleware(['signed:relative', 'throttle:30,1'])
         ->name('file');
 });
 

@@ -25,6 +25,7 @@ use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
@@ -48,6 +49,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Behind a proxy that talks plain HTTP to this server, links would otherwise start with http://.
+        if (str_starts_with((string) config('app.url'), 'https://')) {
+            URL::forceScheme('https');
+        }
+
         Relation::enforceMorphMap([
             'admin' => Admin::class,
             'client' => Client::class,
