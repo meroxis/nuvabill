@@ -80,7 +80,7 @@ return [
 
     'marketplace' => [
         'url' => rtrim((string) env('NUVABILL_MARKETPLACE_URL', 'https://my.nuvabill.com'), '/'),
-        'public_key' => env('NUVABILL_MARKETPLACE_PUBLIC_KEY', ''),
+        'public_key' => env('NUVABILL_MARKETPLACE_PUBLIC_KEY', 'ZQ8NK5APeVMJvCJ/8cs6D+R7/X3trvQdMNizLINm3MQ='),
         'store' => (bool) env('NUVABILL_MARKETPLACE_STORE', false),
         'signing_key_path' => env('NUVABILL_MARKETPLACE_SIGNING_KEY_PATH'),
     ],
