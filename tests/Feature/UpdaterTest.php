@@ -71,6 +71,22 @@ class UpdaterTest extends TestCase
         $this->assertSame('0.3.0-beta.1', app(UpdateManager::class)->check()->version);
     }
 
+    public function test_the_notes_show_every_skipped_version_without_github_links(): void
+    {
+        config(['nuvabill.version' => '0.3.1']);
+
+        Http::fake(['api.github.com/*' => Http::response([
+            $this->release('v0.3.3', notes: "- Safer updates\n\n**Full Changelog**: https://github.com/meroxis/nuvabill/compare/v0.3.2...v0.3.3"),
+            $this->release('v0.3.2', notes: "## What's Changed\n- Clearer payment errors"),
+            $this->release('v0.3.1', notes: '- Already installed'),
+        ])]);
+
+        $release = app(UpdateManager::class)->check();
+
+        $this->assertSame('0.3.3', $release->version);
+        $this->assertSame("### 0.3.3\n\n- Safer updates\n\n### 0.3.2\n\n- Clearer payment errors", $release->notes);
+    }
+
     public function test_check_reports_nothing_when_up_to_date(): void
     {
         config(['nuvabill.version' => '0.2.1']);

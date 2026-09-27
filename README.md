@@ -300,9 +300,10 @@ falls back to Nova. Choose the theme in **Settings → Look and feel**.
 <summary><strong>Releasing (maintainers)</strong></summary>
 
 1. Set the new version in `config/nuvabill.php`.
-2. Commit, then push a tag with the same version: `git tag v0.1.1 && git push origin v0.1.1`.
-3. The release workflow builds the zip, signs it with the `NUVABILL_SIGNING_KEY` secret and publishes the GitHub release.
-4. For security releases, add `[security]` to the release notes so installs can apply them automatically.
+2. Add a `## x.y.z` section to `CHANGELOG.md` in plain words. Site owners see it on their **Updates** page.
+3. Commit, then push a tag with the same version: `git tag v0.1.1 && git push origin v0.1.1`.
+4. The release workflow builds the zip, signs it with the `NUVABILL_SIGNING_KEY` secret and publishes the GitHub release with that section as its notes.
+5. For security releases, add `[security]` to the section so installs can apply them automatically.
 
 The public half of the signing key is in `config/nuvabill.php`. Never commit the secret half.
 </details>

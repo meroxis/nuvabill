@@ -26,6 +26,7 @@ class ReleaseSource
         }
 
         $best = null;
+        $newer = [];
 
         foreach ((array) $response->json() as $item) {
             if (! is_array($item) || ($item['draft'] ?? false)) {
@@ -52,11 +53,15 @@ class ReleaseSource
                 continue;
             }
 
+            $notes = self::cleanNotes((string) ($item['body'] ?? ''));
+
+            if (version_compare($version, (string) config('nuvabill.version'), '>')) {
+                $newer[$version] = $notes;
+            }
+
             if ($best !== null && version_compare($version, $best->version, '<=')) {
                 continue;
             }
-
-            $notes = (string) ($item['body'] ?? '');
 
             $best = new Release(
                 version: $version,
@@ -70,6 +75,34 @@ class ReleaseSource
             );
         }
 
-        return $best;
+        if ($best === null || count($newer) < 2) {
+            return $best;
+        }
+
+        // Several versions behind: show what changed in each of them, newest first.
+        uksort($newer, fn (string $a, string $b): int => version_compare($b, $a));
+        $notes = collect($newer)->map(fn (string $text, string $version): string => "### {$version}\n\n".($text !== '' ? $text : __('No release notes.')))->implode("\n\n");
+
+        return new Release(
+            version: $best->version,
+            notes: $notes,
+            zipUrl: $best->zipUrl,
+            signatureUrl: $best->signatureUrl,
+            publishedAt: $best->publishedAt,
+            isSecurity: stripos($notes, '[security]') !== false,
+            isPrerelease: $best->isPrerelease,
+            size: $best->size,
+        );
+    }
+
+    /**
+     * GitHub adds a "Full Changelog" link and a "What's Changed" heading to generated notes; site owners only need the changes.
+     */
+    private static function cleanNotes(string $notes): string
+    {
+        $lines = preg_split('/\R/', $notes) ?: [];
+        $kept = array_filter($lines, fn (string $line): bool => ! preg_match("/^\\s*(\\*\\*Full Changelog\\*\\*|#+\\s*What's Changed\\s*$)/i", $line));
+
+        return trim(implode("\n", $kept));
     }
 }
