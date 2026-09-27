@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Billing\ExchangeRates;
 use App\Enums\AutoSetup;
 use App\Enums\BillingCycle;
 use App\Enums\OrderStatus;
@@ -11,10 +12,12 @@ use App\Enums\TicketStatus;
 use App\Extensions\ExtensionManager;
 use App\Models\Admin;
 use App\Models\Client;
+use App\Models\Coupon;
 use App\Models\Domain;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\ProductAddon;
 use App\Models\ProductGroup;
 use App\Models\Role;
 use App\Models\Server;
@@ -148,7 +151,53 @@ class DatabaseSeeder extends Seeder
         Invoice::query()->orderBy('id')->each(fn (Invoice $invoice) => $invoice->forceFill(['number' => 'INV-'.str_pad((string) $invoice->id, 4, '0', STR_PAD_LEFT)])->save());
 
         $this->gateways();
+        $this->addonsAndCoupons();
         $this->activity($clients, $admin);
+    }
+
+    /**
+     * Add-ons for the order form, a welcome coupon, and a dinar rate so Iraqi gateways can charge dollar invoices.
+     */
+    private function addonsAndCoupons(): void
+    {
+        $hosting = Product::query()->where('server_module', '!=', 'virtualizor')->orWhereNull('server_module')->pluck('id')->all();
+
+        foreach ([
+            ['Daily backups', 'Keep 30 days of copies. Restore any file in one click.', 'refresh', 200, true, $hosting],
+            ['Priority support', 'Answers in under one hour, every day.', 'zap', 500, false, null],
+            ['Dedicated IP address', 'Your own IP address for your site or server.', 'globe', 300, false, null],
+        ] as $order => [$name, $description, $icon, $monthly, $popular, $products]) {
+            $addon = ProductAddon::query()->firstOrCreate(['name' => $name], [
+                'description' => $description,
+                'icon' => $icon,
+                'product_ids' => $products,
+                'is_visible' => true,
+                'is_popular' => $popular,
+                'sort_order' => $order,
+            ]);
+
+            $addon->prices()->firstOrCreate(['currency' => 'USD', 'billing_cycle' => BillingCycle::Monthly], ['price' => $monthly]);
+            $addon->prices()->firstOrCreate(['currency' => 'USD', 'billing_cycle' => BillingCycle::Annually], ['price' => $monthly * 10]);
+        }
+
+        Coupon::query()->firstOrCreate(['code' => 'WELCOME20'], [
+            'type' => Coupon::TYPE_PERCENT,
+            'value' => 20,
+            'recurring' => Coupon::RECURRING_FIRST,
+            'new_clients_only' => true,
+            'is_active' => true,
+            'notes' => 'Demo coupon: 20% off the first payment for new clients.',
+        ]);
+
+        Coupon::query()->firstOrCreate(['code' => 'YEARLY15'], [
+            'type' => Coupon::TYPE_PERCENT,
+            'value' => 15,
+            'billing_cycles' => [BillingCycle::Annually->value, BillingCycle::Biennially->value],
+            'recurring' => Coupon::RECURRING_EVERY,
+            'is_active' => true,
+        ]);
+
+        app(ExchangeRates::class)->save(['IQD' => 1310]);
     }
 
     /**

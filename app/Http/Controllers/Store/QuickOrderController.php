@@ -67,6 +67,8 @@ class QuickOrderController extends Controller
         $productLine = $lines->first(fn (CartLine $line): bool => ! $line->isDomain());
         $monthly = $product->priceFor($currency, BillingCycle::Monthly);
         $coupon = $cart->coupon($currency, $client);
+        $saving = $monthly !== null && $cycle->months() > 1 && $productLine !== null ? max(0, $monthly->price * $cycle->months() - $productLine->price) : 0;
+        $discount = (int) $lines->sum(fn (CartLine $line): int => $line->discount);
 
         return response()->json([
             'currency' => $currency,
@@ -81,9 +83,8 @@ class QuickOrderController extends Controller
             'discount_label' => money((int) $lines->sum(fn (CartLine $line): int => $line->discount), $currency),
             'total' => $total,
             'total_label' => money($total, $currency),
-            'saving' => $monthly !== null && $cycle->months() > 1 && $productLine !== null
-                ? money(max(0, $monthly->price * $cycle->months() - $productLine->price), $currency)
-                : null,
+            'saving' => $saving > 0 ? money($saving, $currency) : null,
+            'saved_label' => $saving + $discount > 0 ? money($saving + $discount, $currency) : null,
             'renewal' => $productLine && $cycle->isRecurring()
                 ? __(':amount :cycle', ['amount' => money($productLine->price + array_sum(array_column($productLine->addons, 'price')), $currency), 'cycle' => mb_strtolower($cycle->label())])
                 : null,

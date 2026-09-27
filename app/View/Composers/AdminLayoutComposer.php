@@ -35,7 +35,7 @@ class AdminLayoutComposer
                 && isset($latest['version'])
                 && version_compare((string) $latest['version'], (string) config('nuvabill.version'), '>'),
             'marketplaceUpdates' => $this->marketplaceUpdates($installs),
-            'licenseWarnings' => $installs->filter(fn (MarketplaceInstall $install): bool => $install->hasInvalidLicense())
+            'licenseWarnings' => $installs->toBase()->filter(fn (MarketplaceInstall $install): bool => $install->hasInvalidLicense())
                 ->map(fn (MarketplaceInstall $install): array => ['slug' => $install->slug, 'name' => $install->name, 'message' => (string) $install->license_message])
                 ->merge(Cache::remember('nuvabill.marketplace.unlicensed', 600, fn () => $this->licenses->unlicensedCopies()->map(fn (array $copy): array => $copy + ['message' => __('This paid copy was not installed from the marketplace, so it has no license.')])->all()))
                 ->values(),
