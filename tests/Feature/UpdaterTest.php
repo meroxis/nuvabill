@@ -114,6 +114,33 @@ class UpdaterTest extends TestCase
         $this->assertDatabaseHas('activity_logs', ['action' => 'update.rejected']);
     }
 
+    public function test_a_second_update_cannot_start_while_one_is_being_installed(): void
+    {
+        config(['nuvabill.version' => '0.1.0', 'nuvabill.updates.public_key' => Signature::generateKeyPair()['public']]);
+        Http::fake(['api.github.com/*' => Http::response([$this->release('v0.2.0')])]);
+        $updates = app(UpdateManager::class);
+        $release = $updates->check();
+
+        if (! is_dir(storage_path('app/updates'))) {
+            mkdir(storage_path('app/updates'), 0755, true);
+        }
+
+        $running = fopen(storage_path('app/updates/install.lock'), 'c');
+        flock($running, LOCK_EX);
+
+        try {
+            $updates->install($release);
+            $this->fail('A second update must not start.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('Another update is being installed', $exception->getMessage());
+        } finally {
+            flock($running, LOCK_UN);
+            fclose($running);
+        }
+
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'downloads.example.test'));
+    }
+
     public function test_zip_entries_cannot_escape_the_target_or_touch_protected_files(): void
     {
         $zipPath = $this->workDir.'/bad.zip';

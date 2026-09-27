@@ -68,6 +68,30 @@ class UpdateManager
 
     public function install(Release $release): void
     {
+        $directory = storage_path('app/updates');
+
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
+        // One update at a time: a second click or the nightly run must not download and unpack over a running one.
+        // The operating system releases this lock by itself if PHP is stopped half-way.
+        $lock = fopen($directory.DIRECTORY_SEPARATOR.'install.lock', 'c');
+
+        if ($lock === false || ! flock($lock, LOCK_EX | LOCK_NB)) {
+            throw new RuntimeException('Another update is being installed right now. Wait a few minutes, then reload this page.');
+        }
+
+        try {
+            $this->installUnlocked($release, $directory);
+        } finally {
+            flock($lock, LOCK_UN);
+            fclose($lock);
+        }
+    }
+
+    private function installUnlocked(Release $release, string $directory): void
+    {
         if ($this->hasPendingFinish()) {
             throw new RuntimeException('An update is already half-way done. Finish it first.');
         }
@@ -80,12 +104,6 @@ class UpdateManager
 
         if (! class_exists(ZipArchive::class)) {
             throw new RuntimeException('The PHP zip extension is required to install updates.');
-        }
-
-        $directory = storage_path('app/updates');
-
-        if (! is_dir($directory)) {
-            mkdir($directory, 0755, true);
         }
 
         $zipPath = $directory.DIRECTORY_SEPARATOR."nuvabill-{$release->version}.zip";
