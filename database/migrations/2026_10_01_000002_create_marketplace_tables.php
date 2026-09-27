@@ -77,6 +77,7 @@ return new class extends Migration
             $table->string('file_path');
             $table->unsignedBigInteger('file_size')->default(0);
             $table->string('sha256', 64);
+            $table->text('signature')->nullable();
             $table->json('manifest')->nullable();
             $table->json('checks')->nullable();
             $table->json('checklist')->nullable();

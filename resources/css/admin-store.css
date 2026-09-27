@@ -1,0 +1,38 @@
+/*
+ * Marketplace store review queue: the list on the left, the version on the right.
+ */
+@layer components {
+    .review-layout {
+        display: grid;
+        grid-template-columns: 320px minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
+    }
+
+    .review-list {
+        display: grid;
+        gap: 8px;
+    }
+
+    .review-entry {
+        display: grid;
+        gap: 6px;
+        padding: 12px 14px;
+        border: 1px solid var(--nb-line);
+        border-radius: 10px;
+        background: var(--nb-surface);
+        color: inherit;
+        text-decoration: none;
+    }
+
+    .review-entry[aria-current='true'] {
+        border-color: var(--nb-accent);
+        box-shadow: inset 0 0 0 1px var(--nb-accent), 0 10px 24px -14px rgb(15 27 45 / 0.35);
+    }
+
+    @media (max-width: 960px) {
+        .review-layout {
+            grid-template-columns: 1fr;
+        }
+    }
+}

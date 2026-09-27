@@ -20,6 +20,13 @@
         ['route' => 'admin.updates.index', 'match' => 'admin.updates.*', 'icon' => 'refresh', 'label' => __('Updates'), 'show' => $can('system.update'), 'count' => $updateAvailable ? 1 : null],
     ], fn (array $item): bool => $item['show']);
     $settingsRoute = $can('settings.manage') ? 'admin.settings.edit' : 'admin.settings.staff.index';
+    $storeNav = config('nuvabill.marketplace.store') && $can('marketplace.review') ? [
+        ['route' => 'admin.store.reviews.index', 'match' => 'admin.store.reviews.*', 'icon' => 'shield', 'label' => __('Review queue'), 'count' => \App\Models\MarketplaceVersion::query()->where('status', \App\Models\MarketplaceVersion::STATUS_PENDING)->count() ?: null],
+        ['route' => 'admin.store.items.index', 'match' => 'admin.store.items.*', 'icon' => 'package', 'label' => __('Items')],
+        ['route' => 'admin.store.developers.index', 'match' => 'admin.store.developers.*', 'icon' => 'code', 'label' => __('Developers')],
+        ['route' => 'admin.store.licenses.index', 'match' => 'admin.store.licenses.*', 'icon' => 'key', 'label' => __('Licenses')],
+        ['route' => 'admin.store.payouts.index', 'match' => 'admin.store.payouts.*', 'icon' => 'card', 'label' => __('Payouts')],
+    ] : [];
 @endphp
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
@@ -46,6 +53,16 @@
             <div class="nav-label">{{ __('Setup') }}</div>
             @foreach ($setup as $item)
                 <a class="nav-link" href="{{ route($item['route'] === 'admin.settings.edit' ? $settingsRoute : $item['route']) }}" @if (request()->routeIs($item['match'])) aria-current="page" @endif>
+                    <x-icon :name="$item['icon']" />{{ $item['label'] }}
+                    @if (! empty($item['count']))<span class="count">{{ $item['count'] }}</span>@endif
+                </a>
+            @endforeach
+        @endif
+
+        @if ($storeNav)
+            <div class="nav-label">{{ __('Marketplace store') }}</div>
+            @foreach ($storeNav as $item)
+                <a class="nav-link" href="{{ route($item['route']) }}" @if (request()->routeIs($item['match'])) aria-current="page" @endif>
                     <x-icon :name="$item['icon']" />{{ $item['label'] }}
                     @if (! empty($item['count']))<span class="count">{{ $item['count'] }}</span>@endif
                 </a>

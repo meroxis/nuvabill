@@ -24,7 +24,7 @@ class DefaultDataSeeder extends Seeder
     {
         $roles = [
             'Owner' => ['*'],
-            'Billing' => ['clients.view', 'clients.manage', 'orders.manage', 'services.manage', 'domains.manage', 'billing.manage'],
+            'Billing' => ['clients.view', 'clients.manage', 'orders.manage', 'services.manage', 'domains.manage', 'billing.manage', 'coupons.manage'],
             'Support' => ['clients.view', 'support.manage'],
         ];
 
@@ -320,6 +320,40 @@ class DefaultDataSeeder extends Seeder
                 {{ reply.message }}
 
                 [Reply now]({{ admin_url }})
+                MD,
+            ],
+            'marketplace.license' => [
+                'Marketplace: your license key',
+                'Your {{ item.name }} license key',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                Thank you for buying **{{ item.name }}**. Here is your license key:
+
+                **{{ license.key }}**
+
+                To install it, open your Nuvabill admin area, go to **Marketplace**, find {{ item.name }}, paste the key and click **Install**.
+
+                The key is tied to the first site you install it on. You can move it to another site from your account.
+
+                [Open your account]({{ service.url }})
+
+                {{ company.name }}
+                MD,
+            ],
+            'marketplace.review' => [
+                'Marketplace: review result',
+                '{{ item.name }} {{ item.version }} is {{ review.outcome }}',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                We reviewed **{{ item.name }} {{ item.version }}**. It is {{ review.outcome }}.
+
+                {{ review.message }}
+
+                [Open your developer account]({{ developer_url }})
+
+                {{ company.name }}
                 MD,
             ],
         ];

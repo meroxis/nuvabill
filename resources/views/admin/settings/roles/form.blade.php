@@ -11,6 +11,7 @@
         <x-input name="name" :label="__('Role name')" :value="$role->name" required :placeholder="__('For example Support agent')" />
 
         @foreach (\App\Models\Role::PERMISSIONS as $group => $permissions)
+            @continue($group === 'Marketplace store' && ! config('nuvabill.marketplace.store'))
             <fieldset style="border:0;padding:0;margin:0;display:grid;gap:.5rem">
                 <legend class="label" style="margin-bottom:.4rem">{{ __($group) }}</legend>
                 @foreach ($permissions as $key => $label)

@@ -31,6 +31,8 @@ class Settings
 
         'currency.rates' => [],
 
+        'marketplace.developer_share' => 83,
+
         'automation.enabled' => true,
         'automation.reminder_days' => [1, 3, 7],
         'automation.suspend_days' => 3,

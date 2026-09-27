@@ -40,6 +40,9 @@ class Role extends Model
             'system.update' => 'Install updates',
             'marketplace.manage' => 'Install themes and extensions from the marketplace',
         ],
+        'Marketplace store' => [
+            'marketplace.review' => 'Review submissions, and manage developers, licenses and payouts',
+        ],
     ];
 
     protected $fillable = ['name', 'permissions'];
