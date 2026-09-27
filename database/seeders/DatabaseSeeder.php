@@ -53,7 +53,7 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $admin = Admin::query()->firstOrCreate(['email' => Demo::ADMIN_EMAIL], [
-            'name' => 'Aram Rostami',
+            'name' => 'Mer Las',
             'password' => Demo::PASSWORD,
             'role_id' => Role::query()->where('name', 'Owner')->value('id'),
             'is_active' => true,
