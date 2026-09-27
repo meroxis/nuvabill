@@ -3,14 +3,19 @@
 namespace Database\Seeders;
 
 use App\Billing\ExchangeRates;
+use App\Billing\QuoteManager;
+use App\Billing\Wallet;
 use App\Enums\AutoSetup;
 use App\Enums\BillingCycle;
 use App\Enums\OrderStatus;
 use App\Enums\ProductType;
+use App\Enums\QuoteStatus;
 use App\Enums\ServiceStatus;
 use App\Enums\TicketStatus;
 use App\Extensions\ExtensionManager;
 use App\Models\Admin;
+use App\Models\Affiliate;
+use App\Models\AffiliateCommission;
 use App\Models\Client;
 use App\Models\Coupon;
 use App\Models\Domain;
@@ -22,6 +27,7 @@ use App\Models\ProductGroup;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\Service;
+use App\Models\TaxRule;
 use App\Models\Ticket;
 use App\Models\TicketDepartment;
 use App\Models\TldPrice;
@@ -152,7 +158,58 @@ class DatabaseSeeder extends Seeder
 
         $this->gateways();
         $this->addonsAndCoupons();
+        $this->billingExtras($demo, $clients, $admin);
         $this->activity($clients, $admin);
+    }
+
+    /**
+     * A tax rule, wallet credit, quotes and an affiliate with commissions, so those pages have something to show.
+     *
+     * @param  Collection<int, Client>  $clients
+     */
+    private function billingExtras(Client $demo, Collection $clients, Admin $admin): void
+    {
+        app(Settings::class)->setMany(['tax.enabled' => true, 'affiliates.enabled' => true]);
+        TaxRule::query()->firstOrCreate(['name' => 'VAT', 'country' => null], ['rate' => 500]);
+
+        $wallet = app(Wallet::class);
+        $wallet->change($demo, 2500, 'Welcome credit', admin: $admin);
+        $wallet->change($clients[2], 1000, 'Refund for downtime', admin: $admin);
+
+        $quotes = app(QuoteManager::class);
+        $sent = $quotes->save(null, $demo, [
+            'subject' => 'Dedicated server with managed backups',
+            'valid_until' => CarbonImmutable::today()->addDays(30),
+            'notes' => 'Ready within two working days. Monitoring is included.',
+        ], [
+            ['description' => 'Dedicated server, 64 GB RAM, 2 x 1 TB NVMe (first month)', 'amount' => 14900],
+            ['description' => 'Managed backups, 30 days of copies', 'amount' => 2500],
+            ['description' => 'Setup and move of your current sites', 'amount' => 9900],
+        ]);
+        $sent->forceFill(['number' => 'Q-'.str_pad((string) $sent->id, 4, '0', STR_PAD_LEFT), 'status' => QuoteStatus::Sent, 'sent_at' => now()->subDays(2)])->save();
+
+        $quotes->save(null, $clients[4], [
+            'subject' => 'Move three websites from another host',
+            'valid_until' => CarbonImmutable::today()->addDays(30),
+        ], [['description' => 'Move 3 websites and 12 mailboxes', 'amount' => 7500]]);
+
+        $affiliate = Affiliate::query()->create(['client_id' => $demo->id, 'code' => 'RAZ', 'status' => Affiliate::STATUS_ACTIVE, 'clicks' => 148]);
+
+        foreach ($clients->slice(10, 3)->values() as $index => $referred) {
+            $affiliate->referrals()->create(['client_id' => $referred->id]);
+            $invoice = $referred->invoices()->where('status', 'paid')->oldest('id')->first();
+
+            if ($invoice !== null) {
+                $affiliate->commissions()->create([
+                    'client_id' => $referred->id,
+                    'invoice_id' => $invoice->id,
+                    'amount' => (int) round($invoice->subtotal * 0.1),
+                    'currency' => $invoice->currency,
+                    'status' => $index < 2 ? AffiliateCommission::STATUS_AVAILABLE : AffiliateCommission::STATUS_PENDING,
+                    'available_at' => $index < 2 ? CarbonImmutable::today()->subDays(3) : CarbonImmutable::today()->addDays(12),
+                ]);
+            }
+        }
     }
 
     /**

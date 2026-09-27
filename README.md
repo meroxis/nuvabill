@@ -108,12 +108,20 @@ The whole client area works on a phone: services, invoices, payments, tickets an
 
 ### Billing that runs itself
 
-- Invoices with PDF download, partial payments, account credit for overpayments, drafts and manual invoices
+- Invoices with PDF download, partial payments, drafts and manual invoices
 - Renewal invoices created before the due date, grouped per client
 - Overdue reminders, automatic suspension, optional termination
 - **Paying unsuspends automatically**
+- **Taxes**: VAT, GST or sales tax by country and state, prices with or without tax, tax-exempt clients, and tax numbers on invoices
+- **Client wallet**: clients add funds and pay invoices with one click; overpayments and refunds land there too
 
 ![Invoice with payment recording](.github/screenshots/invoice.png)
+
+### Quotes and affiliates
+
+Send a **quote** for custom work, like a dedicated server or a migration. The client accepts it in their account and
+the invoice is created for them. The **affiliate program** gives every client a link: when someone they send pays,
+they earn a commission that moves to their wallet after the refund window.
 
 ### Domains
 
@@ -159,6 +167,7 @@ failed setups, pending orders, overdue invoices, and a warning if the cron job s
 
 - Client profiles with services, invoices, payments, tickets and activity in one place
 - Staff **roles and permissions** (Owner, Billing, Support, or your own)
+- **Passkeys**: sign in with a fingerprint, face or phone, which fake sign-in pages cannot steal
 - **Two-factor sign-in** for staff and clients: an authenticator app with recovery codes, or codes by email. Make it optional or required.
 - **CAPTCHA** (Cloudflare Turnstile, reCAPTCHA or hCaptcha) on the forms you choose
 - **Fraud checks** on new orders: throwaway email addresses, too many orders from one IP, and country mismatch
@@ -167,6 +176,24 @@ failed setups, pending orders, overdue invoices, and a warning if the cron job s
 - Security headers on every page (content security policy, no framing, strict HTTPS) and a safe setup for Cloudflare
 
 ![Clients](.github/screenshots/clients.png)
+
+### Arabic and Kurdish
+
+The whole client area and admin area speak **English, Arabic and Kurdish (Sorani)**, and pages read **right to left**
+in Arabic and Kurdish. Clients and staff pick their language from the top bar; you choose the default in
+**Settings → General**. Prices keep Latin digits in every language.
+
+### REST API
+
+Connect your own tools with the API at `/api/v1`: clients, services (suspend, unsuspend, terminate), invoices and
+payments, products, orders and tickets. Staff make keys under **Your profile → API keys**; a key can do what their
+role allows, and can be read-only.
+
+```
+curl -H "Authorization: Bearer nb_…" https://billing.yourhost.com/api/v1/invoices?status=unpaid
+```
+
+See the [API guide](https://nuvabill.com/docs/api/).
 
 ### Signed one-click updates
 
@@ -201,8 +228,8 @@ You keep **83%** of every sale. See the [developer guide](https://nuvabill.com/d
 Nuvabill is free software under the **[GNU Affero General Public License v3.0 or later](LICENSE)**, with one additional term:
 the **"Powered by Nuvabill"** credit in the client area, invoices and emails must stay visible. See [NOTICE](NOTICE).
 
-**Want only your own brand?** A **White-label License** that removes the credit, plus priority support,
-is coming soon. Watch [nuvabill.com](https://nuvabill.com) or star this project to hear first.
+**Want only your own brand?** A **[White-label License](https://my.nuvabill.com/white-label)** removes the credit
+from your client area, invoices and emails, and adds priority support. Enter the key under **Settings → License**.
 
 Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 
@@ -214,8 +241,8 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 |---|---|
 | v0.1 | First sale: store, billing, Stripe/PayPal/bank transfer, cPanel, tickets, 2FA, signed updater |
 | v0.2 | Domains and registrars, DirectAdmin, Plesk, Proxmox, Virtualizor, FIB/FastPay/Wayl, refunds, **WHMCS importer**, fraud checks, social login, CAPTCHA, client 2FA |
-| **v0.3** | **Marketplace** with one-click installs and a developer program, add-on extensions, coupons, product add-ons, exchange rates, one-page ordering |
-| v0.4 | Taxes, quotes, client wallet, affiliates, REST API, white-label licenses, right-to-left languages, passkeys |
+| v0.3 | Marketplace with one-click installs and a developer program, add-on extensions, coupons, product add-ons, exchange rates, one-page ordering |
+| **v0.4** | **Taxes, quotes, client wallet, affiliates, REST API, White-label License, Arabic and Kurdish (right to left), passkeys** |
 | v0.5 | Automation builder, AI ticket replies, WhatsApp and Telegram bot, admin phone app |
 | v1.0 | Security audit, theme editor, status page, multi-brand, cloud edition |
 

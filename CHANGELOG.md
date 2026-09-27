@@ -4,6 +4,18 @@ What changed in each Nuvabill release. The release workflow copies the section f
 release, and the **Updates** page in the admin area shows it. Write for hosting companies, in plain words.
 Add `[security]` to a section to let installs apply it automatically as a security fix.
 
+## 0.4.0
+
+- **Taxes:** add VAT, GST or sales tax rules by country and state (Settings → Taxes). Choose whether your prices already include tax, which products and domains are taxed, and mark clients as tax exempt. Invoices, PDFs and emails show the tax and both tax numbers.
+- **Client wallet:** clients add funds and pay invoices from their wallet in one click. Overpayments and refunds of wallet payments go back to the wallet, and staff can add or remove credit on the client page.
+- **Quotes:** send a price offer for custom work. The client accepts or declines it in their account, and accepting creates the invoice.
+- **Affiliates:** clients join from their account and share a link. When the people they send pay, they earn a commission that becomes available after the hold days you set and can be moved to their wallet.
+- **REST API** at `/api/v1` for clients, services, invoices, payments, products, orders and tickets. Staff create keys under **Your profile → API keys**; each key follows the staff member's role and can be read-only.
+- **Passkeys:** staff and clients can sign in with a fingerprint, face or phone. Fake sign-in pages cannot steal them, and they skip the two-factor step.
+- **Arabic and Kurdish (Sorani):** the client area and admin area are translated, and pages read right to left. Clients and staff pick their language in the top bar; choose the default in Settings → General. PDFs and emails stay in English.
+- **White-label License:** remove the "Powered by Nuvabill" credit with a license key from my.nuvabill.com, entered under **Settings → License**.
+- The **Updates** page now shows what changed in every version you are about to install, instead of a link.
+
 ## 0.3.3
 
 - Only one update can be installed at a time. A second click or the nightly run waits instead of unpacking over a running update.
