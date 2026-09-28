@@ -4,6 +4,7 @@ namespace Tests\Feature\Billing;
 
 use App\Billing\ExchangeRates;
 use App\Enums\BillingCycle;
+use App\Http\Controllers\Store\QuickOrderController;
 use App\Models\Client;
 use App\Models\Coupon;
 use App\Models\Order;
@@ -36,6 +37,20 @@ class QuickOrderTest extends TestCase
             ->assertJsonPath('lines.0.addons.0', 'Daily backups')
             ->assertJsonPath('payment.1.slug', 'wayl')
             ->assertJsonPath('payment.1.pays', fn (string $pays): bool => str_contains($pays, '131,917'));
+    }
+
+    public function test_order_forms_get_the_first_quote_with_the_page_exactly_as_the_store_would_answer(): void
+    {
+        $product = Product::factory()->priced(999)->priced(9588, BillingCycle::Annually)->create();
+        $this->enableGateway('banktransfer', ['instructions' => 'Pay to our bank.']);
+        $controller = app(QuickOrderController::class);
+
+        $answer = $this->postJson(route('store.api.quote'), ['product_id' => $product->id, 'billing_cycle' => 'annually'])->assertOk()->json();
+
+        $this->assertSame($answer, json_decode((string) json_encode($controller->firstQuote($product->id, 'annually')), true));
+        $this->assertNull($controller->firstQuote($product->id, 'biennially'));
+        $this->assertNull($controller->firstQuote($product->id, 'every-day'));
+        $this->assertNull($controller->firstQuote(999999, 'annually'));
     }
 
     public function test_a_new_client_signs_up_orders_and_goes_to_pay_on_one_page(): void

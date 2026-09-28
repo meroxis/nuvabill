@@ -21,6 +21,7 @@ use App\Models\Product;
 use App\Models\TldPrice;
 use App\Support\Demo;
 use App\Support\Locales;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,6 +30,7 @@ use Illuminate\Session\Store;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use ValueError;
 
 /**
  * One-page ordering for order forms such as Swift: search domains and price the order while the
@@ -56,17 +58,50 @@ class QuickOrderController extends Controller
      * What the order costs with the choices so far, including any coupon and the amount each
      * payment method charges.
      */
-    public function quote(Request $request, ExtensionManager $extensions, ExchangeRates $rates, Taxes $taxes): JsonResponse
+    public function quote(Request $request): JsonResponse
     {
         $data = $this->validateOrder($request, forQuote: true);
+        $country = preg_match('/^[A-Za-z]{2}$/', (string) $request->input('country')) ? (string) $request->input('country') : null;
+
+        return response()->json($this->priceOrder($data, $request->user('web'), $country, $request->string('state')->limit(100, '')->toString()));
+    }
+
+    /**
+     * The quote for an order form's first choice, put in the page so it shows prices at once
+     * instead of asking the store again after it loads. Null when that choice cannot be ordered.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function firstQuote(int $productId, string $billingCycle, ?string $coupon = null): ?array
+    {
+        try {
+            return $this->priceOrder([
+                'product_id' => $productId,
+                'billing_cycle' => $billingCycle,
+                'addons' => [],
+                'domain_action' => 'none',
+                'domain' => null,
+                'coupon' => $coupon,
+            ], auth('web')->user(), null, '');
+        } catch (ValidationException|ModelNotFoundException|ValueError) {
+            return null;
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function priceOrder(array $data, ?Client $client, ?string $country, string $state): array
+    {
+        $extensions = app(ExtensionManager::class);
+        $rates = app(ExchangeRates::class);
         $currency = $this->currency();
         $cart = new Cart(new Store('quote', new ArraySessionHandler(1)));
         [$product, $cycle] = $this->fill($cart, $data, $currency, checkAvailability: false);
 
-        $client = $request->user('web');
         $lines = $cart->lines($currency, $client);
-        $country = preg_match('/^[A-Za-z]{2}$/', (string) $request->input('country')) ? (string) $request->input('country') : null;
-        $tax = $taxes->forCart($lines, $client, $country, $request->string('state')->limit(100, '')->toString());
+        $tax = app(Taxes::class)->forCart($lines, $client, $country, $state);
         $total = $tax['total'];
         $productLine = $lines->first(fn (CartLine $line): bool => ! $line->isDomain());
         $monthly = $product->priceFor($currency, BillingCycle::Monthly);
@@ -74,14 +109,14 @@ class QuickOrderController extends Controller
         $saving = $monthly !== null && $cycle->months() > 1 && $productLine !== null ? max(0, $monthly->price * $cycle->months() - $productLine->price) : 0;
         $discount = (int) $lines->sum(fn (CartLine $line): int => $line->discount);
 
-        return response()->json([
+        return [
             'currency' => $currency,
             'lines' => $lines->map(fn (CartLine $line): array => [
                 'title' => $line->title(),
                 'summary' => $line->summary(),
                 'amount' => money($line->subtotal(), $currency),
                 'addons' => array_map(fn (array $addon): string => $addon['name'], $line->addons),
-            ])->values(),
+            ])->values()->all(),
             'subtotal' => money((int) $lines->sum(fn (CartLine $line): int => $line->subtotal()), $currency),
             'discount' => (int) $lines->sum(fn (CartLine $line): int => $line->discount),
             'discount_label' => money((int) $lines->sum(fn (CartLine $line): int => $line->discount), $currency),
@@ -104,8 +139,8 @@ class QuickOrderController extends Controller
                     'name' => $gateway->name(),
                     'pays' => $converted !== null ? money((int) ceil($converted / 100) * 100, $charge) : null,
                 ];
-            })->values(),
-        ]);
+            })->values()->all(),
+        ];
     }
 
     public function store(Request $request, ClientRegistrar $registrar, OrderPlacer $placer, PaymentStarter $payments, Cart $cart): RedirectResponse

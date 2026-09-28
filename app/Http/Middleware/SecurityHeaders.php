@@ -52,7 +52,8 @@ class SecurityHeaders
     /**
      * Alpine.js evaluates its attributes and pages use small inline scripts and styles, so those
      * stay allowed. Everything else loads from this site only, except the CAPTCHA provider staff
-     * chose in Settings → Security. Forms may post to payment pages.
+     * chose in Settings → Security, and Cloudflare Web Analytics, which Cloudflare adds to pages
+     * of sites it serves. Forms may post to payment pages.
      */
     private function contentSecurityPolicy(Request $request): string
     {
@@ -60,14 +61,16 @@ class SecurityHeaders
         $addons = Installation::isInstalled() ? app(ExtensionManager::class)->contentSecurityPolicy() : [];
         $extra = fn (string $directive): string => implode(' ', $addons[$directive] ?? []);
         $frames = trim($captcha.' '.$extra('frame-src'));
+        $cloudflare = $request->headers->has('CF-Ray');
+        $sources = fn (string ...$parts): string => implode(' ', array_filter(array_map('trim', $parts), fn (string $part): bool => $part !== ''));
 
         return implode('; ', array_filter([
             "default-src 'self'",
-            trim("script-src 'self' 'unsafe-inline' 'unsafe-eval' {$captcha} ".$extra('script-src')),
-            trim("style-src 'self' 'unsafe-inline' ".$extra('style-src')),
+            $sources("script-src 'self' 'unsafe-inline' 'unsafe-eval'", $captcha, $cloudflare ? 'https://static.cloudflareinsights.com' : '', $extra('script-src')),
+            $sources("style-src 'self' 'unsafe-inline'", $extra('style-src')),
             "img-src 'self' data: https:",
-            trim("font-src 'self' data: ".$extra('font-src')),
-            trim("connect-src 'self' {$captcha} ".$extra('connect-src')),
+            $sources("font-src 'self' data:", $extra('font-src')),
+            $sources("connect-src 'self'", $captcha, $cloudflare ? 'https://cloudflareinsights.com' : '', $extra('connect-src')),
             $frames !== '' ? "frame-src 'self' {$frames}" : null,
             $extra('media-src') !== '' ? "media-src 'self' ".$extra('media-src') : null,
             "object-src 'none'",

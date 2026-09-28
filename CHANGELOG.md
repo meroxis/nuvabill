@@ -4,6 +4,14 @@ What changed in each Nuvabill release. The release workflow copies the section f
 release, and the **Updates** page in the admin area shows it. Write for hosting companies, in plain words.
 Add `[security]` to a section to let installs apply it automatically as a security fix.
 
+## 0.4.7
+
+- **Faster, steadier store pages.** Order forms can now put their first prices in the page, so nothing jumps when the page finishes loading and no extra request is needed. Themes and order forms can load their scripts without holding up the page.
+- **Easier to read.** The light grey, green and teal texts are a little darker, so every label passes the contrast rule for readable text.
+- **Browsers keep the site's design files for a year.** Their names change with every release, so visitors always get the newest ones and pages open faster on the next visit.
+- **Works with Cloudflare Web Analytics.** Sites behind Cloudflare no longer block the analytics script that Cloudflare adds.
+- On the Marketplace: **Aurora 1.2.0** (easier to read, and the Cart and account buttons keep their names on phones) and **Swift 1.1.0** (no layout jumps, prices from the first moment, underlined links).
+
 ## 0.4.6
 
 - **Marketplace updates show up right away.** The Updates and Installed tabs now ask the store for new versions every time you open them, so you no longer need to remove and reinstall an extension to get its new version. The rest of the marketplace is kept for 10 minutes instead of 30.

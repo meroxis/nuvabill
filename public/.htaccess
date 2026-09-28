@@ -23,3 +23,10 @@
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]
 </IfModule>
+
+# Front-end files have a fingerprint in their name (app-pwnkOrAK.js), so browsers may keep them for a year.
+<IfModule mod_headers.c>
+    <FilesMatch "-[A-Za-z0-9_-]{8}\.(css|js|woff2?|svg|png|jpe?g|webp|avif)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </FilesMatch>
+</IfModule>

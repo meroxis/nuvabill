@@ -6,7 +6,7 @@
     :root {
         --nb-accent: {{ $accent }};
         --nb-accent-2: color-mix(in srgb, {{ $accent }} 82%, #000);
-        --nb-accent-soft: color-mix(in srgb, {{ $accent }} 12%, #fff);
+        --nb-accent-soft: color-mix(in srgb, {{ $accent }} 8%, #fff);
         --nb-accent-ink: #fff;
     }
     @media (prefers-color-scheme: dark) {

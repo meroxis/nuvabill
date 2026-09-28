@@ -28,6 +28,16 @@ class SecurityHeadersTest extends TestCase
             ->assertHeader('Strict-Transport-Security', 'max-age=31536000');
     }
 
+    public function test_cloudflare_web_analytics_may_load_only_on_pages_served_through_cloudflare(): void
+    {
+        $this->assertStringNotContainsString('cloudflareinsights.com', (string) $this->get(route('store.index'))->headers->get('Content-Security-Policy'));
+
+        $policy = (string) $this->withHeaders(['CF-Ray' => '8d1f2a3b4c5d6e7f-AMS'])->get(route('store.index'))->headers->get('Content-Security-Policy');
+
+        $this->assertStringContainsString('script-src \'self\' \'unsafe-inline\' \'unsafe-eval\' https://static.cloudflareinsights.com', $policy);
+        $this->assertStringContainsString('connect-src \'self\' https://cloudflareinsights.com', $policy);
+    }
+
     public function test_downloads_get_no_page_policy(): void
     {
         $client = Client::factory()->create();

@@ -204,4 +204,11 @@ if (window.PublicKeyCredential) {
 }
 
 window.Alpine = Alpine;
-Alpine.start();
+
+// Start once the page is parsed, after every deferred script, so themes, order forms and add-ons can
+// load their scripts with "defer" (not blocking the first paint) and still register with Alpine first.
+if (document.readyState === 'complete') {
+    Alpine.start();
+} else {
+    document.addEventListener('DOMContentLoaded', () => Alpine.start(), { once: true });
+}

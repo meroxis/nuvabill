@@ -266,6 +266,12 @@ server {
         try_files \$uri \$uri/ /index.php?\$query_string;
     }
 
+    # Front-end files have a fingerprint in their name, so browsers may keep them for a year.
+    location /build/assets/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files \$uri =404;
+    }
+
     location ~ \.php\$ {
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:/run/php/php$PHP_SERVER_VERSION-fpm.sock;
