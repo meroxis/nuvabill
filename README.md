@@ -1,7 +1,7 @@
 <h1 align="center">Nuvabill</h1>
 
 <p align="center">
-  <strong>Billing, automation and support for hosting companies.<br>Free to run. Open source. Built for phones first.</strong>
+  <strong>The free, open-source WHMCS alternative for hosting companies.<br>Billing, automation and support. Built for phones first.</strong>
 </p>
 
 <p align="center">
@@ -15,15 +15,31 @@
   <a href="https://nuvabill.com">Website</a> ·
   <a href="https://demo.nuvabill.com/admin/login">Live demo</a> ·
   <a href="#getting-started">Getting started</a> ·
-  <a href="#whats-in-nuvabill">What's in Nuvabill</a> ·
-  <a href="#license">License</a>
+  <a href="#whats-in-nuvabill">Features</a> ·
+  <a href="#why-nuvabill-instead-of-whmcs">Nuvabill vs WHMCS</a> ·
+  <a href="docs/README.md">Docs</a> ·
+  <a href="ROADMAP.md">Roadmap</a>
 </p>
 
 ![Nuvabill admin dashboard on desktop and the client area on a phone](.github/screenshots/hero.png)
 
-Nuvabill sells your hosting plans and domains, bills clients every month, creates their cPanel, DirectAdmin, Plesk
-or VPS accounts the moment they pay, suspends late payers, and answers support tickets. It is a modern, open alternative to WHMCS, written from scratch.
-There is **no per-client pricing** and no license fee to run it.
+**Nuvabill is free, open-source billing software for web hosting companies**, written from scratch as a modern
+alternative to WHMCS. It sells your hosting plans and domains, bills clients every month, creates their cPanel,
+DirectAdmin, Plesk, Proxmox or Virtualizor accounts the moment they pay, suspends late payers, and handles support
+tickets. It is licensed under the AGPL: there is **no license fee and no per-client pricing**, and moving from WHMCS
+takes one import.
+
+### At a glance
+
+- **Automation**: cPanel & WHM, DirectAdmin, Plesk, Proxmox VE and Virtualizor accounts created on payment, suspended when overdue, unsuspended when paid
+- **Billing**: invoices with PDFs, renewals, reminders, taxes (VAT, GST, sales tax), coupons, product add-ons, quotes, a client wallet and affiliates
+- **Payments**: Stripe, PayPal, bank transfer, and for Iraq FIB (First Iraqi Bank), FastPay and Wayl, with refunds and exchange rates
+- **Domains**: search, register, transfer and renew at ResellerClub, Namecheap, Enom or OpenSRS
+- **Support**: tickets with departments, priorities and email notifications
+- **Security**: two-factor sign-in, passkeys, CAPTCHA, fraud checks, staff roles, security headers
+- **26 languages**, with right-to-left Arabic, Hebrew and Kurdish (Sorani)
+- **REST API**, a **marketplace** of signed themes and extensions, and **signed one-click updates** with rollback
+- **WHMCS importer**: clients (with their passwords), products, services, domains, invoices, payments and tickets
 
 **Install it with a single command:**
 
@@ -37,7 +53,55 @@ curl -fsSL https://nuvabill.com/install.sh | bash
 
 ---
 
+## Why Nuvabill instead of WHMCS
+
+| | Nuvabill | WHMCS |
+|---|---|---|
+| Cost | Free, no per-client pricing | Paid license; check the vendor's site for current prices |
+| Source code | Open (AGPL-3.0): read it, change it, host it anywhere | Closed; the core needs the ionCube Loader |
+| Moving over | Built-in [WHMCS importer](docs/whmcs-migration.md); run it as often as you like before you switch | — |
+| Updates | Signed releases, one-click update with backup and automatic rollback | See the vendor's documentation |
+| Iraq | FIB, FastPay and Wayl built in; prices in dollars, payment in dinar | Check the vendor's marketplace |
+| Right to left | Arabic, Hebrew and Kurdish (Sorani) client and admin areas | Check the vendor's site |
+
+**When WHMCS may still be the better choice today.** Nuvabill is young (first release: September 2026). Stay with
+WHMCS, or wait, if you depend on:
+
+- a module or integration Nuvabill does not have yet (WHMCS has a large third-party ecosystem)
+- automatic charging of saved cards, or client self-service upgrades with prorated prices
+- a knowledge base, announcements or a network status page in the client area
+- emails and PDF invoices in your clients' own language (Nuvabill's are in English for now)
+- a long track record and a commercial support contract
+
+These gaps are on the [roadmap](ROADMAP.md).
+
+## Screenshots
+
+<table>
+  <tr>
+    <td><img src=".github/screenshots/store.png" alt="Store with plans and domain search" width="400"></td>
+    <td><img src=".github/screenshots/client-area.png" alt="Client area" width="400"></td>
+  </tr>
+  <tr>
+    <td><img src=".github/screenshots/invoice.png" alt="Invoice with payment recording" width="400"></td>
+    <td><img src=".github/screenshots/gateways.png" alt="Payment gateways" width="400"></td>
+  </tr>
+  <tr>
+    <td><img src=".github/screenshots/products.png" alt="Product pricing and automatic setup" width="400"></td>
+    <td><img src=".github/screenshots/marketplace.png" alt="Marketplace" width="400"></td>
+  </tr>
+</table>
+
+More below, and in the [live demo](https://demo.nuvabill.com/admin/login).
+
+---
+
 ## Getting started
+
+Step-by-step guides are in the [documentation](docs/README.md): [installation](docs/installation.md),
+[configuration](docs/configuration.md), [control panels](docs/integrations/servers.md),
+[payment gateways](docs/integrations/payment-gateways.md), [registrars](docs/integrations/domain-registrars.md),
+[migrating from WHMCS](docs/whmcs-migration.md) and the [FAQ](docs/faq.md).
 
 ### Install with one line
 
@@ -171,7 +235,7 @@ Webhooks are signature-checked, and each payment is recorded exactly once.
 terminate and change package from the admin area. Clients open their control panel with one click, no password needed.
 
 **Virtualizor and Proxmox VE** virtual servers are managed **inside the client area**, like in WHMCS: start, stop,
-restart, live CPU, memory, disk and bandwidth, IP addresses, root password, OS reinstall and VNC details.
+restart, live usage, IP addresses and root password, plus hostname, OS reinstall and VNC details on Virtualizor.
 API keys stay on your server.
 
 ![Product pricing and automatic setup](.github/screenshots/products.png)
@@ -270,12 +334,12 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 
 | Version | Focus |
 |---|---|
-| v0.1 | First sale: store, billing, Stripe/PayPal/bank transfer, cPanel, tickets, 2FA, signed updater |
-| v0.2 | Domains and registrars, DirectAdmin, Plesk, Proxmox, Virtualizor, FIB/FastPay/Wayl, refunds, **WHMCS importer**, fraud checks, social login, CAPTCHA, client 2FA |
-| v0.3 | Marketplace with one-click installs and a developer program, add-on extensions, coupons, product add-ons, exchange rates, one-page ordering |
-| **v0.4** | **Taxes, quotes, client wallet, affiliates, REST API, White-label License, 26 languages (Arabic, Hebrew and Kurdish right to left), passkeys** |
+| v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor, domains, Iraqi gateways, the **WHMCS importer**, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages ([changelog](CHANGELOG.md)) |
+| **next** | **Site health (security and database checks), search engine tools** |
 | v0.5 | Automation builder, AI ticket replies, WhatsApp and Telegram bot, admin phone app |
-| v1.0 | Security audit, theme editor, status page, multi-brand, cloud edition |
+| v1.0 | Automatic card payments, client upgrades, knowledge base and status page, security audit, and more |
+
+The full plan, including what we think is still missing before 1.0, is in [ROADMAP.md](ROADMAP.md).
 
 ## Updating
 

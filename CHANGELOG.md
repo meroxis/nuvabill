@@ -4,6 +4,31 @@ What changed in each Nuvabill release. The release workflow copies the section f
 release, and the **Updates** page in the admin area shows it. Write for hosting companies, in plain words.
 Add `[security]` to a section to let installs apply it automatically as a security fix.
 
+Every version is also a signed [GitHub release](https://github.com/meroxis/nuvabill/releases). What comes next is in
+the [roadmap](ROADMAP.md).
+
+| Version | Released | Highlights |
+|---|---|---|
+| [0.4.7](https://github.com/meroxis/nuvabill/releases/tag/v0.4.7) | 28 Sep 2026 | Faster, steadier store pages; easier-to-read colours |
+| [0.4.6](https://github.com/meroxis/nuvabill/releases/tag/v0.4.6) | 28 Sep 2026 | Marketplace updates show up right away |
+| [0.4.5](https://github.com/meroxis/nuvabill/releases/tag/v0.4.5) | 28 Sep 2026 | Extensions can bring their own database tables |
+| [0.4.4](https://github.com/meroxis/nuvabill/releases/tag/v0.4.4) | 28 Sep 2026 | 26 languages and a searchable language menu |
+| [0.4.3](https://github.com/meroxis/nuvabill/releases/tag/v0.4.3) | 27 Sep 2026 | Fix for MySQL and MariaDB installs |
+| [0.4.2](https://github.com/meroxis/nuvabill/releases/tag/v0.4.2) | 27 Sep 2026 | Backups and the Google Drive backup add-on |
+| [0.4.1](https://github.com/meroxis/nuvabill/releases/tag/v0.4.1) | 27 Sep 2026 | Install with a single command |
+| [0.4.0](https://github.com/meroxis/nuvabill/releases/tag/v0.4.0) | 27 Sep 2026 | Taxes, wallet, quotes, affiliates, REST API, passkeys, Arabic and Kurdish |
+| [0.3.3](https://github.com/meroxis/nuvabill/releases/tag/v0.3.3) | 27 Sep 2026 | One update at a time |
+| [0.3.2](https://github.com/meroxis/nuvabill/releases/tag/v0.3.2) | 27 Sep 2026 | Clearer payment errors for staff |
+| [0.3.1](https://github.com/meroxis/nuvabill/releases/tag/v0.3.1) | 27 Sep 2026 | SQLite install fix |
+| [0.3.0](https://github.com/meroxis/nuvabill/releases/tag/v0.3.0) | 27 Sep 2026 | Marketplace, coupons, product add-ons, exchange rates |
+| [0.2.3](https://github.com/meroxis/nuvabill/releases/tag/v0.2.3) | 27 Sep 2026 | New design |
+| [0.2.2](https://github.com/meroxis/nuvabill/releases/tag/v0.2.2) | 27 Sep 2026 | Updated demo data |
+| [0.2.1](https://github.com/meroxis/nuvabill/releases/tag/v0.2.1) | 26 Sep 2026 | Terms and privacy links |
+| [0.2.0](https://github.com/meroxis/nuvabill/releases/tag/v0.2.0) | 26 Sep 2026 | Domains, more control panels, Iraqi gateways, WHMCS importer |
+| [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
+| [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
+| [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
 ## 0.4.7
 
 - **Faster, steadier store pages.** Order forms can now put their first prices in the page, so nothing jumps when the page finishes loading and no extra request is needed. Themes and order forms can load their scripts without holding up the page.
