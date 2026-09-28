@@ -32,7 +32,7 @@
                     <x-input name="username" :label="__('Database user')" :value="$connection['username'] ?? ''" required autocomplete="off" />
                     <x-input name="password" type="password" :label="__('Database password')" :help="$hasPassword ? __('Saved. Leave empty to keep it.') : null" autocomplete="new-password" />
                     <x-input name="prefix" :label="__('Table prefix')" :value="$connection['prefix'] ?? ''" :help="__('Only if the tables start with a prefix, for example nb_.')" autocomplete="off" />
-                    <div x-show="info[source].key" @if (! ($sourceInfo[$selected]['key'] ?? null)) style="display:none" @endif>
+                    <div class="field" x-show="info[source].key" @if (! ($sourceInfo[$selected]['key'] ?? null)) style="display:none" @endif>
                         <x-input name="key" type="password" :label="__('Encryption key')" autocomplete="off" />
                         <p class="help" style="margin-top:.3rem"><span x-text="info[source].key">{{ $sourceInfo[$selected]['key'] ?? '' }}</span> @if ($hasKey){{ __('Saved. Leave empty to keep it.') }}@endif</p>
                     </div>
