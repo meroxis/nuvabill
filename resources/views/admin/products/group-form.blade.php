@@ -9,7 +9,7 @@
             <x-input name="name" :label="__('Name')" :value="$group->name" required :help="__('For example “Web hosting”.')" />
             <x-input name="slug" :label="__('Web address')" :value="$group->slug" :help="__('Used in the store link. Leave empty to create it from the name.')" />
             <x-textarea name="description" :label="__('Description')" :value="$group->description" rows="3" class="span-2" />
-            <x-input name="sort_order" type="number" min="0" :label="__('Order')" :value="$group->sort_order ?? 0" />
+            <x-input name="sort_order" type="number" min="0" :label="__('Sort order')" :value="$group->sort_order ?? 0" />
             <x-checkbox name="is_visible" :label="__('Show in the store')" :checked="$group->is_visible" />
         </div>
         <div class="form-actions">

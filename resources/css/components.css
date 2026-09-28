@@ -550,44 +550,221 @@
 }
 
 @layer components {
-    .language-switcher {
+    /*
+     * Language menu: a button with the current language, and a glass panel with a search box
+     * and every language by its own name, its name in the page language and a short code.
+     */
+    .lang-menu {
+        position: relative;
         display: inline-flex;
-        align-items: center;
-        gap: 4px;
-        color: inherit;
     }
 
-    .language-switcher svg {
+    .lang-menu-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        font: inherit;
+        white-space: nowrap;
+    }
+
+    .lang-menu-button svg {
         width: 15px;
         height: 15px;
         flex: none;
     }
 
-    .language-switcher select {
-        appearance: none;
+    .lang-menu-button .lang-menu-chevron {
+        width: 13px;
+        height: 13px;
+        opacity: 0.7;
+        transition: transform 0.15s ease;
+    }
+
+    .lang-menu-button[aria-expanded='true'] .lang-menu-chevron {
+        transform: rotate(180deg);
+    }
+
+    .lang-menu-panel {
+        position: absolute;
+        inset-block-start: calc(100% + 8px);
+        inset-inline-end: 0;
+        z-index: 60;
+        width: min(320px, calc(100vw - 24px));
+        display: grid;
+        gap: 6px;
+        padding: 8px;
+        color: var(--nb-ink);
+        text-align: start;
+        background: color-mix(in srgb, var(--nb-surface) 86%, transparent);
+        -webkit-backdrop-filter: blur(18px) saturate(1.6);
+        backdrop-filter: blur(18px) saturate(1.6);
+        border: 1px solid color-mix(in srgb, var(--nb-line) 80%, transparent);
+        border-radius: 14px;
+        box-shadow: var(--nb-shadow-lg), inset 0 1px 0 rgb(255 255 255 / 0.35);
+    }
+
+    .lang-menu-search {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 10px;
+        background: var(--nb-surface-2);
+        border: 1px solid var(--nb-line);
+        border-radius: 10px;
+    }
+
+    .lang-menu-search svg {
+        width: 16px;
+        height: 16px;
+        color: var(--nb-muted);
+        flex: none;
+    }
+
+    .lang-menu-search input {
+        flex: 1;
+        min-width: 0;
+        padding: 9px 0;
         border: 0;
+        outline: 0;
         background: none;
-        color: inherit;
+        color: var(--nb-ink);
         font: inherit;
-        font-size: 0.85rem;
-        padding: 4px 2px;
+        font-size: 0.9rem;
+    }
+
+    .lang-menu-search:focus-within {
+        border-color: var(--nb-accent);
+        box-shadow: 0 0 0 3px var(--nb-accent-soft);
+    }
+
+    .lang-menu-list {
+        display: grid;
+        gap: 2px;
+        max-height: min(420px, 60vh);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+    }
+
+    .lang-menu-item {
+        display: grid;
+        grid-template-columns: 34px minmax(0, 1fr) 18px;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        padding: 7px 8px;
+        border: 0;
+        border-radius: 10px;
+        background: none;
+        color: var(--nb-ink);
+        font: inherit;
+        text-align: start;
         cursor: pointer;
     }
 
-    .language-switcher select option {
-        color: var(--nb-ink);
-        background: var(--nb-surface);
+    .lang-menu-item:hover,
+    .lang-menu-item:focus-visible {
+        background: var(--nb-surface-2);
+        outline: 0;
+    }
+
+    .lang-menu-item.is-current {
+        background: var(--nb-accent-soft);
+    }
+
+    .lang-menu-code {
+        display: grid;
+        place-items: center;
+        height: 24px;
+        border-radius: 6px;
+        background: var(--nb-surface-2);
+        border: 1px solid var(--nb-line);
+        color: var(--nb-muted);
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+    }
+
+    .lang-menu-item.is-current .lang-menu-code {
+        background: var(--nb-accent);
+        border-color: var(--nb-accent);
+        color: var(--nb-accent-ink);
+    }
+
+    .lang-menu-names {
+        display: grid;
+        min-width: 0;
+        line-height: 1.25;
+    }
+
+    .lang-menu-native {
+        font-size: 0.9rem;
+        font-weight: 600;
+        text-align: start;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .lang-menu-local {
+        font-size: 0.76rem;
+        color: var(--nb-muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .lang-menu-check {
+        width: 18px;
+        height: 18px;
+        color: var(--nb-accent);
+    }
+
+    .lang-menu-empty {
+        margin: 0;
+        padding: 12px 8px;
+        color: var(--nb-muted);
+        font-size: 0.85rem;
+        text-align: center;
+    }
+
+    /* Phones: a sheet at the bottom of the screen, easy to reach with a thumb. */
+    @media (max-width: 640px) {
+        .lang-menu-panel {
+            position: fixed;
+            inset-inline: 10px;
+            inset-block: auto 10px;
+            width: auto;
+        }
+
+        .lang-menu-list {
+            max-height: 62vh;
+        }
     }
 }
 
 /*
- * Right-to-left languages (Arabic, Kurdish). The layout uses logical properties, so only a few
+ * Right-to-left languages (Arabic, Hebrew, Kurdish). The layout uses logical properties, so only a few
  * things change here: fonts with Arabic letters, no letter spacing (it breaks joined letters),
  * and arrows that point the other way.
  */
 [dir='rtl'] {
     --nb-font-body: 'Figtree', 'Segoe UI', Tahoma, 'Noto Sans Arabic', 'Geeza Pro', system-ui, sans-serif;
     --nb-font-display: 'Figtree', 'Segoe UI', Tahoma, 'Noto Sans Arabic', 'Geeza Pro', system-ui, sans-serif;
+}
+
+/*
+ * Figtree only has Latin letters. Pages in Cyrillic, Hebrew or Chinese use the system font, so every
+ * word of a sentence is set in the same font.
+ */
+:root:lang(ru),
+:root:lang(uk),
+:root:lang(mk),
+:root:lang(he),
+:root:lang(zh) {
+    --nb-font-body: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    --nb-font-display: system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', 'PingFang SC', 'Microsoft YaHei', sans-serif;
 }
 
 [dir='rtl'] *,

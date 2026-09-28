@@ -10,7 +10,7 @@
                 @method('PUT')
                 <x-input name="name" :label="__('Name')" :value="$department->name" :id="'d-name-'.$department->id" required />
                 <x-input name="email" type="email" :label="__('Alert email')" :value="$department->email" :id="'d-email-'.$department->id" :placeholder="setting('company.email')" />
-                <x-input name="sort_order" type="number" min="0" :label="__('Order')" :value="$department->sort_order" :id="'d-order-'.$department->id" />
+                <x-input name="sort_order" type="number" min="0" :label="__('Sort order')" :value="$department->sort_order" :id="'d-order-'.$department->id" />
                 <x-checkbox name="is_visible" :label="__('Visible')" :checked="$department->is_visible" :id="'d-visible-'.$department->id" />
                 <button class="btn" type="submit">{{ __('Save') }}</button>
             </form>

@@ -31,7 +31,7 @@ There is **no per-client pricing** and no license fee to run it.
 curl -fsSL https://nuvabill.com/install.sh | bash
 ```
 
-> **Status: v0.4.** Taxes, a client wallet, quotes, affiliates, a REST API, passkeys, and Arabic and Kurdish with right-to-left pages. See the [roadmap](#roadmap).
+> **Status: v0.4.** Taxes, a client wallet, quotes, affiliates, a REST API, passkeys, and 26 languages with right-to-left pages for Arabic, Hebrew and Kurdish. See the [roadmap](#roadmap).
 >
 > **Try it:** the [live demo](https://demo.nuvabill.com/admin/login) has sample clients, invoices and tickets. One click signs you in, and the data resets every hour.
 
@@ -203,11 +203,13 @@ failed setups, pending orders, overdue invoices, and a warning if the cron job s
 
 ![Clients](.github/screenshots/clients.png)
 
-### Arabic and Kurdish
+### 26 languages
 
-The whole client area and admin area speak **English, Arabic and Kurdish (Sorani)**, and pages read **right to left**
-in Arabic and Kurdish. Clients and staff pick their language from the top bar; you choose the default in
-**Settings → General**. Prices keep Latin digits in every language.
+The whole client area and admin area speak **26 languages**: Azerbaijani, Catalan, Chinese (Simplified), Croatian, Czech, Danish, Dutch, English, Estonian, French, German,
+Hebrew, Hungarian, Italian, Macedonian, Norwegian, Portuguese (Brazil and Portugal), Romanian, Russian, Spanish,
+Swedish, Turkish, Ukrainian, Arabic and Kurdish (Sorani). Arabic, Hebrew and Kurdish pages read **right to left**.
+Clients and staff pick their language from a searchable menu in the top bar; you choose the default and which
+languages clients can pick in **Settings → General**.
 
 ### REST API
 
@@ -271,7 +273,7 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 | v0.1 | First sale: store, billing, Stripe/PayPal/bank transfer, cPanel, tickets, 2FA, signed updater |
 | v0.2 | Domains and registrars, DirectAdmin, Plesk, Proxmox, Virtualizor, FIB/FastPay/Wayl, refunds, **WHMCS importer**, fraud checks, social login, CAPTCHA, client 2FA |
 | v0.3 | Marketplace with one-click installs and a developer program, add-on extensions, coupons, product add-ons, exchange rates, one-page ordering |
-| **v0.4** | **Taxes, quotes, client wallet, affiliates, REST API, White-label License, Arabic and Kurdish (right to left), passkeys** |
+| **v0.4** | **Taxes, quotes, client wallet, affiliates, REST API, White-label License, 26 languages (Arabic, Hebrew and Kurdish right to left), passkeys** |
 | v0.5 | Automation builder, AI ticket replies, WhatsApp and Telegram bot, admin phone app |
 | v1.0 | Security audit, theme editor, status page, multi-brand, cloud edition |
 

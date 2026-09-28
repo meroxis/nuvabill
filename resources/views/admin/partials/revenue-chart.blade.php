@@ -1,22 +1,24 @@
 @php
     $width = 600;
     $height = 220;
-    $left = 58;
     $right = 8;
     $top = 12;
     $bottom = 26;
     $plotHeight = $height - $top - $bottom;
+    $ticks = $chart['max'] > 0 ? [0, $chart['max'] / 2, $chart['max']] : [0];
+    $tickLabels = array_map(fn ($tick): string => money((int) $tick, $currency), $ticks);
+    // Room for the longest price label: formats like "1.000,00 $" are longer than "$1,000.00".
+    $left = max(58, (int) ceil(max(array_map('mb_strlen', $tickLabels)) * 6.6) + 10);
     $slot = ($width - $left - $right) / 12;
     $barWidth = $slot * 0.62;
-    $ticks = $chart['max'] > 0 ? [0, $chart['max'] / 2, $chart['max']] : [0];
 @endphp
 <div style="overflow-x:auto">
     <svg viewBox="0 0 {{ $width }} {{ $height }}" role="img" style="width:100%;min-width:420px;height:auto;display:block"
          aria-label="{{ __('Revenue for each of the last 12 months') }}">
-        @foreach ($ticks as $tick)
+        @foreach ($ticks as $tickIndex => $tick)
             @php $y = $top + $plotHeight - ($chart['max'] > 0 ? $tick / $chart['max'] * $plotHeight : 0); @endphp
             <line x1="{{ $left }}" x2="{{ $width - $right }}" y1="{{ $y }}" y2="{{ $y }}" stroke="var(--nb-line)" stroke-width="1"/>
-            <text x="{{ $left - 8 }}" y="{{ $y + 4 }}" text-anchor="end" fill="var(--nb-faint)" font-size="11">{{ money((int) $tick, $currency) }}</text>
+            <text x="{{ $left - 8 }}" y="{{ $y + 4 }}" text-anchor="end" fill="var(--nb-faint)" font-size="11">{{ $tickLabels[$tickIndex] }}</text>
         @endforeach
         @foreach ($chart['bars'] as $index => $bar)
             @php

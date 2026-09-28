@@ -1,6 +1,6 @@
 {{-- Fields for one domain extension's prices. Used on the list page (add) and the edit page. --}}
 <div class="form-grid">
-    <x-input name="tld" :label="__('Extension')" :value="$price->tld" placeholder="com" :help="__('Without the dot, for example com, net or co.uk.')" required />
+    <x-input name="tld" :label="__('Domain ending')" :value="$price->tld" placeholder="com" :help="__('Without the dot, for example com, net or co.uk.')" required />
     <x-input name="currency" :label="__('Currency')" :value="$price->currency" maxlength="3" required />
     <x-input name="register_price" type="number" step="0.01" min="0" :label="__('Register price per year')" :value="$price->exists ? \App\Support\Money::toDecimal($price->register_price) : null" required />
     <x-input name="renew_price" type="number" step="0.01" min="0" :label="__('Renew price per year')" :value="$price->exists ? \App\Support\Money::toDecimal($price->renew_price) : null" required />

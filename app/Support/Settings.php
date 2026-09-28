@@ -55,7 +55,7 @@ class Settings
         'license.white_label' => null,
 
         'locale.default' => 'en',
-        'locale.enabled' => ['en', 'ar', 'ckb'],
+        'locale.enabled' => ['az', 'ca', 'cs', 'da', 'de', 'et', 'en', 'es', 'fr', 'hr', 'it', 'hu', 'nl', 'nb', 'pt_BR', 'pt_PT', 'ro', 'sv', 'tr', 'mk', 'ru', 'uk', 'he', 'ar', 'ckb', 'zh_CN'],
 
         'marketplace.developer_share' => 83,
 

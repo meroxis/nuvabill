@@ -20,6 +20,7 @@ use App\Models\Domain;
 use App\Models\Product;
 use App\Models\TldPrice;
 use App\Support\Demo;
+use App\Support\Locales;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -90,7 +91,7 @@ class QuickOrderController extends Controller
             'saving' => $saving > 0 ? money($saving, $currency) : null,
             'saved_label' => $saving + $discount > 0 ? money($saving + $discount, $currency) : null,
             'renewal' => $productLine && $cycle->isRecurring()
-                ? __(':amount :cycle', ['amount' => money($productLine->price + array_sum(array_column($productLine->addons, 'price')), $currency), 'cycle' => mb_strtolower($cycle->label())])
+                ? __(':amount :cycle', ['amount' => money($productLine->price + array_sum(array_column($productLine->addons, 'price')), $currency), 'cycle' => Locales::inSentence($cycle->label())])
                 : null,
             'coupon' => $coupon ? ['code' => $coupon->code, 'label' => $coupon->describe().' · '.$coupon->paymentsLabel()] : null,
             'coupon_problem' => $cart->couponProblem($currency, $client),

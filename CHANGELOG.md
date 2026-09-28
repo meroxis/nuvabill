@@ -4,6 +4,13 @@ What changed in each Nuvabill release. The release workflow copies the section f
 release, and the **Updates** page in the admin area shows it. Write for hosting companies, in plain words.
 Add `[security]` to a section to let installs apply it automatically as a security fix.
 
+## 0.4.4
+
+- **26 languages:** the client area and admin area now also speak Azerbaijani, Catalan, Chinese (Simplified), Croatian, Czech, Danish, Dutch, Estonian, French, German, Hebrew, Hungarian, Italian, Macedonian, Norwegian, Portuguese (Brazil and Portugal), Romanian, Russian, Spanish, Swedish, Turkish and Ukrainian, next to English, Arabic and Kurdish. Hebrew pages read right to left, and form error messages are translated too.
+- **A new language menu** in the top bar: every language by its own name and by its name in your language, with a search box. On phones it opens from the bottom of the screen.
+- New installs offer every language to clients. Sites that already saved their language list keep it: turn on more languages in **Settings → General**.
+- Invoices, PDFs and emails stay in English.
+
 ## 0.4.3
 
 - **Fix for MySQL and MariaDB:** installing (and the one-line server install) stopped while making the product add-on tables, because an index name was longer than MySQL allows. The index now has a short name, and sites where that step stopped halfway finish it on the next update.

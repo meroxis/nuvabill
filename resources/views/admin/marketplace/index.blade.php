@@ -27,7 +27,7 @@
     @if ($featured)
         <section class="market-hero">
             <div class="market-hero-text">
-                <span class="tag">{{ __('Featured :type', ['type' => mb_strtolower($featured->type->label())]) }}</span>
+                <span class="tag">{{ __('Featured :type', ['type' => \App\Support\Locales::inSentence($featured->type->label())]) }}</span>
                 <h2 style="margin:0;font-size:2rem;font-weight:800;letter-spacing:-.02em;color:#fff">{{ $featured->name }}</h2>
                 <p>{{ $featured->summary }}</p>
                 <div style="margin-top:auto;display:flex;align-items:center;gap:12px;flex-wrap:wrap">

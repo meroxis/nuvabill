@@ -49,7 +49,7 @@
                         <td><a href="{{ route('developer.items.show', $item) }}"><b>{{ $item->name }}</b></a><div class="muted" style="font-size:.8rem">{{ $item->type->label() }}@if ($last) · v{{ $last->version }}@endif</div></td>
                         <td>@include('theme::developer.partials.status', ['version' => $last, 'item' => $item])</td>
                         <td class="end num">{{ $item->isFree() ? __('Free') : money($item->price, $item->currency) }}</td>
-                        <td class="end num">{{ $item->isFree() ? number_format($item->installs_count).' '.__('installs') : number_format($item->sales_count) }}</td>
+                        <td class="end num">{{ $item->isFree() ? trans_choice(':count install|:count installs', $item->installs_count, ['count' => number_format($item->installs_count)]) : number_format($item->sales_count) }}</td>
                     </tr>
                 @empty
                     <tr><td colspan="4"><div class="empty"><strong>{{ __('No items yet') }}</strong>{{ __('Submit your first theme or extension.') }}</div></td></tr>

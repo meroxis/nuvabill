@@ -33,7 +33,11 @@ class SettingsController extends Controller
             'settings' => app(Settings::class)->all(),
             'currencies' => array_combine(self::CURRENCIES, self::CURRENCIES),
             'themes' => $themes->all()->map(fn (array $theme): string => $theme['name'])->all(),
-            'languages' => collect(Locales::ALL)->map(fn (array $locale): string => $locale['native'] === $locale['name'] ? $locale['name'] : "{$locale['native']} ({$locale['name']})")->all(),
+            'languages' => collect(Locales::ALL)->map(function (array $locale, string $code): string {
+                $name = Locales::displayName($code);
+
+                return mb_strtolower($name) === mb_strtolower($locale['native']) ? $locale['native'] : "{$locale['native']} · {$name}";
+            })->all(),
             'cronCommand' => '* * * * * cd '.base_path().' && '.PHP_BINARY.' artisan schedule:run >> /dev/null 2>&1',
         ]);
     }

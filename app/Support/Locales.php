@@ -6,20 +6,47 @@ use App\Models\Admin;
 use App\Models\Client;
 use Closure;
 use Illuminate\Http\Request;
+use Locale;
 
 /**
- * The languages Nuvabill speaks. Arabic and Kurdish (Sorani) are written right to left; numbers
- * and prices stay in Latin digits in every language so invoices and payments read the same.
+ * The languages Nuvabill speaks: the ones WHMCS ships, plus Kurdish (Sorani). Arabic, Hebrew and
+ * Kurdish are written right to left; right-to-left languages show prices in Latin digits so
+ * invoices and payments read the same everywhere.
  */
 class Locales
 {
     /**
-     * @var array<string, array{name: string, native: string, rtl: bool}>
+     * In the order people see them: by their own name, Latin letters first.
+     *
+     * @var array<string, array{name: string, native: string, short: string, rtl: bool}>
      */
     public const ALL = [
-        'en' => ['name' => 'English', 'native' => 'English', 'rtl' => false],
-        'ar' => ['name' => 'Arabic', 'native' => 'العربية', 'rtl' => true],
-        'ckb' => ['name' => 'Kurdish (Sorani)', 'native' => 'کوردی', 'rtl' => true],
+        'az' => ['name' => 'Azerbaijani', 'native' => 'Azərbaycanca', 'short' => 'AZ', 'rtl' => false],
+        'ca' => ['name' => 'Catalan', 'native' => 'Català', 'short' => 'CA', 'rtl' => false],
+        'cs' => ['name' => 'Czech', 'native' => 'Čeština', 'short' => 'CS', 'rtl' => false],
+        'da' => ['name' => 'Danish', 'native' => 'Dansk', 'short' => 'DA', 'rtl' => false],
+        'de' => ['name' => 'German', 'native' => 'Deutsch', 'short' => 'DE', 'rtl' => false],
+        'et' => ['name' => 'Estonian', 'native' => 'Eesti', 'short' => 'ET', 'rtl' => false],
+        'en' => ['name' => 'English', 'native' => 'English', 'short' => 'EN', 'rtl' => false],
+        'es' => ['name' => 'Spanish', 'native' => 'Español', 'short' => 'ES', 'rtl' => false],
+        'fr' => ['name' => 'French', 'native' => 'Français', 'short' => 'FR', 'rtl' => false],
+        'hr' => ['name' => 'Croatian', 'native' => 'Hrvatski', 'short' => 'HR', 'rtl' => false],
+        'it' => ['name' => 'Italian', 'native' => 'Italiano', 'short' => 'IT', 'rtl' => false],
+        'hu' => ['name' => 'Hungarian', 'native' => 'Magyar', 'short' => 'HU', 'rtl' => false],
+        'nl' => ['name' => 'Dutch', 'native' => 'Nederlands', 'short' => 'NL', 'rtl' => false],
+        'nb' => ['name' => 'Norwegian', 'native' => 'Norsk', 'short' => 'NO', 'rtl' => false],
+        'pt_BR' => ['name' => 'Portuguese (Brazil)', 'native' => 'Português (Brasil)', 'short' => 'BR', 'rtl' => false],
+        'pt_PT' => ['name' => 'Portuguese (Portugal)', 'native' => 'Português (Portugal)', 'short' => 'PT', 'rtl' => false],
+        'ro' => ['name' => 'Romanian', 'native' => 'Română', 'short' => 'RO', 'rtl' => false],
+        'sv' => ['name' => 'Swedish', 'native' => 'Svenska', 'short' => 'SV', 'rtl' => false],
+        'tr' => ['name' => 'Turkish', 'native' => 'Türkçe', 'short' => 'TR', 'rtl' => false],
+        'mk' => ['name' => 'Macedonian', 'native' => 'Македонски', 'short' => 'MK', 'rtl' => false],
+        'ru' => ['name' => 'Russian', 'native' => 'Русский', 'short' => 'RU', 'rtl' => false],
+        'uk' => ['name' => 'Ukrainian', 'native' => 'Українська', 'short' => 'UK', 'rtl' => false],
+        'he' => ['name' => 'Hebrew', 'native' => 'עברית', 'short' => 'HE', 'rtl' => true],
+        'ar' => ['name' => 'Arabic', 'native' => 'العربية', 'short' => 'AR', 'rtl' => true],
+        'ckb' => ['name' => 'Kurdish (Sorani)', 'native' => 'کوردی', 'short' => 'KU', 'rtl' => true],
+        'zh_CN' => ['name' => 'Chinese (Simplified)', 'native' => '简体中文', 'short' => 'ZH', 'rtl' => false],
     ];
 
     public const SESSION_CLIENT = 'locale';
@@ -54,6 +81,40 @@ class Locales
     public static function isSupported(?string $locale): bool
     {
         return $locale !== null && isset(self::ALL[$locale]);
+    }
+
+    /**
+     * The code for HTML lang attributes, such as pt-BR.
+     */
+    public static function htmlLang(?string $locale = null): string
+    {
+        return str_replace('_', '-', $locale ?? app()->getLocale());
+    }
+
+    /**
+     * The name of a language in the language of the page, such as "German" or "Allemand",
+     * from the server's language data, with the English name when that is missing.
+     */
+    public static function displayName(string $locale): string
+    {
+        $english = self::ALL[$locale]['name'] ?? $locale;
+
+        if (! class_exists(Locale::class)) {
+            return $english;
+        }
+
+        $name = (string) Locale::getDisplayName(self::htmlLang($locale), self::htmlLang());
+
+        return $name === '' || strcasecmp($name, $locale) === 0 || strcasecmp($name, self::htmlLang($locale)) === 0 ? $english : $name;
+    }
+
+    /**
+     * A label used inside a sentence, such as "Featured theme": lower case, except in German,
+     * where nouns keep their capital letter.
+     */
+    public static function inSentence(string $label): string
+    {
+        return app()->getLocale() === 'de' ? $label : mb_strtolower($label);
     }
 
     public static function isRtl(?string $locale = null): bool

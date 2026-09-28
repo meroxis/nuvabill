@@ -68,21 +68,53 @@ class LocaleTest extends TestCase
         $this->assertSame('فاتورة', __('Invoice'));
     }
 
-    public function test_every_translation_keeps_the_placeholders_of_the_english_text(): void
+    public function test_every_language_translates_every_text_and_keeps_its_placeholders(): void
     {
-        $arabic = json_decode(file_get_contents(lang_path('ar.json')), true, flags: JSON_THROW_ON_ERROR);
-        $kurdish = json_decode(file_get_contents(lang_path('ckb.json')), true, flags: JSON_THROW_ON_ERROR);
+        // How many plural forms Laravel picks from in each language; Kurdish uses explicit ranges instead.
+        $pluralForms = ['ar' => 6, 'az' => 1, 'tr' => 1, 'zh_CN' => 1, 'cs' => 3, 'hr' => 3, 'ro' => 3, 'ru' => 3, 'uk' => 3];
+        $english = null;
 
-        $this->assertSame(array_keys($arabic), array_keys($kurdish), 'Arabic and Kurdish translate the same texts.');
+        foreach (array_diff(array_keys(Locales::ALL), ['en']) as $locale) {
+            $lines = json_decode(file_get_contents(lang_path("{$locale}.json")), true, flags: JSON_THROW_ON_ERROR);
+            $english ??= array_keys($lines);
 
-        foreach (['ar' => $arabic, 'ckb' => $kurdish] as $locale => $lines) {
-            foreach ($lines as $english => $translated) {
-                preg_match_all('/:[a-z_]+/', $english, $wanted);
+            $this->assertSame($english, array_keys($lines), "{$locale} translates the same texts as the other languages.");
+
+            foreach ($lines as $source => $translated) {
+                preg_match_all('/:[a-z_]+/', $source, $wanted);
                 preg_match_all('/:[a-z_]+/', $translated, $got);
 
-                $this->assertSame([], array_values(array_diff($wanted[0], $got[0])), "{$locale}: \"{$translated}\" misses a placeholder of \"{$english}\"");
-                $this->assertNotSame('', trim($translated), "{$locale}: \"{$english}\" is empty");
+                $this->assertSame([], array_values(array_diff($wanted[0], $got[0])), "{$locale}: \"{$translated}\" misses a placeholder of \"{$source}\"");
+                $this->assertNotSame('', trim($translated), "{$locale}: \"{$source}\" is empty");
+
+                if (str_contains($source, '|') && $locale !== 'ckb' && ! preg_match('/^[{\[]/', $translated)) {
+                    $forms = substr_count($translated, '|') + 1;
+                    $this->assertContains($forms, [1, $pluralForms[$locale] ?? 2], "{$locale}: \"{$translated}\" has {$forms} plural forms");
+                }
             }
+
+            foreach (['auth', 'pagination', 'passwords', 'validation'] as $file) {
+                $this->assertFileExists(lang_path("{$locale}/{$file}.php"), "{$locale} translates Laravel's {$file} messages.");
+            }
+
+            $this->assertSame(array_keys(require lang_path('ar/validation.php')), array_keys(require lang_path("{$locale}/validation.php")), "{$locale}: every form error is translated.");
         }
+    }
+
+    public function test_the_language_menu_lists_every_language_by_its_own_name(): void
+    {
+        $this->actingAs(Admin::factory()->create(), 'admin');
+
+        $page = $this->get(route('admin.dashboard'))->assertOk();
+
+        foreach (Locales::ALL as $code => $locale) {
+            $page->assertSee('value="'.$code.'"', false)->assertSee($locale['native']);
+        }
+
+        $this->post(route('admin.language'), ['locale' => 'he']);
+        $this->get(route('admin.dashboard'))->assertSee('lang="he" dir="rtl"', false);
+
+        $this->post(route('admin.language'), ['locale' => 'pt_BR']);
+        $this->get(route('admin.dashboard'))->assertSee('lang="pt-BR" dir="ltr"', false);
     }
 }

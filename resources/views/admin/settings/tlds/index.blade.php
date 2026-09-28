@@ -11,7 +11,7 @@
             <div class="empty"><strong>{{ __('No extensions yet') }}</strong>{{ __('Add .com or another extension below to start selling domains.') }}</div>
         @else
             <div class="table-wrap"><table class="table">
-                <thead><tr><th>{{ __('Extension') }}</th><th class="end">{{ __('Register') }}</th><th class="end">{{ __('Renew') }}</th><th class="end">{{ __('Transfer') }}</th><th>{{ __('Registrar') }}</th><th>{{ __('Status') }}</th></tr></thead>
+                <thead><tr><th>{{ __('Domain ending') }}</th><th class="end">{{ __('Register') }}</th><th class="end">{{ __('Renew') }}</th><th class="end">{{ __('Transfer') }}</th><th>{{ __('Registrar') }}</th><th>{{ __('Status') }}</th></tr></thead>
                 <tbody>
                 @foreach ($prices as $row)
                     <tr>

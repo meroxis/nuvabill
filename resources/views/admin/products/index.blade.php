@@ -30,7 +30,7 @@
                 <div class="empty">{{ __('No products in this group yet.') }}</div>
             @else
                 <div class="table-wrap"><table class="table">
-                    <thead><tr><th>{{ __('Product') }}</th><th>{{ __('Starting price') }}</th><th>{{ __('Setup') }}</th><th>{{ __('Store') }}</th></tr></thead>
+                    <thead><tr><th>{{ __('Product') }}</th><th>{{ __('Starting price') }}</th><th>{{ __('Automatic setup') }}</th><th>{{ __('Store') }}</th></tr></thead>
                     <tbody>
                     @foreach ($group->products as $product)
                         @php $start = $product->startingPrice($currency); @endphp
