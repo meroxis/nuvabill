@@ -89,7 +89,8 @@ class WhmcsImporter extends ImportSource
     ];
 
     /**
-     * WHMCS server module names and the Nuvabill module each becomes.
+     * WHMCS server module names and the Nuvabill module each becomes. Modules from the marketplace
+     * (CyberPanel, HestiaCP, VirtFusion, SolusVM) count only once they are installed.
      */
     private const SERVER_MODULES = [
         'cpanel' => 'cpanel',
@@ -98,6 +99,13 @@ class WhmcsImporter extends ImportSource
         'virtualizor' => 'virtualizor',
         'proxmox' => 'proxmox',
         'proxmoxvps' => 'proxmox',
+        'cyberpanel' => 'cyberpanel',
+        'hestia' => 'hestiacp',
+        'hestiacp' => 'hestiacp',
+        'virtfusiondirect' => 'virtfusion',
+        'virtfusion' => 'virtfusion',
+        'solusvmpro' => 'solusvm',
+        'solusvm' => 'solusvm',
     ];
 
     private const REGISTRARS = ['resellerclub', 'namecheap', 'enom', 'opensrs'];
@@ -332,7 +340,7 @@ class WhmcsImporter extends ImportSource
     protected function importServers(Collection $rows): void
     {
         foreach ($rows as $row) {
-            $module = self::SERVER_MODULES[strtolower((string) ($row->type ?? ''))] ?? null;
+            $module = $this->serverModule($row->type ?? null, self::SERVER_MODULES);
 
             if ($module === null) {
                 $this->counts['skipped']++;
@@ -383,7 +391,7 @@ class WhmcsImporter extends ImportSource
                 continue;
             }
 
-            $module = self::SERVER_MODULES[strtolower((string) ($row->servertype ?? ''))] ?? null;
+            $module = $this->serverModule($row->servertype ?? null, self::SERVER_MODULES);
             $name = $this->text($row->name ?? null) ?? 'Product '.$row->id;
 
             $product = $this->upsert('product', (int) $row->id, Product::class, [
@@ -409,7 +417,7 @@ class WhmcsImporter extends ImportSource
             ], [
                 'slug' => $this->unique(Product::class, 'slug', Str::slug($name) ?: 'product'),
                 'module_config' => match ($module) {
-                    'cpanel', 'directadmin' => ['package' => (string) $this->text($row->configoption1 ?? null)],
+                    'cpanel', 'directadmin', 'cyberpanel', 'hestiacp' => ['package' => (string) $this->text($row->configoption1 ?? null)],
                     'plesk' => ['plan' => (string) $this->text($row->configoption1 ?? null)],
                     default => [],
                 },
@@ -459,6 +467,7 @@ class WhmcsImporter extends ImportSource
     protected function importServices(Collection $rows): void
     {
         $vpsIds = $this->customFieldValues('vpsid', $rows->pluck('id')->all());
+        $solusIds = $this->customFieldValues('vserverid', $rows->pluck('id')->all());
 
         foreach ($rows as $row) {
             $clientId = $this->localId('client', $row->userid ?? 0);
@@ -489,7 +498,11 @@ class WhmcsImporter extends ImportSource
             ], [
                 'client_id' => $clientId,
                 'currency' => $this->clientCurrency($clientId),
-                'module_data' => isset($vpsIds[$row->id]) ? ['vpsid' => (string) $vpsIds[$row->id]] : null,
+                'module_data' => match (true) {
+                    isset($vpsIds[$row->id]) => ['vpsid' => (string) $vpsIds[$row->id]],
+                    isset($solusIds[$row->id]) => ['vserverid' => (string) $solusIds[$row->id]],
+                    default => null,
+                },
             ]);
 
             $service->suspended_at = $status === ServiceStatus::Suspended ? ($service->suspended_at ?? now()) : null;
@@ -938,7 +951,7 @@ class WhmcsImporter extends ImportSource
     {
         if ($this->hasTable('tblservers')) {
             $servers = $this->db()->table('tblservers')->get(['id', 'name', 'type', 'password']);
-            [$supported, $unsupported] = $servers->partition(fn (stdClass $row): bool => isset(self::SERVER_MODULES[strtolower((string) $row->type)]));
+            [$supported, $unsupported] = $servers->partition(fn (stdClass $row): bool => $this->serverModule($row->type, self::SERVER_MODULES) !== null);
             $withPassword = $supported->filter(fn (stdClass $row): bool => filled($row->password));
             $unreadable = $withPassword->filter(fn (stdClass $row): bool => $this->decrypt($row->password) === null)->count();
 
@@ -955,7 +968,8 @@ class WhmcsImporter extends ImportSource
         }
 
         if ($this->hasTable('tblproducts')) {
-            $products = $this->db()->table('tblproducts')->where('servertype', '!=', '')->whereNotIn(DB::raw('LOWER(servertype)'), array_keys(self::SERVER_MODULES))->get(['name', 'servertype']);
+            $products = $this->db()->table('tblproducts')->where('servertype', '!=', '')->get(['name', 'servertype'])
+                ->filter(fn (stdClass $row): bool => $this->serverModule($row->servertype, self::SERVER_MODULES) === null);
             $report->problem(Preflight::WARNING, $products->count(), 'Products with a module Nuvabill does not have: :count. They are imported for manual setup.', examples: $products->map(fn (stdClass $row): string => $this->text($row->name).' ('.$row->servertype.')')->all());
         }
 

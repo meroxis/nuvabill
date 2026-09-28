@@ -4,10 +4,13 @@ namespace App\Health;
 
 use App\Models\Admin;
 use App\Models\ApiToken;
+use App\Models\MarketplaceInstall;
 use App\Support\Activity;
 use App\Support\EnvFile;
+use App\Support\Quarantine;
 use App\Support\Settings;
 use App\Support\SiteBackup;
+use App\Support\Themes;
 use App\Updates\ReleaseSource;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Number;
@@ -27,6 +30,7 @@ class Repairs
         private readonly CoreFiles $coreFiles,
         private readonly DatabaseInspector $database,
         private readonly ReleaseSource $releases,
+        private readonly Themes $themes,
     ) {}
 
     /**
@@ -53,12 +57,39 @@ class Repairs
             'db.migrate' => $this->migrate(),
             'db.cleanup' => trans_choice(':count old record was removed.|:count old records were removed.', $count = array_sum($this->database->cleanUp()), ['count' => $count]),
             'db.optimize' => $this->optimize(),
+            'themes.quarantine' => $this->quarantineThemes(array_values(array_filter((array) ($params['slugs'] ?? []), 'is_string'))),
             default => throw new RuntimeException(__('This problem cannot be fixed automatically.')),
         };
 
         Activity::log('health.fixed', 'Site health fix "'.($fix['action'] ?? '').'": '.$message, actor: $admin);
 
         return $message;
+    }
+
+    /**
+     * Move themes that were added by hand and are not used to quarantine. Checked again here: never the
+     * active theme, the standard theme, or one installed from the marketplace.
+     *
+     * @param  list<string>  $slugs
+     */
+    private function quarantineThemes(array $slugs): string
+    {
+        $moved = [];
+
+        foreach ($slugs as $slug) {
+            if (! $this->themes->exists($slug) || $slug === $this->themes->saved() || $slug === Themes::DEFAULT
+                || MarketplaceInstall::query()->where('slug', $slug)->exists()) {
+                continue;
+            }
+
+            $moved[] = Quarantine::move($this->themes->path($slug), 'themes/'.$slug);
+        }
+
+        if ($moved === []) {
+            throw new RuntimeException(__('This theme is in use, comes from the marketplace, or is already gone.'));
+        }
+
+        return __('Moved to :folder. Move the folder back to use the theme again.', ['folder' => implode(', ', $moved)]);
     }
 
     private function requireTwoFactor(): string

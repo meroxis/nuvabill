@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.4.10](https://github.com/meroxis/nuvabill/releases/tag/v0.4.10) | 28 Sep 2026 | Free CyberPanel, HestiaCP, VirtFusion and SolusVM modules; remove extensions and themes added by hand |
 | [0.4.9](https://github.com/meroxis/nuvabill/releases/tag/v0.4.9) | 28 Sep 2026 | Import from Blesta, FOSSBilling and Paymenter; a dry run before every import; all extensions on one page |
 | [0.4.8](https://github.com/meroxis/nuvabill/releases/tag/v0.4.8) | 28 Sep 2026 | Site health (security and database checks); billing jobs never bill twice |
 | [0.4.7](https://github.com/meroxis/nuvabill/releases/tag/v0.4.7) | 28 Sep 2026 | Faster, steadier store pages; easier-to-read colours |
@@ -30,6 +31,20 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.4.10
+
+- **Four new server modules, free on the Marketplace.** Install one with a click and it shows up in **Servers → Add server** next to the built-in modules. The [servers guide](docs/integrations/servers.md) says what to enter for each.
+  - **CyberPanel:** websites with their own CyberPanel user, the package, PHP version and website limit per product, and one-click sign-in for clients.
+  - **HestiaCP:** users with their website, DNS and email. If the domain cannot be added, the new user is removed again.
+  - **VirtFusion:** virtual servers built on payment. Clients start, shut down, restart and power off their server in your client area, and open VirtFusion with one click.
+  - **SolusVM:** KVM, OpenVZ and Xen servers. Clients manage power, hostname, root password and the VNC console in your client area.
+  - All four suspend, unsuspend, change package and remove with the service, like the built-in modules.
+- **The WHMCS import brings these panels along.** Servers and products that use CyberPanel, HestiaCP, VirtFusion or SolusVM in WHMCS come across once the module is installed, and SolusVM servers keep their link to the VPS.
+- **Remove extensions that were added by hand.** **Setup → Extensions** now shows where each one came from: built in, the Marketplace, or copied into the `extensions` folder by hand. An extension added by hand that is switched off and not used can be removed with one click. Its folder moves to `storage/app/quarantine`; nothing is deleted, so you can move it back. Built-in extensions and ones still in use cannot be removed.
+- **Site health moves unused themes added by hand to quarantine** with one click, and tells them apart from Marketplace themes, which you still remove on the Marketplace page.
+- Server modules can now sign clients in to their control panel with a form, for panels that need it (CyberPanel does).
+- The encryption key help on the import page uses the normal help text style.
 
 ## 0.4.9
 

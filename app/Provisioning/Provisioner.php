@@ -3,6 +3,7 @@
 namespace App\Provisioning;
 
 use App\Contracts\HasClientPanel;
+use App\Contracts\HasLoginForm;
 use App\Contracts\ServerModule;
 use App\Enums\ServiceStatus;
 use App\Events\ServiceActivated;
@@ -238,6 +239,36 @@ class Provisioner
         );
 
         return $result;
+    }
+
+    /**
+     * The sign-in form of a module that signs clients in with a form, for an active service.
+     *
+     * @return array{url: string, fields: array<string, string>}|null
+     */
+    public function loginForm(Service $service): ?array
+    {
+        $service->loadMissing('product', 'server');
+        $module = $this->moduleFor($service);
+
+        if (! $module instanceof HasLoginForm || $service->status !== ServiceStatus::Active || $service->server === null) {
+            return null;
+        }
+
+        try {
+            $form = $module->loginForm($service);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return null;
+        }
+
+        return $form !== null && str_starts_with((string) ($form['url'] ?? ''), 'https://') ? $form : null;
+    }
+
+    public function usesLoginForm(Service $service): bool
+    {
+        return $this->moduleFor($service->loadMissing('product')) instanceof HasLoginForm;
     }
 
     public function hasLoginLink(Service $service): bool

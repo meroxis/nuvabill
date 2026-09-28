@@ -5,7 +5,9 @@ namespace App\Extensions;
 use App\Marketplace\MarketplaceClient;
 use App\Models\Domain;
 use App\Models\MarketplaceInstall;
+use App\Models\Product;
 use App\Models\Server;
+use App\Models\TldPrice;
 use App\Models\Transaction;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Route;
@@ -28,13 +30,32 @@ final class ExtensionOverview
      */
     public const STATE_UNUSED = 'unused';
 
+    public const ORIGIN_BUILT_IN = 'built-in';
+
+    public const ORIGIN_MARKETPLACE = 'marketplace';
+
+    /**
+     * Copied into the extensions folder by hand, not shipped with Nuvabill or installed from the marketplace.
+     */
+    public const ORIGIN_MANUAL = 'manual';
+
+    /**
+     * Extensions that come with Nuvabill itself, by type.
+     */
+    public const BUILT_IN = [
+        ExtensionManifest::TYPE_GATEWAY => ['banktransfer', 'fastpay', 'fib', 'paypal', 'stripe', 'wayl'],
+        ExtensionManifest::TYPE_SERVER => ['cpanel', 'directadmin', 'plesk', 'proxmox', 'virtualizor'],
+        ExtensionManifest::TYPE_REGISTRAR => ['enom', 'namecheap', 'opensrs', 'resellerclub'],
+        ExtensionManifest::TYPE_ADDON => [],
+    ];
+
     public function __construct(
         private ExtensionManager $extensions,
         private MarketplaceClient $marketplace,
     ) {}
 
     /**
-     * @return Collection<string, array{manifest: ExtensionManifest, state: string, marketplace: bool, update: string|null, unlicensed: bool, usage: string|null, page: string|null}>
+     * @return Collection<string, array{manifest: ExtensionManifest, state: string, origin: string, removable: bool, update: string|null, unlicensed: bool, usage: string|null, page: string|null}>
      */
     public function all(): Collection
     {
@@ -45,11 +66,14 @@ final class ExtensionOverview
         return $this->extensions->manifests()->map(function (ExtensionManifest $manifest) use ($installs, $catalog, $usage): array {
             $install = $installs->get($manifest->slug);
             $latest = (string) ($catalog[$manifest->slug]['version'] ?? '');
+            $state = $this->state($manifest, $usage);
+            $origin = $this->origin($manifest, $install !== null);
 
             return [
                 'manifest' => $manifest,
-                'state' => $this->state($manifest, $usage),
-                'marketplace' => $install !== null,
+                'state' => $state,
+                'origin' => $origin,
+                'removable' => $origin === self::ORIGIN_MANUAL && in_array($state, [self::STATE_OFF, self::STATE_UNUSED], true) && ! $this->inUse($manifest, $usage),
                 'update' => $install !== null && $latest !== '' && version_compare($latest, $manifest->version, '>') ? $latest : null,
                 'unlicensed' => $install?->hasInvalidLicense() ?? false,
                 'usage' => $this->describeUsage($manifest, $usage),
@@ -99,6 +123,41 @@ final class ExtensionOverview
 
             return false;
         }
+    }
+
+    public function origin(ExtensionManifest $manifest, bool $fromMarketplace): string
+    {
+        return match (true) {
+            $fromMarketplace => self::ORIGIN_MARKETPLACE,
+            in_array($manifest->slug, self::BUILT_IN[$manifest->type] ?? [], true) => self::ORIGIN_BUILT_IN,
+            default => self::ORIGIN_MANUAL,
+        };
+    }
+
+    /**
+     * An extension added by hand that nothing needs any more, so it can be moved to quarantine: switched
+     * off, and no server, domain price or domain uses it.
+     */
+    public function isRemovable(ExtensionManifest $manifest): bool
+    {
+        if ($this->origin($manifest, MarketplaceInstall::query()->where('slug', $manifest->slug)->exists()) !== self::ORIGIN_MANUAL) {
+            return false;
+        }
+
+        return in_array($this->state($manifest, $usage = $this->usage()), [self::STATE_OFF, self::STATE_UNUSED], true)
+            && ! $this->inUse($manifest, $usage);
+    }
+
+    /**
+     * @param  array{payments: array<string, int>, servers: array<string, array{servers: int, accounts: int}>, domains: array<string, int>}  $usage
+     */
+    private function inUse(ExtensionManifest $manifest, array $usage): bool
+    {
+        return match ($manifest->type) {
+            ExtensionManifest::TYPE_SERVER => isset($usage['servers'][$manifest->slug]) || Product::query()->where('server_module', $manifest->slug)->exists(),
+            ExtensionManifest::TYPE_REGISTRAR => ($usage['domains'][$manifest->slug] ?? 0) > 0 || TldPrice::query()->where('registrar', $manifest->slug)->exists(),
+            default => false,
+        };
     }
 
     /**

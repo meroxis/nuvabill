@@ -58,6 +58,55 @@ Connections use HTTPS by default, and the server password and API token are stor
 - **In the client area**: start, shut down, restart, power off, change hostname, change root password, reinstall the
   operating system and show VNC details, with live usage and IP addresses.
 
+## Free modules on the Marketplace
+
+These four modules are free. Install them with one click from **Marketplace** in the admin area: after that they
+show in the module list on **Servers → Add server**, like the built-in ones.
+
+### CyberPanel
+
+- **Connection**: a CyberPanel admin username and password, with API access turned on for that user
+  (**Users → API Access**). Port 8090, with a valid SSL certificate for the one-click sign-in.
+- **Plan settings**: the CyberPanel package, the PHP version (empty uses PHP 8.3) and how many websites the client may
+  add.
+- **What it does**: creates a website and its own CyberPanel user; suspend, unsuspend, change package and remove.
+  Clients open CyberPanel with one click, without a password. Needs Nuvabill 0.4.10 or newer.
+
+### HestiaCP
+
+- **Connection**: an access key in **API token**, written as `ACCESS_KEY:SECRET_KEY` (in Hestia: your admin user →
+  **Access keys**, or `v-add-access-key admin '*' nuvabill` on the server). The admin username and password also
+  work. Allow Nuvabill's server IP under **Server settings → Security → API**. Port 8083.
+- **Plan setting**: the Hestia package.
+- **What it does**: creates a Hestia user with the client's domain (website, DNS and email); suspend, unsuspend, change
+  package and remove. If the domain cannot be added, the new user is removed again. Clients open Hestia with one
+  click.
+
+### VirtFusion
+
+- **Connection**: your VirtFusion panel as hostname (for example `panel.example.com`) and an API token from
+  **Settings → API** in VirtFusion. The panel needs a valid SSL certificate.
+- **Plan settings**: the VirtFusion package ID, the hypervisor group ID, the operating system ID (empty lets the client
+  choose in VirtFusion) and the number of IPv4 addresses.
+- **What it does**: makes a VirtFusion user for each client and builds the server; suspend, unsuspend, change package
+  and remove.
+- **In the client area**: start, shut down, restart and power off, with the state, operating system and resources, and
+  one-click sign-in to VirtFusion.
+
+### SolusVM
+
+- **Connection**: the SolusVM master as hostname, the API ID in **Username** and the API key in **API token**
+  (**Configuration → API Access** in SolusVM). Allow Nuvabill's server IP there too. Port 5656 with HTTPS. For
+  SolusVM 1.
+- **Plan settings**: virtualization type (KVM, OpenVZ or Xen), node group or node, the SolusVM plan name, the OS
+  template file name and the number of IPv4 addresses.
+- **What it does**: create, suspend, unsuspend, terminate and change plan.
+- **In the client area**: boot, shut down, reboot, change hostname, change root password and open the VNC console,
+  with the state, IP addresses and memory and disk use, and one-click sign-in to the SolusVM client panel.
+
+When you import from WHMCS, servers and products that use these panels come across once the module is installed.
+Install it first, then run the import (or run it again).
+
 ## Not listed here?
 
 Other control panels can be added as extensions. See the

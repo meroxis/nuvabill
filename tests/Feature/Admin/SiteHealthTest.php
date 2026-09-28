@@ -13,6 +13,7 @@ use App\Models\Client;
 use App\Models\HealthRun;
 use App\Models\Invoice;
 use App\Support\Settings;
+use App\Support\Themes;
 use App\Updates\Signature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
@@ -83,6 +84,32 @@ class SiteHealthTest extends TestCase
 
         $this->post(route('admin.health.fix'), ['check' => 'staff.powerful_two_factor'])->assertSessionHas('status');
         $this->assertSame('required', setting('security.staff_two_factor'));
+    }
+
+    public function test_an_unused_theme_added_by_hand_can_be_moved_to_quarantine(): void
+    {
+        $themes = storage_path('framework/testing/themes-'.uniqid());
+        File::copyDirectory(base_path('themes/nova'), $themes.'/nova');
+        File::ensureDirectoryExists($themes.'/rapidnet/views');
+        File::put($themes.'/rapidnet/theme.json', json_encode(['slug' => 'rapidnet', 'name' => 'RapidNet', 'version' => '1.0.0']));
+        config(['nuvabill.themes_path' => $themes]);
+        $this->app->forgetInstance(Themes::class);
+        $this->signInAdmin();
+        app(SiteHealth::class)->run();
+
+        $check = HealthRun::latestRun()->check('extensions.unused_themes');
+        $this->assertSame(['rapidnet'], array_column($check->items, 'label'));
+        $this->assertSame('themes.quarantine', $check->items[0]['fix']['action']);
+
+        $this->post(route('admin.health.fix'), ['check' => 'extensions.unused_themes', 'item' => 0])->assertSessionHas('status');
+
+        $this->assertDirectoryDoesNotExist($themes.'/rapidnet');
+        $this->assertDirectoryExists($themes.'/nova');
+        $this->assertNotEmpty(glob(storage_path('app/quarantine/*/themes/rapidnet/theme.json')));
+        $this->assertSame(Status::Passed, HealthRun::latestRun()->check('extensions.unused_themes')->status);
+
+        File::deleteDirectory($themes);
+        File::deleteDirectory(storage_path('app/quarantine'));
     }
 
     public function test_ignored_checks_stop_counting_until_staff_count_them_again(): void

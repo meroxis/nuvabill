@@ -242,6 +242,7 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
     Route::prefix('extensions')->name('extensions.')->group(function (): void {
         Route::get('/', [ExtensionController::class, 'index'])->name('index');
         Route::post('{slug}/toggle', [ExtensionController::class, 'toggle'])->where('slug', '[a-z0-9][a-z0-9_-]*')->name('toggle');
+        Route::delete('{slug}', [ExtensionController::class, 'destroy'])->where('slug', '[a-z0-9][a-z0-9_-]*')->name('destroy');
     });
 
     Route::middleware('admin.can:marketplace.manage')->prefix('marketplace')->name('marketplace.')->group(function (): void {

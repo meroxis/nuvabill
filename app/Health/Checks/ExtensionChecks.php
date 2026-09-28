@@ -171,9 +171,15 @@ class ExtensionChecks extends CheckGroup
             return $check->passed();
         }
 
+        $fromMarketplace = MarketplaceInstall::query()->whereIn('slug', $unused)->pluck('slug')->all();
+
         return $check->warning('Installed but not used: :names', ['names' => $unused->implode(', ')],
-            advice: 'Every theme is code on your server. Remove the ones you do not use from the marketplace; you can install them again at any time.',
-            items: $unused->map(fn (string $slug): array => ['label' => $slug, 'mono' => true, 'status' => 'warning'])->all(),
+            advice: 'Every theme is code on your server. Remove themes from the marketplace on the Marketplace page, and move themes that were added by hand to quarantine here. You can put them back at any time.',
+            items: $unused->map(fn (string $slug): array => in_array($slug, $fromMarketplace, true)
+                ? ['label' => $slug, 'mono' => true, 'value' => __('From the marketplace'), 'status' => 'warning']
+                : ['label' => $slug, 'mono' => true, 'value' => __('Added by hand'), 'status' => 'warning',
+                    'fix' => $this->fix('themes.quarantine', 'Move to quarantine', ['slugs' => [$slug]], confirm: 'The theme folder is moved to storage/app/quarantine. Nothing is deleted; move it back to use the theme again.')])
+                ->all(),
             link: $this->link('admin.marketplace.index', 'Open the marketplace'),
         );
     }

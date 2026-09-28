@@ -31,7 +31,7 @@ takes one import.
 
 ### At a glance
 
-- **Automation**: cPanel & WHM, DirectAdmin, Plesk, Proxmox VE and Virtualizor accounts created on payment, suspended when overdue, unsuspended when paid
+- **Automation**: cPanel & WHM, DirectAdmin, Plesk, Proxmox VE and Virtualizor accounts created on payment, suspended when overdue, unsuspended when paid, plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules on the Marketplace
 - **Billing**: invoices with PDFs, renewals, reminders, taxes (VAT, GST, sales tax), coupons, product add-ons, quotes, a client wallet and affiliates
 - **Payments**: Stripe, PayPal, bank transfer and Iraqi payments (FIB, FastPay and Wayl), with refunds and exchange rates
 - **Domains**: search, register, transfer and renew at ResellerClub, Namecheap, Enom or OpenSRS
@@ -239,6 +239,9 @@ terminate and change package from the admin area. Clients open their control pan
 restart, live usage, IP addresses and root password, plus hostname, OS reinstall and VNC details on Virtualizor.
 API keys stay on your server.
 
+Free on the Marketplace: **CyberPanel** and **HestiaCP** hosting, and **VirtFusion** and **SolusVM** virtual servers
+with power controls in the client area. Install one with a click and it shows up next to the built-in modules.
+
 ![Product pricing and automatic setup](.github/screenshots/products.png)
 
 ### Support tickets
@@ -323,7 +326,8 @@ Try a theme on your own site first with **Live preview**, which only you see.
 - Paid items come with a license key for one site. Test sites (`localhost`, `*.test`, `staging.*`, `dev.*`) are always free.
 - Updates show on the Marketplace page and install with one click.
 - **Extensions** (under Setup) lists every payment gateway, server module, registrar and add-on you have, whether it is
-  on, how much it is used and whether it still needs settings. Switch them on and off right from the list.
+  on, how much it is used and whether it still needs settings. Switch them on and off right from the list. It also
+  shows which ones were copied onto the server by hand, and moves unused ones to quarantine with one click.
 
 Free to start: the **Paper** and **Midnight** themes, **Team chat alerts** (orders, payments and tickets in Telegram or Discord)
 and a **Live chat widget** (Tawk.to or Crisp). Premium: the **Aurora** client area and the **Swift** one-page order form.
@@ -351,8 +355,8 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 
 | Version | Focus |
 |---|---|
-| v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor, domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, Site health ([changelog](CHANGELOG.md)) |
-| **next** | **CyberPanel, HestiaCP, VirtFusion and SolusVM modules; search engine tools; a ClientExec importer** |
+| v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor (plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules), domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, Site health ([changelog](CHANGELOG.md)) |
+| **next** | **Search engine tools; a ClientExec importer** |
 | v0.5 | Automation builder, AI ticket replies, WhatsApp and Telegram bot, admin phone app |
 | v1.0 | Automatic card payments, client upgrades, knowledge base and status page, security audit, and more |
 

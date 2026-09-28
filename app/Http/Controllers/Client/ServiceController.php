@@ -7,6 +7,7 @@ use App\Models\Service;
 use App\Provisioning\Provisioner;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\View\View;
 
 class ServiceController extends Controller
@@ -31,9 +32,18 @@ class ServiceController extends Controller
         ]);
     }
 
-    public function login(Request $request, Service $service, Provisioner $provisioner): RedirectResponse
+    public function login(Request $request, Service $service, Provisioner $provisioner): RedirectResponse|Response
     {
         $this->authorizeOwner($request, $service);
+
+        // Panels that sign in with a form get a page that sends it from the client's browser.
+        if ($provisioner->usesLoginForm($service)) {
+            $form = $provisioner->loginForm($service);
+
+            return $form !== null
+                ? response()->view('theme::client.services.panel-login', ['form' => $form, 'service' => $service])->header('Cache-Control', 'no-store, private')
+                : back()->with('error', __('The control panel link is not available right now. Try again in a minute or open a ticket.'));
+        }
 
         $url = $provisioner->loginUrl($service);
 

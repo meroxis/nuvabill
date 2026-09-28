@@ -51,6 +51,7 @@ class Demo
         'admin.settings.security.captcha-check',
         'admin.settings.import.preview',
         'admin.extensions.toggle',
+        'admin.extensions.destroy',
         'admin.settings.import.start',
         'admin.settings.import.cancel',
         'admin.domains.action',

@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\Server;
 use App\Models\Transaction;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 class ExtensionsPageTest extends TestCase
@@ -66,6 +67,41 @@ class ExtensionsPageTest extends TestCase
 
         $this->signInAdmin(Admin::factory()->create(['role_id' => Role::query()->where('name', 'Support')->value('id')]));
         $this->get(route('admin.extensions.index'))->assertForbidden();
+    }
+
+    public function test_an_extension_added_by_hand_is_marked_and_can_be_moved_to_quarantine_when_unused(): void
+    {
+        $root = storage_path('framework/testing/extensions-'.uniqid());
+        File::copyDirectory(base_path('extensions/gateways/wayl'), $root.'/gateways/wayl');
+        File::ensureDirectoryExists($root.'/gateways/wayl-checkout');
+        File::put($root.'/gateways/wayl-checkout/extension.json', json_encode([
+            'slug' => 'wayl-checkout', 'type' => 'gateway', 'name' => 'Wayl', 'version' => '1.0.0',
+            'namespace' => 'Acme\\WaylCheckout\\', 'class' => 'Acme\\WaylCheckout\\Gateway',
+            'description' => 'Wayl checkout with a configurable USD-to-IQD rate',
+        ]));
+        config(['nuvabill.extensions_path' => $root]);
+        $this->app->forgetInstance(ExtensionManager::class);
+        $this->signInAdmin();
+
+        $this->get(route('admin.extensions.index'))->assertOk()
+            ->assertSee('Added by hand')
+            ->assertSee('extensions/gateways/wayl-checkout');
+
+        $this->delete(route('admin.extensions.destroy', 'wayl'))->assertSessionHas('error');
+        $this->assertDirectoryExists($root.'/gateways/wayl', 'Built-in extensions stay');
+
+        app(ExtensionManager::class)->saveSettings('wayl-checkout', [], true);
+        $this->delete(route('admin.extensions.destroy', 'wayl-checkout'))->assertSessionHas('error');
+        $this->assertDirectoryExists($root.'/gateways/wayl-checkout', 'A switched-on extension stays');
+
+        app(ExtensionManager::class)->saveSettings('wayl-checkout', [], false);
+        $this->delete(route('admin.extensions.destroy', 'wayl-checkout'))->assertSessionHas('status');
+        $this->assertDirectoryDoesNotExist($root.'/gateways/wayl-checkout');
+        $this->assertNotEmpty(glob(storage_path('app/quarantine/*/extensions/gateways/wayl-checkout/extension.json')));
+        $this->assertNull(app(ExtensionManager::class)->find('wayl-checkout'));
+
+        File::deleteDirectory($root);
+        File::deleteDirectory(storage_path('app/quarantine'));
     }
 
     public function test_the_old_lists_open_the_extensions_page(): void

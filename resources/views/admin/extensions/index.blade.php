@@ -28,7 +28,7 @@
         <div class="kpi"><small>{{ __('Working') }}</small><b>{{ $totals['on'] }}</b><span>{{ __('Switched on or in use') }}</span></div>
         <div class="kpi"><small>{{ __('Need settings') }}</small><b @if ($totals['needs']) style="color:var(--nb-warn)" @endif>{{ $totals['needs'] }}</b><span>{{ __('Switched on, but not working yet') }}</span></div>
         <div class="kpi"><small>{{ __('Updates') }}</small><b>{{ $totals['updates'] }}</b><span>@if ($totals['updates'] && $mayMarketplace)<a href="{{ route('admin.marketplace.index', ['tab' => 'updates']) }}">{{ __('Update them') }}</a>@else{{ __('New versions in the marketplace') }}@endif</span></div>
-        <div class="kpi"><small>{{ __('From the marketplace') }}</small><b>{{ $totals['marketplace'] }}</b><span>{{ __('Built in: :count', ['count' => $counts['all'] - $totals['marketplace']]) }}</span></div>
+        <div class="kpi"><small>{{ __('From the marketplace') }}</small><b>{{ $totals['marketplace'] }}</b><span>{{ __('Built in: :count', ['count' => $counts['all'] - $totals['marketplace'] - $totals['manual']]) }}@if ($totals['manual']) · {{ __('Added by hand: :count', ['count' => $totals['manual']]) }}@endif</span></div>
     </div>
 
     <nav class="market-tabs" aria-label="{{ __('Extension types') }}" style="margin-top:6px">
@@ -66,7 +66,17 @@
                             <span class="faint mono" style="font-size:.78rem;margin-inline-start:.3rem">{{ $manifest->version }}</span>
                             <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:.3rem">
                                 @if ($tab === 'all')<x-pill>{{ $types[$manifest->type] }}</x-pill>@endif
-                                <x-pill>{{ $item['marketplace'] ? __('Marketplace') : __('Built in') }}</x-pill>
+                                @switch ($item['origin'])
+                                    @case (ExtensionOverview::ORIGIN_MARKETPLACE)
+                                        <x-pill>{{ __('Marketplace') }}</x-pill>
+                                        @break
+                                    @case (ExtensionOverview::ORIGIN_MANUAL)
+                                        <x-pill tone="warn" title="{{ __('Copied into the extensions folder by hand, not from the marketplace') }}">{{ __('Added by hand') }}</x-pill>
+                                        <span class="faint mono" style="font-size:.78rem;align-self:center">{{ 'extensions/'.$manifest->type.'s/'.$slug }}</span>
+                                        @break
+                                    @default
+                                        <x-pill>{{ __('Built in') }}</x-pill>
+                                @endswitch
                                 @if ($item['update'])
                                     @if ($mayMarketplace)
                                         <a href="{{ route('admin.marketplace.show', $slug) }}" style="text-decoration:none"><x-pill tone="info">{{ __('Update to :version', ['version' => $item['update']]) }}</x-pill></a>
@@ -113,6 +123,16 @@
                                         <button class="btn btn-sm" type="submit">
                                             <x-icon name="power" />{{ $item['state'] === ExtensionOverview::STATE_OFF ? __('Switch on') : __('Switch off') }}
                                         </button>
+                                    </form>
+                                @endif
+                                @if ($item['origin'] === ExtensionOverview::ORIGIN_MARKETPLACE && $mayMarketplace)
+                                    <a class="btn btn-sm" href="{{ route('admin.marketplace.show', $slug) }}">{{ __('Details') }}</a>
+                                @endif
+                                @if ($item['removable'] && $canChange)
+                                    <form method="POST" action="{{ route('admin.extensions.destroy', $slug) }}" data-confirm="{{ __('Move :name to quarantine? Its folder moves to storage/app/quarantine; nothing is deleted.', ['name' => $manifest->name]) }}">
+                                        @csrf
+                                        @method('DELETE')
+                                        <button class="btn btn-sm" type="submit"><x-icon name="trash" />{{ __('Remove') }}</button>
                                     </form>
                                 @endif
                             </div>

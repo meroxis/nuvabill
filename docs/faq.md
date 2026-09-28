@@ -23,7 +23,8 @@ products, services, domains, invoices, payments, wallet credit and tickets, and 
 
 ## Which control panels, gateways and registrars work?
 
-- Control panels and VPS: cPanel & WHM, DirectAdmin, Plesk, Proxmox VE and Virtualizor ([guide](integrations/servers.md))
+- Control panels and VPS: cPanel & WHM, DirectAdmin, Plesk, Proxmox VE and Virtualizor, plus CyberPanel, HestiaCP,
+  VirtFusion and SolusVM free on the Marketplace ([guide](integrations/servers.md))
 - Payments: Stripe, PayPal, FIB, FastPay, Wayl and bank transfer ([guide](integrations/payment-gateways.md))
 - Registrars: ResellerClub, Namecheap, Enom and OpenSRS ([guide](integrations/domain-registrars.md))
 

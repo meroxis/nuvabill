@@ -8,9 +8,11 @@ use App\Extensions\ExtensionOverview;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Support\Activity;
+use App\Support\Quarantine;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use RuntimeException;
 
 /**
  * Extensions: every installed payment gateway, server module, registrar and add-on in one place,
@@ -61,7 +63,8 @@ class ExtensionController extends Controller
                 'on' => $all->where('state', ExtensionOverview::STATE_ON)->count(),
                 'needs' => $all->where('state', ExtensionOverview::STATE_NEEDS_SETTINGS)->count(),
                 'updates' => $all->whereNotNull('update')->count(),
-                'marketplace' => $all->where('marketplace', true)->count(),
+                'marketplace' => $all->where('origin', ExtensionOverview::ORIGIN_MARKETPLACE)->count(),
+                'manual' => $all->where('origin', ExtensionOverview::ORIGIN_MANUAL)->count(),
             ],
             'may' => collect(self::PERMISSIONS)->map(fn (string $permission): bool => $admin->hasPermission($permission))->all(),
         ]);
@@ -88,6 +91,33 @@ class ExtensionController extends Controller
         Activity::log('extension.updated', "Extension {$manifest->name} ".($enable ? 'switched on' : 'switched off'));
 
         return back()->with('status', $enable ? __(':name is switched on.', ['name' => $manifest->name]) : __(':name is switched off.', ['name' => $manifest->name]));
+    }
+
+    /**
+     * Move an extension added by hand to quarantine, when nothing uses it any more. Extensions from the
+     * marketplace are removed there; the ones that come with Nuvabill stay.
+     */
+    public function destroy(Request $request, string $slug, ExtensionManager $extensions, ExtensionOverview $overview): RedirectResponse
+    {
+        $manifest = $extensions->find($slug);
+
+        abort_if($manifest === null, 404);
+        abort_unless($this->admin($request)->hasPermission(self::PERMISSIONS[$manifest->type]), 403);
+
+        if (! $overview->isRemovable($manifest)) {
+            return back()->with('error', __(':name is still in use or cannot be removed here. Switch it off first, and move servers, products and domain prices away from it.', ['name' => $manifest->name]));
+        }
+
+        try {
+            $where = Quarantine::move($manifest->path, 'extensions/'.$manifest->type.'s/'.$manifest->slug);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        $extensions->refresh();
+        Activity::log('extension.removed', "Extension {$manifest->name} ({$manifest->slug}) moved to quarantine: {$where}");
+
+        return back()->with('status', __(':name was moved to :folder. Move the folder back to use it again.', ['name' => $manifest->name, 'folder' => $where]));
     }
 
     /**

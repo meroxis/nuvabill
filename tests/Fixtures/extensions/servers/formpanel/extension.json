@@ -1,0 +1,9 @@
+{
+    "slug": "formpanel",
+    "type": "server",
+    "name": "Form panel",
+    "version": "1.0.0",
+    "namespace": "Tests\\Fixtures\\Servers\\",
+    "class": "Tests\\Fixtures\\Servers\\FormPanelModule",
+    "description": "A server module that only exists in the test suite and signs clients in with a form."
+}
