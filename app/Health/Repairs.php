@@ -5,6 +5,7 @@ namespace App\Health;
 use App\Models\Admin;
 use App\Models\ApiToken;
 use App\Models\MarketplaceInstall;
+use App\Seo\Sitemap;
 use App\Support\Activity;
 use App\Support\EnvFile;
 use App\Support\Quarantine;
@@ -58,12 +59,43 @@ class Repairs
             'db.cleanup' => trans_choice(':count old record was removed.|:count old records were removed.', $count = array_sum($this->database->cleanUp()), ['count' => $count]),
             'db.optimize' => $this->optimize(),
             'themes.quarantine' => $this->quarantineThemes(array_values(array_filter((array) ($params['slugs'] ?? []), 'is_string'))),
+            'seo.turn_on' => $this->turnOnSearchSetting((string) ($params['key'] ?? '')),
+            'seo.robots_file' => $this->quarantineRobotsFile(),
             default => throw new RuntimeException(__('This problem cannot be fixed automatically.')),
         };
 
         Activity::log('health.fixed', 'Site health fix "'.($fix['action'] ?? '').'": '.$message, actor: $admin);
 
         return $message;
+    }
+
+    /**
+     * Switch on one of the search engine settings a check found off. Only these four.
+     */
+    private function turnOnSearchSetting(string $key): string
+    {
+        if (! in_array($key, ['visible', 'sitemap', 'structured_data', 'language_links'], true)) {
+            throw new RuntimeException(__('This problem cannot be fixed automatically.'));
+        }
+
+        $this->settings->set('seo.'.$key, true);
+        Sitemap::forget();
+
+        return __('Turned on. Change it any time in Settings → Search engines.');
+    }
+
+    /**
+     * A robots.txt in the public folder hides the one Nuvabill makes. It goes to quarantine, never deleted.
+     */
+    private function quarantineRobotsFile(): string
+    {
+        if (! is_file(public_path('robots.txt'))) {
+            return __('There is no robots.txt file in the public folder any more.');
+        }
+
+        $folder = Quarantine::move(public_path('robots.txt'), 'public/robots.txt');
+
+        return __('Moved to :folder. Search engines now get the robots.txt Nuvabill makes.', ['folder' => $folder]);
     }
 
     /**

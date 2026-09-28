@@ -89,6 +89,12 @@
             </div>
         </section>
 
+        <section class="card" style="display:grid;gap:1.1rem">
+            <div class="card-header" style="margin:0"><h2>{{ __('Search appearance') }}</h2></div>
+            <x-search-appearance :title="$product->seo_title" :description="$product->seo_description" :default-title="$seo['title']" :default-description="$seo['description']"
+                :suggest-title="$seo['suggestTitle']" :suggest-description="$seo['suggestDescription']" :url="$seo['url']" :hidden="(bool) $product->seo_hidden" />
+        </section>
+
         <div class="form-actions">
             <button class="btn btn-primary" type="submit">{{ $editing ? __('Save product') : __('Create product') }}</button>
             <a class="btn" href="{{ route('admin.products.index') }}">{{ __('Cancel') }}</a>

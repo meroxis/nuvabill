@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.4.11](https://github.com/meroxis/nuvabill/releases/tag/v0.4.11) | 28 Sep 2026 | Search engine tools: sitemap, titles and descriptions, prices on Google, link previews |
 | [0.4.10](https://github.com/meroxis/nuvabill/releases/tag/v0.4.10) | 28 Sep 2026 | Free CyberPanel, HestiaCP, VirtFusion and SolusVM modules; remove extensions and themes added by hand |
 | [0.4.9](https://github.com/meroxis/nuvabill/releases/tag/v0.4.9) | 28 Sep 2026 | Import from Blesta, FOSSBilling and Paymenter; a dry run before every import; all extensions on one page |
 | [0.4.8](https://github.com/meroxis/nuvabill/releases/tag/v0.4.8) | 28 Sep 2026 | Site health (security and database checks); billing jobs never bill twice |
@@ -31,6 +32,21 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.4.11
+
+- **Search engines, built in.** Nuvabill now tells Google, Bing and the apps that show link previews what is on your store, with every theme and nothing to set up:
+  - Every store page gets a **title and description** for search results. Products use their features and lowest price, for example "Starter: 1 website, 10 GB NVMe storage, Free SSL. From $3.99/mo."
+  - **sitemap.xml** lists your store pages and updates by itself, and **robots.txt** keeps search engines out of the client area, cart and checkout. Your admin address is never listed.
+  - **Prices on Google**: product pages carry product, price, stock and breadcrumb details, and the home page your company details.
+  - **Language versions** link to each other (`?lang=de`), so search engines show people the page in their own language.
+  - **Link previews** on WhatsApp, Facebook, X and LinkedIn show the page title, description and your share image.
+  - Each page names **one address** from `APP_URL`, and the client area, cart, checkout, sign-in pages and the admin area are hidden from search engines.
+- **Settings → Search engines**: your home page on Google with a live preview, the share image, Google Search Console and Bing codes, the title pattern, your own robots.txt lines, and a switch to hide a test site from search engines.
+- **Search appearance** on every product and product group: its own title and description, a Google preview, **Suggest from the details**, and **Hide this page from search engines**.
+- **A new web address forwards.** When you change the address of a product or group, the old one sends visitors and search engines to the new one, so links and search results keep working.
+- **Site health → Search engines**, the third tab: a score and checks for the sitemap, robots.txt, the site address and HTTPS, products without a description, pages with the same title, titles and descriptions that are too long, the share image, prices on Google and language links, many with a **Fix it** button.
+- The old `public/robots.txt` that allowed everything is removed on update when you never changed it. If you did, Site health can move it to quarantine.
 
 ## 0.4.10
 

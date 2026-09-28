@@ -93,8 +93,10 @@ class DemoModeTest extends TestCase
     {
         $this->get(route('admin.login'))
             ->assertOk()
-            ->assertDontSee(Demo::ADMIN_EMAIL)
-            ->assertHeaderMissing('X-Robots-Tag');
+            ->assertDontSee(Demo::ADMIN_EMAIL);
+
+        // Search engines may show a normal store; only the admin area asks them not to.
+        $this->get(route('store.index'))->assertOk()->assertHeaderMissing('X-Robots-Tag');
     }
 
     public function test_the_demo_sends_no_email_and_calls_no_outside_services(): void

@@ -58,7 +58,13 @@ Staff and clients can use two-factor sign-in and passkeys, forms can have a CAPT
 payment notices are checked before they are trusted, and marketplace packages are reviewed and signed. **Setup → Site
 health** checks the site every night (staff access, file permissions, what strangers can open, settings, Nuvabill's own
 files, backups and the database) and emails staff about new urgent issues. Found a security problem? Please email
-support@nuvabill.com instead of opening a public issue.
+security@nuvabill.com instead of opening a public issue (see [SECURITY.md](../SECURITY.md)).
+
+## Will Google find my store?
+
+Yes. Nuvabill makes a sitemap and robots.txt, gives every store page a title and description, shows prices on Google
+and links your language versions, with every theme. Add your site to Google Search Console and send it your
+sitemap. See the [search engines guide](search-engines.md).
 
 ## Can the nightly job bill a client twice?
 

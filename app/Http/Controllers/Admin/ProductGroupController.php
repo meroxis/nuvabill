@@ -60,6 +60,9 @@ class ProductGroupController extends Controller
             'description' => ['nullable', 'string', 'max:2000'],
             'sort_order' => ['nullable', 'integer', 'min:0', 'max:10000'],
             'is_visible' => ['boolean'],
+            'seo_title' => ['nullable', 'string', 'max:120'],
+            'seo_description' => ['nullable', 'string', 'max:320'],
+            'seo_hidden' => ['boolean'],
         ]) + ['sort_order' => 0];
     }
 }

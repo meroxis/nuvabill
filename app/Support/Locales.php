@@ -143,6 +143,18 @@ class Locales
     public static function forRequest(Request $request, bool $adminArea): string
     {
         $enabled = self::enabled();
+
+        // A link to a language version (?lang=de, as search engines are given) wins and is remembered.
+        $linked = $adminArea ? null : $request->query('lang');
+
+        if (is_string($linked) && isset($enabled[$linked])) {
+            if ($request->hasSession()) {
+                $request->session()->put(self::SESSION_CLIENT, $linked);
+            }
+
+            return $linked;
+        }
+
         $person = $adminArea ? $request->user('admin') : $request->user('web');
         $choices = [
             $request->hasSession() ? $request->session()->get($adminArea ? self::SESSION_ADMIN : self::SESSION_CLIENT) : null,

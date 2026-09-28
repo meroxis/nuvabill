@@ -2,8 +2,8 @@
     <div class="page-head">
         <div>
             <p style="margin:0 0 .2rem;font-size:.85rem">
-                <a class="row-link" href="{{ route($section === 'database' ? 'admin.health.database' : 'admin.health.index') }}">{{ __('Site health') }}</a>
-                <span class="muted"> / {{ $section === 'database' ? __('Database') : __('Security') }}</span>
+                <a class="row-link" href="{{ route(match ($section) { 'database' => 'admin.health.database', 'seo' => 'admin.health.seo', default => 'admin.health.index' }) }}">{{ __('Site health') }}</a>
+                <span class="muted"> / {{ match ($section) { 'database' => __('Database'), 'seo' => __('Search engines'), default => __('Security') } }}</span>
             </p>
             <h1>{{ __($group->title()) }}</h1>
             <p>{{ __($group->description()) }}</p>

@@ -45,7 +45,11 @@
                 @foreach ($check->items as $index => $item)
                     <div>
                         @if (! empty($item['status']))<span class="health-dot" data-tone="{{ $itemTone($item['status']) }}" aria-hidden="true" style="width:16px;height:16px;font-size:.6rem">!</span>@endif
-                        <span @class(['mono' => ! empty($item['mono'])]) style="overflow-wrap:anywhere">{{ $item['label'] ?? '' }}</span>
+                        @if (! empty($item['route']) && \Illuminate\Support\Facades\Route::has($item['route']))
+                            <a @class(['mono' => ! empty($item['mono'])]) style="overflow-wrap:anywhere" href="{{ route($item['route'], $item['parameters'] ?? []) }}">{{ $item['label'] ?? '' }}</a>
+                        @else
+                            <span @class(['mono' => ! empty($item['mono'])]) style="overflow-wrap:anywhere">{{ $item['label'] ?? '' }}</span>
+                        @endif
                         @if (! empty($item['value']))<span class="value">{{ $item['value'] }}</span>@endif
                         @if (! empty($item['fix']) && is_array($item['fix']))
                             <form method="POST" action="{{ route('admin.health.fix') }}" @if (! empty($item['fix']['confirm'])) data-confirm="{{ __($item['fix']['confirm']) }}" @endif>

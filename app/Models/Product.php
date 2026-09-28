@@ -6,6 +6,7 @@ use App\Enums\AutoSetup;
 use App\Enums\BillingCycle;
 use App\Enums\ProductType;
 use App\Enums\ServiceStatus;
+use App\Seo\Sitemap;
 use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -34,6 +35,9 @@ class Product extends Model
         'auto_setup',
         'stock',
         'sort_order',
+        'seo_title',
+        'seo_description',
+        'seo_hidden',
     ];
 
     /**
@@ -54,7 +58,26 @@ class Product extends Model
             'module_config' => 'array',
             'stock' => 'integer',
             'sort_order' => 'integer',
+            'seo_hidden' => 'boolean',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saved(fn () => Sitemap::forget());
+        static::deleted(fn () => Sitemap::forget());
+
+        // A new web address or group: the old store address forwards to the new one.
+        static::updated(function (Product $product): void {
+            if ($product->wasChanged(['slug', 'product_group_id'])) {
+                $oldGroup = ProductGroup::query()->find($product->getOriginal('product_group_id'));
+                $product->unsetRelation('group');
+
+                if ($oldGroup !== null && $product->group !== null) {
+                    SeoRedirect::remember('store/'.$oldGroup->slug.'/'.$product->getOriginal('slug'), $product->storePath());
+                }
+            }
+        });
     }
 
     /**
@@ -133,6 +156,14 @@ class Product extends Model
         $used = $this->services()->whereNotIn('status', [ServiceStatus::Terminated, ServiceStatus::Cancelled])->count();
 
         return $used < $this->stock;
+    }
+
+    /**
+     * The product's store address without the domain, for example store/web-hosting/starter.
+     */
+    public function storePath(): string
+    {
+        return 'store/'.$this->group?->slug.'/'.$this->slug;
     }
 
     public function getRouteKeyName(): string

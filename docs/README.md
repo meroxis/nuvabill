@@ -8,11 +8,12 @@ These pages cover running your own copy. The same guides, and the developer and 
 |---|---|
 | [Installation](installation.md) | Server requirements, the one-line installer, installing on shared hosting, the cron job |
 | [Configuration](configuration.md) | Company details, currencies, taxes, email, automation, security, languages, look and feel |
-| [Control panels and VPS](integrations/servers.md) | cPanel & WHM, DirectAdmin, Plesk, Proxmox VE, Virtualizor |
+| [Control panels and VPS](integrations/servers.md) | cPanel & WHM, DirectAdmin, Plesk, Proxmox VE, Virtualizor, and CyberPanel, HestiaCP, VirtFusion and SolusVM from the Marketplace |
 | [Payment gateways](integrations/payment-gateways.md) | Stripe, PayPal, FIB, FastPay, Wayl, bank transfer |
 | [Domain registrars](integrations/domain-registrars.md) | ResellerClub, Namecheap, Enom, OpenSRS |
 | [Migrating from WHMCS](whmcs-migration.md) | What the importer copies, what it leaves out, and a safe switch-over plan |
 | [Moving from Blesta, FOSSBilling or Paymenter](importing.md) | The dry run, what each importer copies, and what to do after the import |
+| [Search engines](search-engines.md) | Titles and descriptions, sitemap, robots.txt, prices on Google, language links and link previews |
 | [FAQ](faq.md) | License, White-label License, updates, backups, security and more |
 
 More:

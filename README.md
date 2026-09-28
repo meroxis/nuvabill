@@ -38,6 +38,7 @@ takes one import.
 - **Support**: tickets with departments, priorities and email notifications
 - **Security**: two-factor sign-in, passkeys, CAPTCHA, fraud checks, staff roles, security headers
 - **26 languages**, with right-to-left Arabic, Hebrew and Kurdish (Sorani)
+- **Search engines**: sitemap, titles and descriptions, prices on Google, language links and link previews, with every theme
 - **REST API**, a **marketplace** of signed themes and extensions, and **signed one-click updates** with rollback
 - **Importers for WHMCS, Blesta, FOSSBilling and Paymenter**: clients (with their passwords), products, services, domains, invoices, payments and tickets, with a dry run first
 
@@ -271,7 +272,7 @@ failed setups, pending orders, overdue invoices, and a warning if the cron job s
 
 ![Clients](.github/screenshots/clients.png)
 
-### Site health: security and database checks
+### Site health: security, database and search engine checks
 
 Every night, and after every update, Nuvabill checks itself and gives the site a score: staff without two-factor
 sign-in, a `.env` file other accounts can read, folders anyone can change, backups left in the public folder,
@@ -284,6 +285,14 @@ healthy, and optimizes tables and cleans up old logs with one click (after a bac
 `php artisan nuvabill:security-check` exits with code 1 while an urgent issue is open.
 
 Renewals are safe to run twice: each billing period can only be invoiced once, enforced by the database.
+
+### Found on Google
+
+Every store page gets a title and description for search results, one address, and links to its other language
+versions. **sitemap.xml** and **robots.txt** are made for you, product pages show their price and stock on Google,
+and links shared on WhatsApp, Facebook and X show a preview with your share image. Products and groups have a
+**Search appearance** box with a Google preview; changing a web address forwards the old one. The **Search engines**
+tab in Site health checks it all every night. See the [search engines guide](docs/search-engines.md).
 
 ### 26 languages
 
@@ -355,8 +364,8 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 
 | Version | Focus |
 |---|---|
-| v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor (plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules), domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, Site health ([changelog](CHANGELOG.md)) |
-| **next** | **Search engine tools; a ClientExec importer** |
+| v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor (plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules), domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, search engine tools, Site health ([changelog](CHANGELOG.md)) |
+| **next** | **A ClientExec importer** |
 | v0.5 | Automation builder, AI ticket replies, WhatsApp and Telegram bot, admin phone app |
 | v1.0 | Automatic card payments, client upgrades, knowledge base and status page, security audit, and more |
 

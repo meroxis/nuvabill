@@ -11,6 +11,8 @@ use App\Http\Requests\Admin\ProductRequest;
 use App\Models\Product;
 use App\Models\ProductGroup;
 use App\Models\Server;
+use App\Seo\SeoText;
+use App\Seo\SiteAddress;
 use App\Support\Activity;
 use App\Support\Money;
 use Illuminate\Http\RedirectResponse;
@@ -93,6 +95,13 @@ class ProductController extends Controller
             'moduleFields' => $modules->keys()->mapWithKeys(fn (string $slug): array => [$slug => $extensions->serverModule($slug)->productFields()])->all(),
             'servers' => Server::query()->orderBy('name')->get(['id', 'name', 'module']),
             'currency' => setting('billing.currency'),
+            'seo' => [
+                'title' => $product->exists ? SeoText::withPattern($product->name) : '',
+                'description' => $product->exists ? SeoText::suggestProductDescription($product) : '',
+                'suggestTitle' => $product->exists ? SeoText::suggestProductTitle($product) : null,
+                'suggestDescription' => $product->exists ? SeoText::suggestProductDescription($product) : null,
+                'url' => SiteAddress::url($product->exists ? $product->storePath() : 'store'),
+            ],
         ]);
     }
 

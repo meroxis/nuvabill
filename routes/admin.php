@@ -31,6 +31,7 @@ use App\Http\Controllers\Admin\QuoteController;
 use App\Http\Controllers\Admin\RegistrarController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SecurityController;
+use App\Http\Controllers\Admin\SeoSettingsController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServiceController;
 use App\Http\Controllers\Admin\SettingsController;
@@ -187,6 +188,11 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::put('license', [WhiteLabelController::class, 'update'])->middleware('throttle:10,1')->name('license.update');
         Route::post('license/check', [WhiteLabelController::class, 'check'])->middleware('throttle:10,1')->name('license.check');
 
+        Route::get('search-engines', [SeoSettingsController::class, 'edit'])->name('seo.edit');
+        Route::put('search-engines', [SeoSettingsController::class, 'update'])->name('seo.update');
+        Route::delete('search-engines/share-image', [SeoSettingsController::class, 'removeImage'])->name('seo.image.destroy');
+        Route::delete('search-engines/redirects/{redirect}', [SeoSettingsController::class, 'removeRedirect'])->name('seo.redirects.destroy');
+
         Route::get('taxes', [TaxController::class, 'index'])->name('taxes.index');
         Route::put('taxes', [TaxController::class, 'settings'])->name('taxes.settings');
         Route::post('taxes/rules', [TaxController::class, 'store'])->name('taxes.store');
@@ -272,8 +278,9 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
     Route::middleware('admin.can:security.manage')->prefix('health')->name('health.')->group(function (): void {
         Route::get('/', [HealthController::class, 'index'])->name('index');
         Route::get('database', [HealthController::class, 'database'])->name('database');
-        Route::get('{section}/checks', [HealthController::class, 'checks'])->whereIn('section', ['security', 'database'])->name('checks');
-        Route::get('{section}/{group}', [HealthController::class, 'group'])->whereIn('section', ['security', 'database'])->name('group');
+        Route::get('search-engines', [HealthController::class, 'seo'])->name('seo');
+        Route::get('{section}/checks', [HealthController::class, 'checks'])->whereIn('section', ['security', 'database', 'seo'])->name('checks');
+        Route::get('{section}/{group}', [HealthController::class, 'group'])->whereIn('section', ['security', 'database', 'seo'])->name('group');
         Route::post('run', [HealthController::class, 'run'])->middleware('throttle:6,1')->name('run');
         Route::post('fix', [HealthController::class, 'fix'])->middleware('throttle:20,1')->name('fix');
         Route::post('ignore', [HealthController::class, 'ignore'])->name('ignore');

@@ -849,6 +849,84 @@
         }
     }
 
+    /* Search engines: how a page looks on Google, and the length of titles and descriptions */
+    .serp {
+        display: grid;
+        gap: 3px;
+        padding: 12px 14px;
+        border: 1px solid var(--nb-line);
+        border-radius: 6px;
+        background: var(--nb-surface);
+        font-family: Arial, sans-serif;
+        overflow-wrap: anywhere;
+    }
+
+    .serp-url {
+        font-size: 0.78rem;
+        color: var(--nb-muted);
+    }
+
+    .serp-title {
+        font-size: 1.1rem;
+        line-height: 1.3;
+        color: #1a0dab;
+    }
+
+    .serp-text {
+        font-size: 0.84rem;
+        line-height: 1.5;
+        color: var(--nb-muted);
+    }
+
+    :root[data-theme='dark'] .serp-title {
+        color: #8ab4f8;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme='light']) .serp-title {
+            color: #8ab4f8;
+        }
+    }
+
+    .length-meter {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.78rem;
+        color: var(--nb-muted);
+    }
+
+    .length-meter > span:first-child {
+        flex: 1;
+        height: 5px;
+        border-radius: 999px;
+        background: var(--nb-surface-2);
+        overflow: hidden;
+    }
+
+    .length-meter i {
+        display: block;
+        height: 100%;
+        border-radius: 999px;
+        background: var(--nb-good);
+    }
+
+    .length-meter[data-state='long'] i {
+        background: var(--nb-warn);
+    }
+
+    .share-preview {
+        width: 180px;
+        aspect-ratio: 1200 / 630;
+        border: 1px dashed var(--nb-line-2);
+        border-radius: 6px;
+        background: var(--nb-surface-2) center / cover no-repeat;
+        display: grid;
+        place-items: center;
+        font-size: 0.75rem;
+        color: var(--nb-muted);
+    }
+
     /* Site health */
     .health-tabs a .score {
         font-weight: 800;

@@ -18,6 +18,7 @@ use App\Models\Server;
 use App\Models\Service;
 use App\Models\Ticket;
 use App\Models\Transaction;
+use App\Seo\Seo;
 use App\Support\Demo;
 use App\Support\Installation;
 use App\Support\ServicePanels;
@@ -47,6 +48,7 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(Settings::class);
         $this->app->singleton(ServicePanels::class);
+        $this->app->scoped(Seo::class);
         $this->app->singleton(Themes::class, fn (): Themes => new Themes(config('nuvabill.themes_path'), config('nuvabill.orderforms_path')));
         $this->app->singleton(ExtensionManager::class, fn (): ExtensionManager => new ExtensionManager(config('nuvabill.extensions_path')));
     }
@@ -78,6 +80,8 @@ class AppServiceProvider extends ServiceProvider
 
         Paginator::defaultView('components.pagination');
         View::composer('components.layouts.admin', AdminLayoutComposer::class);
+        // The client area page title as the theme shows it, for the search engine title pattern.
+        View::composer('theme::layouts.*', fn (\Illuminate\View\View $view) => $this->app->make(Seo::class)->capturePageTitle($view->getFactory()->yieldContent('title')));
 
         ResetPassword::createUrlUsing(fn (Admin|Client $user, string $token): string => $user instanceof Admin
             ? route('admin.password.reset', ['token' => $token, 'email' => $user->email])

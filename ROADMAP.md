@@ -10,13 +10,12 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.1 | Store and checkout, invoices with PDFs, renewals, reminders and suspensions, Stripe, PayPal and bank transfer, cPanel automation, support tickets, staff roles, two-factor sign-in, signed one-click updates |
 | 0.2 | Domains with ResellerClub, Namecheap, Enom and OpenSRS; DirectAdmin, Plesk, Proxmox VE and Virtualizor; FIB, FastPay and Wayl; refunds; the WHMCS importer; fraud checks; social sign-in; CAPTCHA; client two-factor sign-in |
 | 0.3 | Marketplace with signed one-click installs and a developer program, add-on extensions, coupons, product add-ons, exchange rates, one-page ordering |
-| 0.4 | Taxes, quotes, client wallet, affiliates, REST API, White-label License, passkeys, 26 languages with right-to-left pages, one-command install, backups, faster store pages, Site health (security and database checks), billing jobs that never bill twice, importers for Blesta, FOSSBilling and Paymenter with a dry run, all extensions on one page, free CyberPanel, HestiaCP, VirtFusion and SolusVM modules |
+| 0.4 | Taxes, quotes, client wallet, affiliates, REST API, White-label License, passkeys, 26 languages with right-to-left pages, one-command install, backups, faster store pages, Site health (security and database checks), billing jobs that never bill twice, importers for Blesta, FOSSBilling and Paymenter with a dry run, all extensions on one page, free CyberPanel, HestiaCP, VirtFusion and SolusVM modules, search engine tools (sitemap, titles and descriptions, prices on Google, language links) |
 
 ## Next
 
 | Version | Focus |
 |---|---|
-| 0.4.11 | **Search engines**: sitemap, robots.txt, search titles and descriptions per page, share images, prices on Google, links between language versions, and a search engine check |
 | Later in 0.4 | **ClientExec importer**, once we have tested it against a real ClientExec database |
 | 0.5 | Automation builder, AI help for ticket replies, WhatsApp and Telegram bot, admin phone app |
 

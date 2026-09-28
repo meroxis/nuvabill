@@ -10,6 +10,11 @@ use App\Health\SiteHealth;
 use App\Health\Status;
 use App\Http\Controllers\Controller;
 use App\Models\HealthRun;
+use App\Models\Product;
+use App\Models\ProductGroup;
+use App\Seo\SeoText;
+use App\Seo\SiteAddress;
+use App\Seo\Sitemap;
 use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,7 +24,7 @@ use Illuminate\View\View;
 use Throwable;
 
 /**
- * Site health: the security and database tabs, a page per group of checks, the list of every
+ * Site health: the security, database and search engine tabs, a page per group of checks, the list of every
  * check, and the buttons that check again, fix, ignore, optimize and clean up.
  */
 class HealthController extends Controller
@@ -58,6 +63,23 @@ class HealthController extends Controller
             'oldRecords' => $database->oldRecords(),
             'isSqlite' => $database->isSqlite(),
             'settings' => $settings->all(),
+        ]);
+    }
+
+    public function seo(Sitemap $sitemap): View
+    {
+        $run = HealthRun::latestRun();
+        $checks = $run?->checks(CheckGroup::SEO) ?? collect();
+
+        return view('admin.health.seo', [
+            'run' => $run,
+            'tabs' => $this->tabs($run),
+            'groups' => $this->groupCards(CheckGroup::SEO, $checks),
+            'problems' => $this->problems($checks),
+            'checked' => $checks->isNotEmpty(),
+            'shown' => setting('seo.visible') ? count($sitemap->pages()) : 0,
+            'hidden' => Product::query()->visible()->where('seo_hidden', true)->count() + ProductGroup::query()->visible()->where('seo_hidden', true)->count(),
+            'home' => ['title' => SeoText::homeTitle(), 'description' => SeoText::homeDescription(), 'url' => SiteAddress::url('')],
         ]);
     }
 
@@ -235,7 +257,7 @@ class HealthController extends Controller
     }
 
     /**
-     * The tabs with their score and open problems. Search engines join them in a later version.
+     * The tabs with their score and open problems.
      *
      * @return list<array{section: string, label: string, route: string, score: int|null, urgent: int, warning: int}>
      */
@@ -248,6 +270,7 @@ class HealthController extends Controller
         ], [
             ['section' => CheckGroup::SECURITY, 'label' => __('Security'), 'route' => 'admin.health.index'],
             ['section' => CheckGroup::DATABASE, 'label' => __('Database'), 'route' => 'admin.health.database'],
+            ['section' => CheckGroup::SEO, 'label' => __('Search engines'), 'route' => 'admin.health.seo'],
         ]);
     }
 

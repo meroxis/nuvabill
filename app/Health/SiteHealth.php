@@ -9,6 +9,9 @@ use App\Health\Checks\ExtensionChecks;
 use App\Health\Checks\FileChecks;
 use App\Health\Checks\OutsideChecks;
 use App\Health\Checks\PaymentChecks;
+use App\Health\Checks\SearchPageChecks;
+use App\Health\Checks\SearchSetupChecks;
+use App\Health\Checks\SearchSharingChecks;
 use App\Health\Checks\SettingsChecks;
 use App\Health\Checks\StaffChecks;
 use App\Health\Checks\UpkeepChecks;
@@ -44,6 +47,9 @@ class SiteHealth
         UpkeepChecks::class,
         DatabaseSafetyChecks::class,
         DatabaseHealthChecks::class,
+        SearchSetupChecks::class,
+        SearchPageChecks::class,
+        SearchSharingChecks::class,
     ];
 
     /**

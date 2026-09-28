@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\PackageAssetController;
+use App\Http\Controllers\SeoController;
 use App\Http\Controllers\WebhookController;
+use App\Http\Middleware\AddSearchEngineTags;
 use App\Http\Middleware\ApplyCouponFromLink;
 use App\Http\Middleware\ApplyThemePreview;
 use App\Http\Middleware\AuthenticateApiToken;
@@ -16,12 +18,14 @@ use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\TrackAffiliateLink;
 use App\Http\Middleware\VerifyCaptcha;
+use App\Models\SeoRedirect;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\Route;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -55,12 +59,19 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->where('slug', '[a-z0-9][a-z0-9_-]*')
                 ->where('path', '[A-Za-z0-9_./-]+')
                 ->name('package.asset');
+
+            // For search engines and link previews. No session or cookies.
+            Route::get('robots.txt', [SeoController::class, 'robots'])->name('seo.robots');
+            Route::get('sitemap.xml', [SeoController::class, 'sitemap'])->name('seo.sitemap');
+            Route::get('share-image/{name}', [SeoController::class, 'shareImage'])
+                ->where('name', 'share-[a-z0-9]{10}\.(jpg|png|webp)')
+                ->name('seo.share-image');
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(SecurityHeaders::class);
 
-        $middleware->web(append: [RedirectToInstaller::class, SetLocale::class, ProtectDemo::class, ApplyThemePreview::class, ApplyCouponFromLink::class, TrackAffiliateLink::class]);
+        $middleware->web(append: [AddSearchEngineTags::class, RedirectToInstaller::class, SetLocale::class, ProtectDemo::class, ApplyThemePreview::class, ApplyCouponFromLink::class, TrackAffiliateLink::class]);
 
         // The proxy list comes from config/trustedproxy.php. Only the visitor IP and HTTPS
         // headers are read, so a visitor cannot fake the host name in links and emails.
@@ -91,4 +102,22 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        // A store page that got a new web address: send visitors and search engines to it.
+        $exceptions->render(function (NotFoundHttpException $exception, Request $request) {
+            if (! $request->isMethod('GET') || $request->is('api/*')) {
+                return null;
+            }
+
+            $redirect = rescue(fn () => SeoRedirect::target($request->path()), report: false);
+
+            if ($redirect === null) {
+                return null;
+            }
+
+            $redirect->increment('hits');
+            $query = $request->getQueryString();
+
+            return redirect(url($redirect->to_path).($query ? '?'.$query : ''), 301);
+        });
     })->create();
