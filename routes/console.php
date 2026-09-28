@@ -16,7 +16,9 @@ use Illuminate\Support\Facades\Schedule;
 */
 
 if (Installation::isInstalled()) {
-    Schedule::command('nuvabill:cron')->dailyAt('00:15')->withoutOverlapping();
+    // The run takes its own lock too; the scheduler's lock expires after two hours so a run that
+    // crashed never holds up the next night.
+    Schedule::command('nuvabill:cron')->dailyAt('00:15')->withoutOverlapping(120);
 
     Schedule::command('queue:work --stop-when-empty --max-time=50 --tries=1')->everyMinute()->withoutOverlapping();
 
@@ -30,6 +32,14 @@ if (Installation::isInstalled()) {
         Schedule::command('nuvabill:update --auto')->dailyAt('03:00')->withoutOverlapping();
 
         Schedule::command('nuvabill:marketplace-licenses')->dailyAt('04:20')->withoutOverlapping();
+
+        // Site health: the nightly check, then database clean-up and the weekly optimize when switched on.
+        Schedule::command('nuvabill:security-check --quiet-if-healthy')->dailyAt('04:30')->withoutOverlapping(60)
+            ->when(fn (): bool => (bool) setting('health.nightly'));
+        Schedule::command('nuvabill:security-check --quiet-if-healthy')->everyMinute()->withoutOverlapping(30)
+            ->when(fn (): bool => setting('health.nightly') && setting('health.check_requested'));
+        Schedule::command('nuvabill:database --clean --scheduled')->dailyAt('04:40')->withoutOverlapping(60);
+        Schedule::command('nuvabill:database --optimize --scheduled')->weeklyOn(0, '04:50')->withoutOverlapping(60);
 
         // Scheduled work of switched-on add-ons, for example off-site backups.
         app(ExtensionManager::class)->scheduleAddons(Schedule::getFacadeRoot());

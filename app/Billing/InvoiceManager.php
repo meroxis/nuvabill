@@ -7,6 +7,7 @@ use App\Models\Client;
 use App\Models\Invoice;
 use App\Support\Activity;
 use Carbon\CarbonInterface;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -19,7 +20,9 @@ class InvoiceManager
     /**
      * Tax follows the client's tax rule at the time of the invoice; each line can set "taxed" itself.
      *
-     * @param  list<array{type?: string, description: string, amount: int, taxed?: bool, service_id?: int|null, domain_id?: int|null, period_start?: CarbonInterface|string|null, period_end?: CarbonInterface|string|null}>  $items
+     * @param  list<array{type?: string, description: string, amount: int, taxed?: bool, service_id?: int|null, domain_id?: int|null, period_start?: CarbonInterface|string|null, period_end?: CarbonInterface|string|null, billing_key?: string|null}>  $items
+     *
+     * @throws UniqueConstraintViolationException When a line's billing period is already invoiced.
      */
     public function create(
         Client $client,
@@ -54,6 +57,8 @@ class InvoiceManager
                     'domain_id' => $item['domain_id'] ?? null,
                     'period_start' => $item['period_start'] ?? null,
                     'period_end' => $item['period_end'] ?? null,
+                    // Unique in the database: a second invoice for the same period fails and is rolled back.
+                    'billing_key' => $item['billing_key'] ?? null,
                 ]);
             }
 
@@ -92,7 +97,11 @@ class InvoiceManager
     public function cancel(Invoice $invoice): Invoice
     {
         if (in_array($invoice->status, [InvoiceStatus::Unpaid, InvoiceStatus::Draft], true)) {
-            $invoice->update(['status' => InvoiceStatus::Cancelled]);
+            DB::transaction(function () use ($invoice): void {
+                $invoice->update(['status' => InvoiceStatus::Cancelled]);
+                // The periods on it may be invoiced again.
+                $invoice->items()->whereNotNull('billing_key')->update(['billing_key' => null]);
+            });
             Activity::log('invoice.cancelled', "Cancelled invoice {$invoice->displayNumber()}", $invoice);
         }
 

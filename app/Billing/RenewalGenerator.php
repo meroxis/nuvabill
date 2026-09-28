@@ -16,10 +16,13 @@ use App\Models\TldPrice;
 use App\Support\Activity;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Facades\Log;
 
 /**
- * Creates renewal invoices for services and domains that are due soon. Safe to run many times a day:
- * a period that already has an invoice is never invoiced again.
+ * Creates renewal invoices for services and domains that are due soon. Safe to run many times a day,
+ * even two runs at once: every renewal line carries a billing key that is unique in the database,
+ * so a period that already has an invoice is never invoiced again.
  */
 class RenewalGenerator
 {
@@ -59,11 +62,22 @@ class RenewalGenerator
                 max(1, $domain->years),
                 $domain->recurring_amount,
                 $domain->next_due_date,
-            ));
+            ) + ['billing_key' => self::billingKey('domain', $domain->id, $domain->next_due_date)]);
         }
 
+        $created = 0;
+
         foreach ($groups as $group) {
-            $invoice = $this->invoices->create($group['client'], $group['items'], dueAt: $group['due'], currency: $group['currency']);
+            try {
+                $invoice = $this->invoices->create($group['client'], $group['items'], dueAt: $group['due'], currency: $group['currency']);
+            } catch (UniqueConstraintViolationException) {
+                // Another run invoiced one of these periods a moment ago; its invoice stands.
+                Log::info("Renewal invoice for client {$group['client']->id} skipped: a period on it is already invoiced.");
+
+                continue;
+            }
+
+            $created++;
 
             foreach ($group['items'] as $item) {
                 if ($item['type'] === InvoiceItem::TYPE_DISCOUNT && isset($discounted[$item['service_id']])) {
@@ -76,7 +90,15 @@ class RenewalGenerator
             $this->wallet->applyAutomatically($invoice);
         }
 
-        return count($groups);
+        return $created;
+    }
+
+    /**
+     * The key that makes a billing period unique, for example "service:12:2026-10-01".
+     */
+    public static function billingKey(string $kind, int $id, CarbonInterface $periodStart): string
+    {
+        return $kind.':'.$id.':'.$periodStart->format('Y-m-d');
     }
 
     /**
@@ -87,7 +109,7 @@ class RenewalGenerator
     private function serviceItems(Service $service): array
     {
         $start = $service->next_due_date;
-        $items = [LineItems::servicePeriod($service, $start, $service->recurring_amount)];
+        $items = [LineItems::servicePeriod($service, $start, $service->recurring_amount) + ['billing_key' => self::billingKey('service', $service->id, $start)]];
 
         foreach ($service->addons as $addon) {
             if ($addon->isActive() && $addon->recurring_amount > 0) {
@@ -132,7 +154,7 @@ class RenewalGenerator
         $domain->loadMissing('client');
         $start = $domain->next_due_date ?? $domain->expires_at ?? CarbonImmutable::today();
 
-        $existing = InvoiceItem::query()
+        $existing = fn (): ?InvoiceItem => InvoiceItem::query()
             ->with('invoice')
             ->where('domain_id', $domain->id)
             ->where('type', InvoiceItem::TYPE_DOMAIN_RENEW)
@@ -141,19 +163,24 @@ class RenewalGenerator
             ->latest('id')
             ->first();
 
-        if ($existing !== null) {
-            return $existing->invoice;
+        if (($found = $existing()) !== null) {
+            return $found->invoice;
         }
 
         $years = max(1, $domain->years);
         $amount = $domain->recurring_amount ?: (int) TldPrice::forTld($domain->tld, $domain->currency)?->priceFor('renew', $years);
 
-        $invoice = $this->invoices->create(
-            $domain->client,
-            [LineItems::domainPeriod($domain, InvoiceItem::TYPE_DOMAIN_RENEW, $years, $amount, $start)],
-            dueAt: CarbonImmutable::today(),
-            currency: $domain->currency,
-        );
+        try {
+            $invoice = $this->invoices->create(
+                $domain->client,
+                [LineItems::domainPeriod($domain, InvoiceItem::TYPE_DOMAIN_RENEW, $years, $amount, $start) + ['billing_key' => self::billingKey('domain', $domain->id, $start)]],
+                dueAt: CarbonImmutable::today(),
+                currency: $domain->currency,
+            );
+        } catch (UniqueConstraintViolationException $exception) {
+            // Made a moment ago, for example by a double click.
+            return $existing()?->invoice ?? throw $exception;
+        }
 
         Activity::log('invoice.renewal', "Renewal invoice {$invoice->number} created for {$domain->name}", $invoice, $domain->client);
         $this->mailer->send('invoice.created', $domain->client, TemplateMailer::invoiceContext($invoice));

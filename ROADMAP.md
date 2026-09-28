@@ -10,14 +10,15 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.1 | Store and checkout, invoices with PDFs, renewals, reminders and suspensions, Stripe, PayPal and bank transfer, cPanel automation, support tickets, staff roles, two-factor sign-in, signed one-click updates |
 | 0.2 | Domains with ResellerClub, Namecheap, Enom and OpenSRS; DirectAdmin, Plesk, Proxmox VE and Virtualizor; FIB, FastPay and Wayl; refunds; the WHMCS importer; fraud checks; social sign-in; CAPTCHA; client two-factor sign-in |
 | 0.3 | Marketplace with signed one-click installs and a developer program, add-on extensions, coupons, product add-ons, exchange rates, one-page ordering |
-| 0.4 | Taxes, quotes, client wallet, affiliates, REST API, White-label License, passkeys, 26 languages with right-to-left pages, one-command install, backups, faster store pages |
+| 0.4 | Taxes, quotes, client wallet, affiliates, REST API, White-label License, passkeys, 26 languages with right-to-left pages, one-command install, backups, faster store pages, Site health (security and database checks), billing jobs that never bill twice |
 
 ## Next
 
 | Version | Focus |
 |---|---|
-| 0.4.8 | **Site health**: a nightly security check (staff access, file permissions, the site seen from outside, settings, payments, extensions, a signed check of Nuvabill's own files, updates and backups) and database health with one-click optimize and clean-up |
-| 0.4.9 | **Search engines**: sitemap, robots.txt, search titles and descriptions per page, share images, prices on Google, links between language versions, and a search engine check |
+| 0.4.9 | **Importers**: a stronger WHMCS import with a dry run that shows problems before anything changes, older WHMCS password types, and importers for Blesta, FOSSBilling, Paymenter and ClientExec |
+| 0.4.10 | **More server modules**, free on the Marketplace: CyberPanel, HestiaCP, VirtFusion and SolusVM |
+| 0.4.11 | **Search engines**: sitemap, robots.txt, search titles and descriptions per page, share images, prices on Google, links between language versions, and a search engine check |
 | 0.5 | Automation builder, AI help for ticket replies, WhatsApp and Telegram bot, admin phone app |
 
 ## The path to 1.0

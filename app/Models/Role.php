@@ -40,6 +40,7 @@ class Role extends Model
             'staff.manage' => 'Manage staff and roles',
             'system.update' => 'Install updates',
             'marketplace.manage' => 'Install themes and extensions from the marketplace',
+            'security.manage' => 'See site health and fix security issues',
         ],
         'Marketplace store' => [
             'marketplace.review' => 'Review submissions, and manage developers, licenses and payouts',

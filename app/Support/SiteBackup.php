@@ -120,6 +120,13 @@ class SiteBackup
 
         $this->prune($type);
 
+        // Site health warns when the last backup is old or not encrypted.
+        app(Settings::class)->setMany([
+            'backups.last_at' => now()->toIso8601String(),
+            'backups.last_type' => $type,
+            'backups.last_encrypted' => filled($password),
+        ]);
+
         return $path;
     }
 

@@ -28,6 +28,9 @@ class LoginController extends Controller
         $admin = Admin::query()->where('email', $credentials['email'])->first();
 
         if ($admin === null || ! Hash::check($credentials['password'], $admin->password)) {
+            // What was typed is not logged: people sometimes type their password into the email box.
+            Activity::log('admin.login_failed', $admin ? "Failed sign-in for {$admin->name}" : 'Failed staff sign-in for an unknown email address', $admin);
+
             return back()->withInput($request->only('email'))->withErrors(['email' => __('The email or password is wrong.')]);
         }
 

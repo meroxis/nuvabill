@@ -289,6 +289,23 @@ class DefaultDataSeeder extends Seeder
                 {{ company.name }}
                 MD,
             ],
+            'admin.security_alert' => [
+                'Staff: new security issue',
+                'New security issue on {{ company.name }}',
+                <<<'MD'
+                Hello {{ staff.name }},
+
+                Tonight's site health check found something new that needs you:
+
+                {{ issues }}
+
+                Your security score is **{{ score }} of 100**.
+
+                [Open site health]({{ admin_url }})
+
+                You get this email because you may see and fix security issues. Passwords and file contents are never put in these emails.
+                MD,
+            ],
             'admin.new_order' => [
                 'Staff: new order',
                 'New order #{{ order.number }} from {{ client.name }}',

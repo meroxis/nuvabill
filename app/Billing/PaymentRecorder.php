@@ -9,6 +9,7 @@ use App\Models\Invoice;
 use App\Models\Transaction;
 use App\Support\Activity;
 use Carbon\CarbonInterface;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -32,50 +33,75 @@ class PaymentRecorder
         array $meta = [],
         ?CarbonInterface $paidAt = null,
     ): Transaction {
-        if ($reference !== null) {
-            $existing = Transaction::query()->where('gateway', $gateway)->where('reference', $reference)->first();
+        $existing = fn (): ?Transaction => $reference === null ? null : Transaction::query()->where('gateway', $gateway)->where('reference', $reference)->first();
 
-            if ($existing !== null) {
-                return $existing;
+        if (($found = $existing()) !== null) {
+            return $found;
+        }
+
+        try {
+            [$transaction, $becamePaid] = DB::transaction(fn (): array => $this->store($invoice, $amount, $gateway, $reference, $fee, $meta, $paidAt));
+        } catch (UniqueConstraintViolationException $exception) {
+            // The same payment arrived twice at once (for example a webhook and the return page);
+            // the gateway reference is unique, so the first one counts and this one changes nothing.
+            return $existing() ?? throw $exception;
+        }
+
+        $this->afterRecorded($invoice, $amount, $gateway, $becamePaid);
+
+        return $transaction;
+    }
+
+    /**
+     * Save the payment and update the invoice. Call it inside a database transaction; the invoice
+     * row is locked until that transaction ends. Then call afterRecorded().
+     *
+     * @param  array<string, mixed>  $meta
+     * @return array{0: Transaction, 1: bool} The transaction, and whether the invoice became paid.
+     */
+    public function store(Invoice $invoice, int $amount, string $gateway, ?string $reference = null, int $fee = 0, array $meta = [], ?CarbonInterface $paidAt = null): array
+    {
+        $invoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+
+        $transaction = $invoice->transactions()->create([
+            'client_id' => $invoice->client_id,
+            'gateway' => $gateway,
+            'reference' => $reference,
+            'type' => 'payment',
+            'amount' => $amount,
+            'fee' => $fee,
+            'currency' => $invoice->currency,
+            'meta' => $meta ?: null,
+            'paid_at' => $paidAt ?? now(),
+        ]);
+
+        $invoice->amount_paid += $amount;
+        $becamePaid = false;
+
+        if ($invoice->status === InvoiceStatus::Unpaid && $invoice->amount_paid >= $invoice->total) {
+            $invoice->status = InvoiceStatus::Paid;
+            $invoice->paid_at = $transaction->paid_at;
+            $invoice->payment_method = $gateway;
+            $becamePaid = true;
+
+            $overpaid = $invoice->amount_paid - $invoice->total;
+
+            if ($overpaid > 0) {
+                app(Wallet::class)->change($invoice->client, $overpaid, __('Overpayment on invoice :number', ['number' => $invoice->displayNumber()]), $invoice);
             }
         }
 
-        [$transaction, $becamePaid] = DB::transaction(function () use ($invoice, $amount, $gateway, $reference, $fee, $meta, $paidAt): array {
-            $invoice = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+        $invoice->save();
 
-            $transaction = $invoice->transactions()->create([
-                'client_id' => $invoice->client_id,
-                'gateway' => $gateway,
-                'reference' => $reference,
-                'type' => 'payment',
-                'amount' => $amount,
-                'fee' => $fee,
-                'currency' => $invoice->currency,
-                'meta' => $meta ?: null,
-                'paid_at' => $paidAt ?? now(),
-            ]);
+        return [$transaction, $becamePaid];
+    }
 
-            $invoice->amount_paid += $amount;
-            $becamePaid = false;
-
-            if ($invoice->status === InvoiceStatus::Unpaid && $invoice->amount_paid >= $invoice->total) {
-                $invoice->status = InvoiceStatus::Paid;
-                $invoice->paid_at = $transaction->paid_at;
-                $invoice->payment_method = $gateway;
-                $becamePaid = true;
-
-                $overpaid = $invoice->amount_paid - $invoice->total;
-
-                if ($overpaid > 0) {
-                    app(Wallet::class)->change($invoice->client, $overpaid, __('Overpayment on invoice :number', ['number' => $invoice->displayNumber()]), $invoice);
-                }
-            }
-
-            $invoice->save();
-
-            return [$transaction, $becamePaid];
-        });
-
+    /**
+     * Log the payment and, when the invoice became paid, activate or renew what it paid for. Runs
+     * after the transaction of store() has ended, so slow server calls do not hold the lock.
+     */
+    public function afterRecorded(Invoice $invoice, int $amount, string $gateway, bool $becamePaid): void
+    {
         $invoice->refresh();
 
         Activity::log('payment.received', 'Payment of '.money($amount, $invoice->currency)." received for invoice {$invoice->number} via {$gateway}", $invoice);
@@ -84,8 +110,6 @@ class PaymentRecorder
             $this->paidHandler->handle($invoice);
             InvoicePaid::dispatch($invoice);
         }
-
-        return $transaction;
     }
 
     /**

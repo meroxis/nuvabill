@@ -10,6 +10,7 @@ use App\Enums\TicketStatus;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Domain;
+use App\Models\HealthRun;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Service;
@@ -127,6 +128,17 @@ class DashboardController extends Controller
                 'text' => __('The daily automation has not run in the last 24 hours. Renewal invoices and suspensions need the cron job.'),
                 'url' => route('admin.settings.edit').'#automation',
                 'action' => __('How to set it up'),
+            ];
+        }
+
+        $health = rescue(fn () => HealthRun::query()->latest('id')->first(['id', 'urgent_count']), null, report: false);
+
+        if ($health !== null && $health->urgent_count > 0 && auth('admin')->user()?->hasPermission('security.manage')) {
+            $items[] = [
+                'tone' => 'crit',
+                'text' => trans_choice('Site health found :count urgent security issue.|Site health found :count urgent security issues.', $health->urgent_count, ['count' => $health->urgent_count]),
+                'url' => route('admin.health.index'),
+                'action' => __('Open site health'),
             ];
         }
 

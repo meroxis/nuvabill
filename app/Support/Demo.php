@@ -55,6 +55,7 @@ class Demo
         'admin.settings.staff.*',
         'admin.settings.roles.*',
         'admin.updates.*',
+        'admin.health.*',
         'admin.marketplace.install',
         'admin.marketplace.destroy',
         'admin.marketplace.activate',

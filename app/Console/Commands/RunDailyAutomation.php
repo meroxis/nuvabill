@@ -22,6 +22,13 @@ class RunDailyAutomation extends Command
         }
 
         $summary = $automation->run();
+
+        if ($summary === null) {
+            $this->components->warn('Another automation run is busy right now; it does the work, so this one stops.');
+
+            return self::SUCCESS;
+        }
+
         $settings->set('automation.last_run_at', now()->toIso8601String());
 
         $line = "Invoices created: {$summary['invoices']}, reminders: {$summary['reminders']}, suspended: {$summary['suspended']}, terminated: {$summary['terminated']}, failed: {$summary['failed']}, domains expired: {$summary['domains_expired']}, commissions released: {$summary['commissions']}";

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Health\CoreFiles;
 use App\Updates\Signature as ReleaseSignature;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
@@ -46,20 +47,35 @@ class PackageRelease extends Command
         $zipPath = $output.DIRECTORY_SEPARATOR."nuvabill-{$version}.zip";
         $zip = new ZipArchive;
         $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $key = $this->option('key') ? trim((string) file_get_contents((string) $this->option('key'))) : (string) getenv('NUVABILL_SIGNING_KEY');
 
         $files = 0;
+        $fingerprints = [];
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(base_path(), RecursiveDirectoryIterator::SKIP_DOTS));
 
         /** @var SplFileInfo $file */
         foreach ($iterator as $file) {
             $relative = ltrim(str_replace('\\', '/', substr($file->getPathname(), strlen(base_path()))), '/');
 
-            if (! $file->isFile() || $this->isExcluded($relative)) {
+            if (! $file->isFile() || $this->isExcluded($relative) || in_array($relative, [CoreFiles::LIST_FILE, CoreFiles::SIGNATURE_FILE], true)) {
                 continue;
             }
 
             $zip->addFile($file->getPathname(), $relative);
             $files++;
+
+            if (CoreFiles::isCode($relative)) {
+                $fingerprints[$relative] = (string) hash_file('sha256', $file->getPathname());
+            }
+        }
+
+        // Site health compares the site's own code with this list to spot changed or planted files.
+        ksort($fingerprints);
+        $list = (string) json_encode(['version' => $version, 'files' => $fingerprints], JSON_UNESCAPED_SLASHES);
+        $zip->addFromString(CoreFiles::LIST_FILE, $list);
+
+        if ($key !== '') {
+            $zip->addFromString(CoreFiles::SIGNATURE_FILE, ReleaseSignature::signFileList($version, $list, $key));
         }
 
         $zip->close();
@@ -67,10 +83,8 @@ class PackageRelease extends Command
         $sha256 = (string) hash_file('sha256', $zipPath);
         file_put_contents($zipPath.'.sha256', $sha256.'  '.basename($zipPath)."\n");
 
-        $this->components->info("Packed {$files} files into {$zipPath}");
+        $this->components->info("Packed {$files} files into {$zipPath}, with fingerprints of ".count($fingerprints).' code files');
         $this->line("SHA-256: {$sha256}");
-
-        $key = $this->option('key') ? trim((string) file_get_contents((string) $this->option('key'))) : (string) getenv('NUVABILL_SIGNING_KEY');
 
         if ($key === '') {
             $this->components->warn('No signing key given. The zip is NOT signed and installs will refuse it as an update.');

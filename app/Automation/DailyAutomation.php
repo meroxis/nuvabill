@@ -18,9 +18,13 @@ use App\Support\Activity;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * The daily billing run: renewal invoices, overdue reminders, suspensions, terminations and domain upkeep.
+ *
+ * Running it twice never bills anyone twice: only one run works at a time, renewal periods are
+ * unique in the database, and every reminder or notice is claimed before it is sent.
  */
 class DailyAutomation
 {
@@ -38,11 +42,37 @@ class DailyAutomation
     private const DOMAIN_SYNC_LIMIT = 25;
 
     /**
+     * The lock that keeps two runs from working at the same time, for example the nightly cron job
+     * and a second cron entry, or a run that is still busy when the next one starts.
+     */
+    public const LOCK = 'nuvabill:daily-automation';
+
+    /**
+     * Run everything once. Returns null when another run is busy: it does the work, so nothing is
+     * done twice. Each step is also safe on its own when repeated (see the steps below).
+     *
+     * @return array{invoices: int, reminders: int, suspended: int, terminated: int, failed: int, domains_expired: int, commissions: int}|null
+     */
+    public function run(?CarbonInterface $today = null): ?array
+    {
+        $lock = Cache::lock(self::LOCK, 3600);
+
+        if (! $lock->get()) {
+            return null;
+        }
+
+        try {
+            return $this->runSteps(CarbonImmutable::instance($today ?? today())->startOfDay());
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
      * @return array{invoices: int, reminders: int, suspended: int, terminated: int, failed: int, domains_expired: int, commissions: int}
      */
-    public function run(?CarbonInterface $today = null): array
+    private function runSteps(CarbonImmutable $today): array
     {
-        $today = CarbonImmutable::instance($today ?? today())->startOfDay();
 
         $summary = [
             'invoices' => $this->renewals->generate($today),
@@ -142,8 +172,14 @@ class DailyAutomation
                     return;
                 }
 
-                $this->mailer->send('domain.expiring', $domain->client, DomainProvisioner::context($domain) + ['days_left' => $daysLeft]);
-                $domain->forceFill(['expiry_notice_sent_at' => now()])->save();
+                // Claim the notice in one update before sending, so it goes out once even if two runs meet.
+                $claimed = Domain::query()->whereKey($domain->id)
+                    ->where(fn (Builder $query) => $query->whereNull('expiry_notice_sent_at')->orWhere('expiry_notice_sent_at', '<', now()->subDays(5)))
+                    ->update(['expiry_notice_sent_at' => now()]);
+
+                if ($claimed === 1) {
+                    $this->mailer->send('domain.expiring', $domain->client, DomainProvisioner::context($domain) + ['days_left' => $daysLeft]);
+                }
             });
     }
 
@@ -173,11 +209,20 @@ class DailyAutomation
                     return;
                 }
 
+                // Claim this reminder step in one update before sending, so it is sent once even if two runs meet.
+                $claimed = Invoice::query()->whereKey($invoice->id)
+                    ->where('status', InvoiceStatus::Unpaid)
+                    ->where('reminder_count', '<', $stepsReached)
+                    ->update(['reminder_count' => $stepsReached, 'last_reminder_at' => now()]);
+
+                if ($claimed !== 1) {
+                    return;
+                }
+
                 $this->mailer->send('invoice.reminder', $invoice->client, TemplateMailer::invoiceContext($invoice) + [
                     'days_overdue' => $daysOverdue,
                 ]);
 
-                $invoice->forceFill(['reminder_count' => $stepsReached, 'last_reminder_at' => now()])->save();
                 $sent++;
             });
 

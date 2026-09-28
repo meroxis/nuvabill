@@ -127,6 +127,7 @@ class PackageInstaller
             'license_key' => $licenseKey ?: $install->license_key,
             'license_status' => filled($licenseKey ?: $install->license_key) ? MarketplaceInstall::LICENSE_VALID : null,
             'license_checked_at' => now(),
+            'file_hashes' => MarketplaceInstall::fingerprint($type->directory($slug)),
         ])->save();
         Cache::forget(LicenseChecker::UNLICENSED_CACHE_KEY);
 

@@ -58,6 +58,8 @@ class Settings
         'locale.enabled' => ['az', 'ca', 'cs', 'da', 'de', 'et', 'en', 'es', 'fr', 'hr', 'it', 'hu', 'nl', 'nb', 'pt_BR', 'pt_PT', 'ro', 'sv', 'tr', 'mk', 'ru', 'uk', 'he', 'ar', 'ckb', 'zh_CN'],
 
         'marketplace.developer_share' => 83,
+        // Store only: old slug => new slug of renamed items (nuvabill:marketplace-rename).
+        'marketplace.renamed_items' => [],
 
         'automation.enabled' => true,
         'automation.reminder_days' => [1, 3, 7],
@@ -113,6 +115,24 @@ class Settings
         'security.captcha_secret' => '',
         'security.captcha_forms' => ['client_login', 'client_register', 'password_reset'],
         'security.captcha_checked_key' => null,
+
+        // Site health: the nightly check, its emails, and database upkeep.
+        'health.nightly' => true,
+        'health.outside_check' => true,
+        'health.email_urgent' => true,
+        'health.email_warnings' => false,
+        'health.accepted_files' => [],
+        'health.check_requested' => false,
+        'database.cleanup_nightly' => false,
+        'database.optimize_weekly' => false,
+        'database.keep_activity_days' => 365,
+        'database.keep_license_checks_days' => 90,
+        'database.keep_jobs_days' => 30,
+        'database.keep_health_days' => 90,
+        'database.last_optimized_at' => null,
+        'backups.last_at' => null,
+        'backups.last_type' => null,
+        'backups.last_encrypted' => false,
     ];
 
     /**

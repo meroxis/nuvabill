@@ -6,6 +6,7 @@ use App\Enums\OrderStatus;
 use App\Enums\TicketStatus;
 use App\Marketplace\LicenseChecker;
 use App\Marketplace\MarketplaceClient;
+use App\Models\HealthRun;
 use App\Models\MarketplaceInstall;
 use App\Models\Order;
 use App\Models\Ticket;
@@ -35,6 +36,9 @@ class AdminLayoutComposer
                 && isset($latest['version'])
                 && version_compare((string) $latest['version'], (string) config('nuvabill.version'), '>'),
             'marketplaceUpdates' => $this->marketplaceUpdates($installs),
+            // Only the count: the results of a run are large and not needed on every page. Right
+            // after an update the table may not exist for a minute, until its database change runs.
+            'healthUrgent' => (int) rescue(fn () => HealthRun::query()->latest('id')->value('urgent_count'), 0, report: false),
             'licenseWarnings' => $installs->toBase()->filter(fn (MarketplaceInstall $install): bool => $install->hasInvalidLicense())
                 ->map(fn (MarketplaceInstall $install): array => ['slug' => $install->slug, 'name' => $install->name, 'message' => (string) $install->license_message])
                 // The public demo shows paid themes for previews on purpose; it resets every hour and cannot be used as a real site.

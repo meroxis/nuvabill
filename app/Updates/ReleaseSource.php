@@ -96,6 +96,46 @@ class ReleaseSource
     }
 
     /**
+     * The release of one exact version, for example to put back an original file of the version
+     * this site runs. Null when that version has no signed release zip.
+     */
+    public function forVersion(string $version): ?Release
+    {
+        $repository = (string) config('nuvabill.updates.repository');
+        $response = Http::acceptJson()
+            ->withHeaders(['User-Agent' => 'Nuvabill-Updater/'.config('nuvabill.version')])
+            ->timeout(20)
+            ->get(rtrim((string) config('nuvabill.updates.api_url'), '/')."/repos/{$repository}/releases/tags/v".rawurlencode($version));
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException("Could not reach the update server (HTTP {$response->status()}).");
+        }
+
+        $assets = collect($response->json('assets') ?? [])->keyBy('name');
+        $zip = $assets->get("nuvabill-{$version}.zip");
+        $signature = $assets->get("nuvabill-{$version}.zip.sig");
+
+        if ($zip === null || $signature === null) {
+            return null;
+        }
+
+        return new Release(
+            version: $version,
+            notes: '',
+            zipUrl: (string) $zip['browser_download_url'],
+            signatureUrl: (string) $signature['browser_download_url'],
+            publishedAt: (string) ($response->json('published_at') ?? ''),
+            isSecurity: false,
+            isPrerelease: (bool) $response->json('prerelease'),
+            size: (int) ($zip['size'] ?? 0),
+        );
+    }
+
+    /**
      * GitHub adds a "Full Changelog" link and a "What's Changed" heading to generated notes; site owners only need the changes.
      */
     private static function cleanNotes(string $notes): string

@@ -2,6 +2,7 @@
 
 namespace App\Updates;
 
+use App\Health\CoreFiles;
 use App\Support\Activity;
 use App\Support\Settings;
 use Illuminate\Support\Facades\Artisan;
@@ -185,7 +186,8 @@ class UpdateManager
         @unlink($this->pendingPath());
         Artisan::call('up');
 
-        $this->settings->set('updates.latest', null);
+        // Site health checks the new version within a minute, from the scheduler.
+        $this->settings->setMany(['updates.latest' => null, 'health.check_requested' => true]);
         Activity::log('update.installed', "Updated Nuvabill from {$pending['from']} to {$pending['to']}");
 
         return ['from' => (string) $pending['from'], 'to' => (string) $pending['to']];
@@ -199,6 +201,9 @@ class UpdateManager
             throw new RuntimeException('The update file is damaged.');
         }
 
+        $oldFiles = $this->releaseFiles((string) @file_get_contents(base_path(CoreFiles::LIST_FILE)));
+        $newFiles = $this->releaseFiles((string) $zip->getFromName(CoreFiles::LIST_FILE));
+
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = (string) $zip->getNameIndex($i);
 
@@ -209,9 +214,28 @@ class UpdateManager
 
         $zip->close();
 
+        // Code the new version no longer has would otherwise stay behind for ever.
+        if ($oldFiles !== [] && $newFiles !== []) {
+            $removed = app(CoreFiles::class)->removeRetired($oldFiles, $newFiles);
+
+            if ($removed > 0) {
+                Log::info("Update removed {$removed} files the new version no longer uses.");
+            }
+        }
+
         if (function_exists('opcache_reset')) {
             opcache_reset();
         }
+    }
+
+    /**
+     * @return array<string, string> Path => SHA-256 from a release-files.json, or nothing.
+     */
+    private function releaseFiles(string $json): array
+    {
+        $data = json_decode($json, true);
+
+        return is_array($data) && is_array($data['files'] ?? null) ? array_map('strval', $data['files']) : [];
     }
 
     private function backup(): Backup

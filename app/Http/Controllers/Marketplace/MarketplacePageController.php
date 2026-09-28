@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Marketplace\PackageType;
 use App\Models\MarketplaceItem;
 use App\Support\WhiteLabel;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
 
@@ -48,9 +49,14 @@ class MarketplacePageController extends Controller
         ]);
     }
 
-    public function show(MarketplaceItem $item): View
+    public function show(Request $request, MarketplaceItem $item): View|RedirectResponse
     {
         abort_unless($item->isLive(), 404);
+
+        // An old link of a renamed item goes to its new address.
+        if ($request->route()?->originalParameter('item') !== $item->slug) {
+            return redirect()->route('marketplace.show', $item, 301);
+        }
 
         $item->load('developer', 'latestVersion', 'product.prices');
 

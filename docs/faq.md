@@ -53,8 +53,16 @@ keeps the newest copies in your Google Drive.
 ## Is it secure?
 
 Staff and clients can use two-factor sign-in and passkeys, forms can have a CAPTCHA, every page sends security headers,
-payment notices are checked before they are trusted, and marketplace packages are reviewed and signed. Found a security
-problem? Please email support@nuvabill.com instead of opening a public issue.
+payment notices are checked before they are trusted, and marketplace packages are reviewed and signed. **Setup → Site
+health** checks the site every night (staff access, file permissions, what strangers can open, settings, Nuvabill's own
+files, backups and the database) and emails staff about new urgent issues. Found a security problem? Please email
+support@nuvabill.com instead of opening a public issue.
+
+## Can the nightly job bill a client twice?
+
+No. Only one automation run works at a time, and each renewal period can only be invoiced once: the database itself
+refuses a second invoice for the same period, even if two runs meet. Reminders and notices are claimed before they are
+sent, so they go out once.
 
 ## Is there an API?
 

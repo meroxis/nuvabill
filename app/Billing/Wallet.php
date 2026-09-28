@@ -68,18 +68,32 @@ class Wallet
         $invoice->loadMissing('client');
         $client = $invoice->client;
 
-        if (! $invoice->isPayable() || $this->isTopUp($invoice) || $client->currency !== $invoice->currency) {
+        if ($this->isTopUp($invoice) || $client->currency !== $invoice->currency) {
             return 0;
         }
 
-        $amount = min((int) Client::query()->whereKey($client->id)->value('credit'), $invoice->balance());
+        $payments = app(PaymentRecorder::class);
 
-        if ($amount <= 0) {
-            return 0;
+        // The invoice and then the wallet are locked while the amount is worked out, taken and
+        // recorded, so a double click or two runs at once cannot pay the same invoice twice.
+        [$amount, $becamePaid] = DB::transaction(function () use ($invoice, $client, $payments): array {
+            $locked = Invoice::query()->lockForUpdate()->findOrFail($invoice->id);
+            $credit = (int) Client::query()->lockForUpdate()->whereKey($client->id)->value('credit');
+            $amount = $locked->isPayable() ? min($credit, $locked->balance()) : 0;
+
+            if ($amount <= 0) {
+                return [0, false];
+            }
+
+            $entry = $this->change($client, -$amount, __('Paid invoice :number', ['number' => $locked->displayNumber()]), $locked);
+            [, $becamePaid] = $payments->store($locked, $amount, self::GATEWAY, 'wallet-'.$entry->id);
+
+            return [$amount, $becamePaid];
+        });
+
+        if ($amount > 0) {
+            $payments->afterRecorded($invoice, $amount, self::GATEWAY, $becamePaid);
         }
-
-        $entry = $this->change($client, -$amount, __('Paid invoice :number', ['number' => $invoice->displayNumber()]), $invoice);
-        app(PaymentRecorder::class)->record($invoice, $amount, self::GATEWAY, 'wallet-'.$entry->id);
 
         return $amount;
     }

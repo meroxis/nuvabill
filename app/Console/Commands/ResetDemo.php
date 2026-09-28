@@ -32,6 +32,10 @@ class ResetDemo extends Command
         }
 
         $settings->flush();
+
+        // Visitors see a real site health result; its buttons are locked on the demo.
+        rescue(fn () => $this->callSilently('nuvabill:security-check', ['--quiet-if-healthy' => true]));
+
         $this->components->info('The demo has fresh data.');
 
         return self::SUCCESS;

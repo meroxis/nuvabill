@@ -42,7 +42,11 @@ class StoreApiController extends Controller
             'nuvabill' => ['nullable', 'string', 'max:20'],
         ]);
 
-        $item = MarketplaceItem::query()->live()->where('slug', $data['slug'])->first();
+        $item = MarketplaceItem::findBySlug($data['slug']);
+
+        if ($item !== null && ! $item->isLive()) {
+            $item = null;
+        }
 
         if ($item === null) {
             return response()->json(['message' => __('This item is not in the marketplace.')], 404);
@@ -105,7 +109,7 @@ class StoreApiController extends Controller
             'version' => ['nullable', 'string', 'max:40'],
         ]);
 
-        $item = MarketplaceItem::query()->where('slug', $data['slug'])->first();
+        $item = MarketplaceItem::findBySlug($data['slug']);
 
         if ($item === null) {
             return response()->json(['valid' => false, 'status' => 'unknown', 'message' => __('This item is not in the marketplace.')]);

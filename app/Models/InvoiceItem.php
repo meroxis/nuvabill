@@ -38,7 +38,7 @@ class InvoiceItem extends Model
      */
     public const DOMAIN_TYPES = [self::TYPE_DOMAIN_REGISTER, self::TYPE_DOMAIN_TRANSFER, self::TYPE_DOMAIN_RENEW];
 
-    protected $fillable = ['invoice_id', 'service_id', 'domain_id', 'type', 'description', 'amount', 'taxed', 'period_start', 'period_end'];
+    protected $fillable = ['invoice_id', 'service_id', 'domain_id', 'type', 'description', 'amount', 'taxed', 'period_start', 'period_end', 'billing_key'];
 
     protected function casts(): array
     {

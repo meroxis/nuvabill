@@ -267,6 +267,20 @@ failed setups, pending orders, overdue invoices, and a warning if the cron job s
 
 ![Clients](.github/screenshots/clients.png)
 
+### Site health: security and database checks
+
+Every night, and after every update, Nuvabill checks itself and gives the site a score: staff without two-factor
+sign-in, a `.env` file other accounts can read, folders anyone can change, backups left in the public folder,
+private files that strangers can open, debug mode, gateways left in test mode, and much more. A signed list of
+Nuvabill's own files shows changed files and unknown code where visitors can run it. Many problems have a
+**Fix it** button, and staff get an email about new urgent issues.
+
+The database tab checks who can reach the database, whether secrets in it are encrypted and whether tables are
+healthy, and optimizes tables and cleans up old logs with one click (after a backup). From the terminal:
+`php artisan nuvabill:security-check` exits with code 1 while an urgent issue is open.
+
+Renewals are safe to run twice: each billing period can only be invoiced once, enforced by the database.
+
 ### 26 languages
 
 The whole client area and admin area speak **26 languages**: Azerbaijani, Catalan, Chinese (Simplified), Croatian, Czech, Danish, Dutch, English, Estonian, French, German,
@@ -334,8 +348,8 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 
 | Version | Focus |
 |---|---|
-| v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor, domains, Iraqi gateways, the **WHMCS importer**, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages ([changelog](CHANGELOG.md)) |
-| **next** | **Site health (security and database checks), search engine tools** |
+| v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor, domains, Iraqi payments, the **WHMCS importer**, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, Site health ([changelog](CHANGELOG.md)) |
+| **next** | **Importers for Blesta, FOSSBilling, Paymenter and ClientExec with a dry run; CyberPanel, HestiaCP, VirtFusion and SolusVM modules; search engine tools** |
 | v0.5 | Automation builder, AI ticket replies, WhatsApp and Telegram bot, admin phone app |
 | v1.0 | Automatic card payments, client upgrades, knowledge base and status page, security audit, and more |
 

@@ -18,6 +18,7 @@
         ['route' => 'admin.affiliates.index', 'match' => 'admin.affiliates.*', 'icon' => 'star', 'label' => __('Affiliates'), 'show' => $can('affiliates.manage')],
         ['route' => 'admin.servers.index', 'match' => 'admin.servers.*', 'icon' => 'server', 'label' => __('Servers'), 'show' => $can('products.manage')],
         ['route' => 'admin.marketplace.index', 'match' => 'admin.marketplace.*', 'icon' => 'puzzle', 'label' => __('Marketplace'), 'show' => $can('marketplace.manage'), 'count' => $marketplaceUpdates ?: null],
+        ['route' => 'admin.health.index', 'match' => 'admin.health.*', 'icon' => 'shield', 'label' => __('Site health'), 'show' => $can('security.manage'), 'count' => $healthUrgent ?: null],
         ['route' => 'admin.settings.edit', 'match' => ['admin.settings.*'], 'icon' => 'settings', 'label' => __('Settings'), 'show' => $can('settings.manage') || $can('staff.manage')],
         ['route' => 'admin.updates.index', 'match' => 'admin.updates.*', 'icon' => 'refresh', 'label' => __('Updates'), 'show' => $can('system.update'), 'count' => $updateAvailable ? 1 : null],
     ], fn (array $item): bool => $item['show']);

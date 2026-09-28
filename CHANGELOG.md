@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.4.8](https://github.com/meroxis/nuvabill/releases/tag/v0.4.8) | 28 Sep 2026 | Site health (security and database checks); billing jobs never bill twice |
 | [0.4.7](https://github.com/meroxis/nuvabill/releases/tag/v0.4.7) | 28 Sep 2026 | Faster, steadier store pages; easier-to-read colours |
 | [0.4.6](https://github.com/meroxis/nuvabill/releases/tag/v0.4.6) | 28 Sep 2026 | Marketplace updates show up right away |
 | [0.4.5](https://github.com/meroxis/nuvabill/releases/tag/v0.4.5) | 28 Sep 2026 | Extensions can bring their own database tables |
@@ -29,6 +30,22 @@ the [roadmap](ROADMAP.md).
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
 
+## 0.4.8
+
+- **Site health**, a new page under **Setup → Site health**. Every night (and after every update) Nuvabill looks for weak spots and gives your site a score:
+  - **Staff and access:** staff with full access but no two-factor sign-in, unused accounts and API tokens, sample email addresses, many failed sign-ins, CAPTCHA on client forms.
+  - **Files and folders:** a `.env` file other accounts on the server can read, folders anyone can change (777), and backups, `.sql` files or database tools left in the public folder.
+  - **Your site from outside:** Nuvabill opens `/.env`, `/.git`, log files, `composer.json` and the database file like a stranger would, to be sure they are blocked, and checks the security headers and your Cloudflare setup.
+  - **Site settings, payments and servers:** debug mode, HTTPS, secure cookies, the PHP version, gateways and registrars left in test mode, and server connections without HTTPS.
+  - **Core files:** from this release on, every download includes a signed list of Nuvabill's files. Site health spots changed files and unknown program files where visitors can run them. Put back the original with one click, move an unknown file to quarantine, or mark a change as your own.
+  - **Extensions, updates, backups and email:** unlicensed or hand-copied packages, waiting updates, the nightly cron job, recent and off-site backups, and email sending with SPF and DMARC.
+- **Database health** on its own tab: who can reach the database, whether it still gets security fixes, whether passwords and keys are stored encrypted, damaged tables and missing database changes. **Optimize now** rebuilds tables with free space (after a backup), and **Clean up** removes old logs, ended sessions and history, every night if you like. Clients, invoices, payments, services and tickets are never removed.
+- Many problems have a **Fix it** button. Checks you choose to accept can be **ignored** with a reason. Staff with the new **See site health and fix security issues** right get an email about new urgent issues, and the dashboard shows them too.
+- From the command line: `php artisan nuvabill:security-check` (exits with code 1 while something is urgent, for your own monitoring) and `php artisan nuvabill:database --optimize --clean`.
+- **Billing jobs never bill twice.** Only one automation run works at a time, each renewal period can only be invoiced once (the database itself refuses a second invoice), reminders, domain notices and affiliate commissions are claimed before they go out, and a wallet payment clicked twice takes the money once.
+- Failed staff sign-ins are now in the activity log, without what was typed.
+- On the Marketplace, the cPanel add-on has a new name: **cPanel Integrated** (1.1.1). Licenses, settings and features stay the same.
+
 ## 0.4.7
 
 - **Faster, steadier store pages.** Order forms can now put their first prices in the page, so nothing jumps when the page finishes loading and no extra request is needed. Themes and order forms can load their scripts without holding up the page.
@@ -45,7 +62,7 @@ the [roadmap](ROADMAP.md).
 ## 0.4.5
 
 - **Marketplace extensions can bring their own database tables.** When an extension that asks for the **database** permission is installed or updated, Nuvabill makes or updates its tables for you, so no command line is needed. A package that changes the database without asking for that permission is refused.
-- New on the marketplace: **Discord Notifications** (free), **Crystal Mail**, **MikroTik VPN** and **cPanel Extended**.
+- New on the marketplace: **Discord Notifications** (free), **Crystal Mail**, **MikroTik VPN** and **cPanel Integrated**.
 
 ## 0.4.4
 

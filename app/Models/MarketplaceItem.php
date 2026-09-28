@@ -109,4 +109,29 @@ class MarketplaceItem extends Model
     {
         return 'slug';
     }
+
+    /**
+     * Find an item by its slug, or by the slug it had before it was renamed, so sites that
+     * installed it under the old name keep their license and old links keep working.
+     */
+    public static function findBySlug(string $slug): ?self
+    {
+        $item = self::query()->where('slug', $slug)->first();
+
+        if ($item !== null) {
+            return $item;
+        }
+
+        $renamed = (array) setting('marketplace.renamed_items', []);
+
+        return isset($renamed[$slug]) ? self::query()->where('slug', (string) $renamed[$slug])->first() : null;
+    }
+
+    /**
+     * Pages and store lookups under the old slug of a renamed item find the item too.
+     */
+    public function resolveRouteBinding($value, $field = null): ?self
+    {
+        return $field === null || $field === 'slug' ? self::findBySlug((string) $value) : parent::resolveRouteBinding($value, $field);
+    }
 }

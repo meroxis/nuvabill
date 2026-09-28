@@ -16,6 +16,7 @@ use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\DomainController;
 use App\Http\Controllers\Admin\EmailTemplateController;
 use App\Http\Controllers\Admin\GatewayController;
+use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\ImportController;
 use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\MarketplaceController;
@@ -257,5 +258,20 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::post('install', [UpdateController::class, 'install'])->name('install');
         Route::get('finish', [UpdateController::class, 'finish'])->name('finish');
         Route::put('settings', [UpdateController::class, 'settings'])->name('settings');
+    });
+
+    Route::middleware('admin.can:security.manage')->prefix('health')->name('health.')->group(function (): void {
+        Route::get('/', [HealthController::class, 'index'])->name('index');
+        Route::get('database', [HealthController::class, 'database'])->name('database');
+        Route::get('{section}/checks', [HealthController::class, 'checks'])->whereIn('section', ['security', 'database'])->name('checks');
+        Route::get('{section}/{group}', [HealthController::class, 'group'])->whereIn('section', ['security', 'database'])->name('group');
+        Route::post('run', [HealthController::class, 'run'])->middleware('throttle:6,1')->name('run');
+        Route::post('fix', [HealthController::class, 'fix'])->middleware('throttle:20,1')->name('fix');
+        Route::post('ignore', [HealthController::class, 'ignore'])->name('ignore');
+        Route::post('unignore', [HealthController::class, 'unignore'])->name('unignore');
+        Route::put('settings', [HealthController::class, 'settings'])->name('settings');
+        Route::post('database/optimize', [HealthController::class, 'optimize'])->middleware('throttle:3,1')->name('optimize');
+        Route::post('database/cleanup', [HealthController::class, 'cleanup'])->middleware('throttle:6,1')->name('cleanup');
+        Route::put('database/settings', [HealthController::class, 'databaseSettings'])->name('database.settings');
     });
 });

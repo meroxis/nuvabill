@@ -142,6 +142,26 @@ class StoreTest extends TestCase
         $this->postJson(route('marketplace.api.licenses.check'), ['slug' => 'aurora', 'license_key' => $license->key, 'site' => 'billing.example.org'])->assertJson(['valid' => false, 'status' => 'revoked']);
     }
 
+    public function test_a_renamed_item_keeps_its_licenses_and_its_old_links(): void
+    {
+        $item = $this->liveItem('glow', 'theme', 4900, 1900);
+        $license = License::create(['key' => License::newKey(), 'marketplace_item_id' => $item->id, 'client_id' => Client::factory()->create()->id, 'site' => 'billing.example.org', 'status' => 'active', 'updates_until' => now()->addYear()]);
+
+        $this->artisan('nuvabill:marketplace-rename', ['from' => 'glow', 'to' => 'shine'])->assertSuccessful();
+
+        $item->refresh();
+        $this->assertSame('shine', $item->slug);
+        $this->assertSame('shine', $item->product->module_config['marketplace_item']);
+        $this->getJson(route('marketplace.api.catalog', ['nuvabill' => '0.3.0']))->assertJsonPath('items.0.slug', 'shine');
+
+        // A site that installed it under the old name keeps a valid license.
+        $this->postJson(route('marketplace.api.licenses.check'), ['slug' => 'glow', 'license_key' => $license->key, 'site' => 'billing.example.org'])->assertJson(['valid' => true]);
+        $this->get('/marketplace/glow')->assertRedirect(route('marketplace.show', 'shine'))->assertStatus(301);
+        $this->get(route('marketplace.show', 'shine'))->assertOk();
+
+        $this->artisan('nuvabill:marketplace-rename', ['from' => 'missing', 'to' => 'other'])->assertFailed();
+    }
+
     public function test_the_store_opens_on_the_marketplace_instead_of_hosting_plans(): void
     {
         $this->get(route('store.index'))->assertRedirect(route('marketplace.index'));

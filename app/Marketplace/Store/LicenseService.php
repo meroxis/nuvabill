@@ -27,7 +27,7 @@ class LicenseService
         $service->loadMissing('product');
         $slug = $service->product?->module_config['marketplace_item'] ?? null;
 
-        return is_string($slug) ? MarketplaceItem::query()->where('slug', $slug)->first() : null;
+        return is_string($slug) ? MarketplaceItem::findBySlug($slug) : null;
     }
 
     /**

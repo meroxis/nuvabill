@@ -26,6 +26,8 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 /dist
+/release-files.json
+/release-files.json.sig
 
 # Themes, order forms and add-ons installed from the marketplace (paid ones must never be committed).
 /themes/*

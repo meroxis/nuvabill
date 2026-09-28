@@ -13,6 +13,7 @@ use App\Models\Order;
 use App\Support\Activity;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -93,14 +94,19 @@ class Affiliates
             return null;
         }
 
-        $commission = $affiliate->commissions()->create([
-            'client_id' => $invoice->client_id,
-            'invoice_id' => $invoice->id,
-            'amount' => $amount,
-            'currency' => $invoice->currency,
-            'status' => AffiliateCommission::STATUS_PENDING,
-            'available_at' => CarbonImmutable::today()->addDays((int) setting('affiliates.hold_days')),
-        ]);
+        try {
+            $commission = $affiliate->commissions()->create([
+                'client_id' => $invoice->client_id,
+                'invoice_id' => $invoice->id,
+                'amount' => $amount,
+                'currency' => $invoice->currency,
+                'status' => AffiliateCommission::STATUS_PENDING,
+                'available_at' => CarbonImmutable::today()->addDays((int) setting('affiliates.hold_days')),
+            ]);
+        } catch (UniqueConstraintViolationException) {
+            // Each invoice earns one commission (unique in the database); this one was just recorded.
+            return null;
+        }
 
         $this->mailer->send('affiliate.commission', $affiliate->client, [
             'commission' => ['amount' => money($amount, $invoice->currency), 'available_on' => $commission->available_at->format('d M Y')],
@@ -125,14 +131,16 @@ class Affiliates
             ->where('status', AffiliateCommission::STATUS_PENDING)
             ->whereDate('available_at', '<=', $today)
             ->each(function (AffiliateCommission $commission) use (&$released): void {
-                if ($commission->invoice?->status !== InvoiceStatus::Paid) {
-                    $commission->update(['status' => AffiliateCommission::STATUS_CANCELLED]);
+                $status = $commission->invoice?->status === InvoiceStatus::Paid ? AffiliateCommission::STATUS_AVAILABLE : AffiliateCommission::STATUS_CANCELLED;
 
-                    return;
+                // Only a commission that is still on hold changes, so a second run cannot release it again.
+                $changed = AffiliateCommission::query()->whereKey($commission->id)
+                    ->where('status', AffiliateCommission::STATUS_PENDING)
+                    ->update(['status' => $status]);
+
+                if ($changed === 1 && $status === AffiliateCommission::STATUS_AVAILABLE) {
+                    $released++;
                 }
-
-                $commission->update(['status' => AffiliateCommission::STATUS_AVAILABLE]);
-                $released++;
             });
 
         return $released;
