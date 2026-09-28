@@ -12,6 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 use ZipArchive;
 
@@ -90,6 +91,41 @@ class MarketplaceClientTest extends TestCase
         $this->delete(route('admin.marketplace.destroy', 'chat-alerts'))->assertRedirect();
         $this->assertDirectoryDoesNotExist($this->dir.'/extensions/addons/chat-alerts');
         $this->assertSame(0, MarketplaceInstall::query()->count());
+    }
+
+    public function test_an_extension_that_asks_for_the_database_permission_gets_its_tables_on_install(): void
+    {
+        $zip = $this->package('notes', '1.0.0', 'extension.json', [
+            'slug' => 'notes', 'type' => 'addon', 'name' => 'Notes', 'version' => '1.0.0',
+            'namespace' => 'Vendor\\Notes\\', 'class' => 'Vendor\\Notes\\Notes', 'permissions' => ['database'],
+        ], [
+            'src/Notes.php' => "<?php\nnamespace Vendor\\Notes;\nclass Notes extends \\App\\Extensions\\Addons\\Addon {}\n",
+            'database/migrations/2026_09_28_000001_create_vendor_notes_table.php' => $this->migration('vendor_notes'),
+        ]);
+        $this->fakeStore('notes', 'addon', '1.0.0', $zip);
+
+        $this->post(route('admin.marketplace.install', 'notes'))->assertRedirect(route('admin.marketplace.show', 'notes'));
+
+        $this->assertTrue(Schema::hasTable('vendor_notes'));
+        $this->assertSame('1.0.0', MarketplaceInstall::query()->sole()->version);
+    }
+
+    public function test_an_extension_that_changes_the_database_without_saying_so_is_refused(): void
+    {
+        $zip = $this->package('notes', '1.0.0', 'extension.json', [
+            'slug' => 'notes', 'type' => 'addon', 'name' => 'Notes', 'version' => '1.0.0',
+            'namespace' => 'Vendor\\Notes\\', 'class' => 'Vendor\\Notes\\Notes', 'permissions' => ['events'],
+        ], [
+            'src/Notes.php' => "<?php\nnamespace Vendor\\Notes;\nclass Notes extends \\App\\Extensions\\Addons\\Addon {}\n",
+            'database/migrations/2026_09_28_000001_create_vendor_notes_table.php' => $this->migration('vendor_notes'),
+        ]);
+        $this->fakeStore('notes', 'addon', '1.0.0', $zip);
+
+        $this->post(route('admin.marketplace.install', 'notes'))
+            ->assertSessionHas('error', 'The package changes the database but does not ask for the database permission, so it was not installed.');
+
+        $this->assertDirectoryDoesNotExist($this->dir.'/extensions/addons/notes');
+        $this->assertFalse(Schema::hasTable('vendor_notes'));
     }
 
     public function test_a_package_with_a_bad_signature_is_refused(): void
@@ -223,5 +259,24 @@ class MarketplaceClientTest extends TestCase
         $zip->close();
 
         return (string) file_get_contents($path);
+    }
+
+    private function migration(string $table): string
+    {
+        return <<<PHP
+            <?php
+
+            use Illuminate\Database\Migrations\Migration;
+            use Illuminate\Database\Schema\Blueprint;
+            use Illuminate\Support\Facades\Schema;
+
+            return new class extends Migration
+            {
+                public function up(): void
+                {
+                    Schema::create('{$table}', fn (Blueprint \$table) => \$table->id());
+                }
+            };
+            PHP;
     }
 }

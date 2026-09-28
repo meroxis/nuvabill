@@ -4,6 +4,11 @@ What changed in each Nuvabill release. The release workflow copies the section f
 release, and the **Updates** page in the admin area shows it. Write for hosting companies, in plain words.
 Add `[security]` to a section to let installs apply it automatically as a security fix.
 
+## 0.4.5
+
+- **Marketplace extensions can bring their own database tables.** When an extension that asks for the **database** permission is installed or updated, Nuvabill makes or updates its tables for you, so no command line is needed. A package that changes the database without asking for that permission is refused.
+- New on the marketplace: **Discord Notifications** (free), **Crystal Mail**, **MikroTik VPN** and **cPanel Extended**.
+
 ## 0.4.4
 
 - **26 languages:** the client area and admin area now also speak Azerbaijani, Catalan, Chinese (Simplified), Croatian, Czech, Danish, Dutch, Estonian, French, German, Hebrew, Hungarian, Italian, Macedonian, Norwegian, Portuguese (Brazil and Portugal), Romanian, Russian, Spanish, Swedish, Turkish and Ukrainian, next to English, Arabic and Kurdish. Hebrew pages read right to left, and form error messages are translated too.

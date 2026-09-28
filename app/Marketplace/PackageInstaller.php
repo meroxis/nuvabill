@@ -9,6 +9,7 @@ use App\Models\MarketplaceInstall;
 use App\Support\Activity;
 use App\Support\Settings;
 use App\Support\Themes;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -89,6 +90,13 @@ class PackageInstaller
                 throw new RuntimeException(__(':name needs Nuvabill :version or newer. Update Nuvabill first.', ['name' => $archive->name(), 'version' => trim(substr($requires, 2))]));
             }
 
+            // Database changes only come with extensions that say so, because staff see that before installing.
+            $hasMigrations = collect($archive->files())->contains(fn (string $file): bool => str_starts_with($file, 'database/migrations/') && str_ends_with($file, '.php'));
+
+            if ($hasMigrations && (! $type->isExtension() || ! in_array('database', $archive->permissions(), true))) {
+                throw new RuntimeException(__('The package changes the database but does not ask for the database permission, so it was not installed.'));
+            }
+
             $unpacked = $work.'/unpacked';
             $archive->extractTo($unpacked);
             $archive = null;
@@ -121,6 +129,10 @@ class PackageInstaller
             'license_checked_at' => now(),
         ])->save();
         Cache::forget(LicenseChecker::UNLICENSED_CACHE_KEY);
+
+        if ($hasMigrations) {
+            $this->migrate($type->directory($slug).DIRECTORY_SEPARATOR.'database'.DIRECTORY_SEPARATOR.'migrations');
+        }
 
         Activity::log($previous ? 'marketplace.updated' : 'marketplace.installed', $previous
             ? "Updated {$install->name} from {$previous} to {$install->version}"
@@ -162,6 +174,23 @@ class PackageInstaller
         Cache::forget(LicenseChecker::UNLICENSED_CACHE_KEY);
 
         Activity::log('marketplace.removed', "Removed {$install->name} from the marketplace installs");
+    }
+
+    /**
+     * Make or change the extension's own tables. This runs after every install and update, so the
+     * changes of a new version are applied too; migrations that already ran are skipped.
+     */
+    private function migrate(string $path): void
+    {
+        try {
+            Artisan::call('migrate', ['--path' => $path, '--realpath' => true, '--force' => true]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            throw new RuntimeException(__('The files are installed, but the database tables could not be made: :reason', ['reason' => $exception->getMessage()]));
+        }
+
+        $this->steps[] = __('Made the database tables');
     }
 
     /**
