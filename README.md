@@ -457,5 +457,12 @@ Nuvabill is free. If it helps your business, please support its development on
 
 ## Contributing
 
-Bug reports and pull requests are welcome. By sending a pull request you agree that your contribution may be
-distributed by RapidNet Ltd under the AGPL-3.0 license and under the Nuvabill commercial White-label License.
+Bug reports, translations and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). By sending a pull
+request you agree that your contribution may be distributed by RapidNet Ltd under the AGPL-3.0 license and under the
+Nuvabill commercial White-label License.
+
+## Security
+
+Found a security problem? Please report it privately, not in a public issue: use **Report a vulnerability** on the
+[Security tab](https://github.com/meroxis/nuvabill/security) or email [security@nuvabill.com](mailto:security@nuvabill.com).
+See [SECURITY.md](SECURITY.md).
