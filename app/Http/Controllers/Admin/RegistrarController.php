@@ -13,15 +13,12 @@ use Throwable;
 
 class RegistrarController extends Controller
 {
-    public function index(ExtensionManager $extensions): View
+    /**
+     * The list moved to Extensions in 0.4.9; old links still work.
+     */
+    public function index(): RedirectResponse
     {
-        $registrars = $extensions->ofType(ExtensionManifest::TYPE_REGISTRAR)->map(fn (ExtensionManifest $manifest): array => [
-            'manifest' => $manifest,
-            'enabled' => $extensions->isEnabled($manifest->slug),
-            'configured' => $extensions->registrar($manifest->slug)->isConfigured(),
-        ]);
-
-        return view('admin.settings.registrars.index', ['registrars' => $registrars]);
+        return redirect()->route('admin.extensions.index', ['tab' => 'registrars']);
     }
 
     public function edit(string $registrar, ExtensionManager $extensions): View

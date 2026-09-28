@@ -21,9 +21,14 @@ class ServerController extends Controller
         ]);
     }
 
-    public function create(ExtensionManager $extensions): View
+    /**
+     * "?module=cpanel" picks the module, for the links on the Extensions page.
+     */
+    public function create(Request $request, ExtensionManager $extensions): View
     {
-        return $this->form(new Server(['use_ssl' => true, 'is_active' => true, 'username' => 'root']), $extensions);
+        $module = $extensions->serverModuleNames()->has((string) $request->query('module')) ? (string) $request->query('module') : null;
+
+        return $this->form(new Server(['use_ssl' => true, 'is_active' => true, 'username' => 'root', 'module' => $module]), $extensions);
     }
 
     public function store(Request $request, ExtensionManager $extensions): RedirectResponse

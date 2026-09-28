@@ -171,7 +171,7 @@ class ExtensionChecks extends CheckGroup
             return $check->passed();
         }
 
-        return $check->warning(':names are installed but not used', ['names' => $unused->implode(', ')],
+        return $check->warning('Installed but not used: :names', ['names' => $unused->implode(', ')],
             advice: 'Every theme is code on your server. Remove the ones you do not use from the marketplace; you can install them again at any time.',
             items: $unused->map(fn (string $slug): array => ['label' => $slug, 'mono' => true, 'status' => 'warning'])->all(),
             link: $this->link('admin.marketplace.index', 'Open the marketplace'),

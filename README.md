@@ -33,13 +33,13 @@ takes one import.
 
 - **Automation**: cPanel & WHM, DirectAdmin, Plesk, Proxmox VE and Virtualizor accounts created on payment, suspended when overdue, unsuspended when paid
 - **Billing**: invoices with PDFs, renewals, reminders, taxes (VAT, GST, sales tax), coupons, product add-ons, quotes, a client wallet and affiliates
-- **Payments**: Stripe, PayPal, bank transfer, and for Iraq FIB (First Iraqi Bank), FastPay and Wayl, with refunds and exchange rates
+- **Payments**: Stripe, PayPal, bank transfer and Iraqi payments (FIB, FastPay and Wayl), with refunds and exchange rates
 - **Domains**: search, register, transfer and renew at ResellerClub, Namecheap, Enom or OpenSRS
 - **Support**: tickets with departments, priorities and email notifications
 - **Security**: two-factor sign-in, passkeys, CAPTCHA, fraud checks, staff roles, security headers
 - **26 languages**, with right-to-left Arabic, Hebrew and Kurdish (Sorani)
 - **REST API**, a **marketplace** of signed themes and extensions, and **signed one-click updates** with rollback
-- **WHMCS importer**: clients (with their passwords), products, services, domains, invoices, payments and tickets
+- **Importers for WHMCS, Blesta, FOSSBilling and Paymenter**: clients (with their passwords), products, services, domains, invoices, payments and tickets, with a dry run first
 
 **Install it with a single command:**
 
@@ -59,9 +59,9 @@ curl -fsSL https://nuvabill.com/install.sh | bash
 |---|---|---|
 | Cost | Free, no per-client pricing | Paid license; check the vendor's site for current prices |
 | Source code | Open (AGPL-3.0): read it, change it, host it anywhere | Closed; the core needs the ionCube Loader |
-| Moving over | Built-in [WHMCS importer](docs/whmcs-migration.md); run it as often as you like before you switch | — |
+| Moving over | Built-in importers for [WHMCS](docs/whmcs-migration.md), [Blesta, FOSSBilling and Paymenter](docs/importing.md), with a dry run; run them as often as you like before you switch | — |
 | Updates | Signed releases, one-click update with backup and automatic rollback | See the vendor's documentation |
-| Iraq | FIB, FastPay and Wayl built in; prices in dollars, payment in dinar | Check the vendor's marketplace |
+| Iraqi payments | FIB, FastPay and Wayl built in; prices in dollars, payment in dinar | Check the vendor's marketplace |
 | Right to left | Arabic, Hebrew and Kurdish (Sorani) client and admin areas | Check the vendor's site |
 
 **When WHMCS may still be the better choice today.** Nuvabill is young (first release: September 2026). Stay with
@@ -157,12 +157,13 @@ In the admin area (`/admin`):
 1. **Servers** → add your cPanel/WHM, DirectAdmin, Plesk, Proxmox or Virtualizor server and press **Test connection**.
 2. **Products** → create your plans (or edit the example plans) and choose the package or VPS plan for each.
 3. **Settings → Domains** and **Registrars** → set your domain prices and connect ResellerClub, Namecheap, Enom or OpenSRS.
-4. **Settings → Payment gateways** → turn on Stripe, PayPal, FIB, FastPay, Wayl or bank transfer.
+4. **Setup → Extensions** → turn on Stripe, PayPal, FIB, FastPay, Wayl or bank transfer.
 5. **Settings → Sending email** → add your SMTP details and send yourself a test email.
 6. **Settings → Security** → choose two-factor rules and CAPTCHA. Then turn on two-factor login on **Your profile**.
 
-Moving from WHMCS? **Settings → Import** copies your clients (with their passwords), products, services, domains,
-invoices and tickets. You can run it again before you switch; it never makes copies.
+Moving from WHMCS, Blesta, FOSSBilling or Paymenter? **Settings → Import** first shows a dry run, then copies your
+clients (with their passwords), products, services, domains, invoices and tickets. You can run it again before you
+switch; it never makes copies.
 
 That's it. Your store is live at your domain.
 
@@ -321,6 +322,8 @@ Try a theme on your own site first with **Live preview**, which only you see.
 - Before you install, you see in plain words what a package can do, for example "Connects to api.telegram.org".
 - Paid items come with a license key for one site. Test sites (`localhost`, `*.test`, `staging.*`, `dev.*`) are always free.
 - Updates show on the Marketplace page and install with one click.
+- **Extensions** (under Setup) lists every payment gateway, server module, registrar and add-on you have, whether it is
+  on, how much it is used and whether it still needs settings. Switch them on and off right from the list.
 
 Free to start: the **Paper** and **Midnight** themes, **Team chat alerts** (orders, payments and tickets in Telegram or Discord)
 and a **Live chat widget** (Tawk.to or Crisp). Premium: the **Aurora** client area and the **Swift** one-page order form.
@@ -348,8 +351,8 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 
 | Version | Focus |
 |---|---|
-| v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor, domains, Iraqi payments, the **WHMCS importer**, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, Site health ([changelog](CHANGELOG.md)) |
-| **next** | **Importers for Blesta, FOSSBilling, Paymenter and ClientExec with a dry run; CyberPanel, HestiaCP, VirtFusion and SolusVM modules; search engine tools** |
+| v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor, domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, Site health ([changelog](CHANGELOG.md)) |
+| **next** | **CyberPanel, HestiaCP, VirtFusion and SolusVM modules; search engine tools; a ClientExec importer** |
 | v0.5 | Automation builder, AI ticket replies, WhatsApp and Telegram bot, admin phone app |
 | v1.0 | Automatic card payments, client upgrades, knowledge base and status page, security audit, and more |
 

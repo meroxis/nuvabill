@@ -1,6 +1,6 @@
 # Payment gateways
 
-Turn gateways on in **Settings → Payment gateways**. Clients choose one when they pay an invoice. Card numbers never
+Turn gateways on in **Setup → Extensions → Payment gateways**. Clients choose one when they pay an invoice. Card numbers never
 touch your server: clients pay on the gateway's own checkout page. Payment notices (webhooks) are checked before they
 are trusted, and each payment is recorded only once, even if the gateway sends it twice.
 

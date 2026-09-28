@@ -50,6 +50,7 @@ class Client extends Authenticatable
 
     protected $hidden = [
         'password',
+        'legacy_password',
         'remember_token',
         'two_factor_secret',
         'two_factor_recovery_codes',

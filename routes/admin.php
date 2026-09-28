@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\DomainController;
 use App\Http\Controllers\Admin\EmailTemplateController;
+use App\Http\Controllers\Admin\ExtensionController;
 use App\Http\Controllers\Admin\GatewayController;
 use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\ImportController;
@@ -220,6 +221,7 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
 
         Route::get('import', [ImportController::class, 'index'])->name('import.index');
         Route::put('import', [ImportController::class, 'update'])->middleware('throttle:10,1')->name('import.update');
+        Route::post('import/preview', [ImportController::class, 'preview'])->middleware('throttle:10,1')->name('import.preview');
         Route::post('import/start', [ImportController::class, 'start'])->name('import.start');
         Route::post('import/cancel', [ImportController::class, 'cancel'])->name('import.cancel');
 
@@ -234,6 +236,12 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
     Route::middleware('admin.can:staff.manage')->prefix('settings')->name('settings.')->group(function (): void {
         Route::resource('staff', StaffController::class)->except(['show', 'destroy'])->parameters(['staff' => 'admin']);
         Route::resource('roles', RoleController::class)->except(['show', 'destroy']);
+    });
+
+    // Each extension type needs its own permission; the controller checks it.
+    Route::prefix('extensions')->name('extensions.')->group(function (): void {
+        Route::get('/', [ExtensionController::class, 'index'])->name('index');
+        Route::post('{slug}/toggle', [ExtensionController::class, 'toggle'])->where('slug', '[a-z0-9][a-z0-9_-]*')->name('toggle');
     });
 
     Route::middleware('admin.can:marketplace.manage')->prefix('marketplace')->name('marketplace.')->group(function (): void {

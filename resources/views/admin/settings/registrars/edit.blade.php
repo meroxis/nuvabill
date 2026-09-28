@@ -1,7 +1,7 @@
 <x-layouts.admin :title="$manifest->name">
     <div class="page-head">
         <div>
-            <p class="eyebrow">{{ __('Registrar') }}</p>
+            <p class="eyebrow"><a href="{{ route('admin.extensions.index', ['tab' => 'registrars']) }}">{{ __('Extensions') }}</a> · {{ __('Registrar') }}</p>
             <h1 style="margin-top:.2rem">{{ $manifest->name }}</h1>
             <p>{{ $manifest->description }}</p>
         </div>
@@ -29,7 +29,7 @@
         <p class="muted" style="margin:0;font-size:.88rem">{{ __('Then choose this registrar for each extension under Domain prices.') }}</p>
         <div class="form-actions">
             <button class="btn btn-primary" type="submit">{{ __('Save') }}</button>
-            <a class="btn" href="{{ route('admin.settings.registrars.index') }}">{{ __('Back') }}</a>
+            <a class="btn" href="{{ route('admin.extensions.index', ['tab' => 'registrars']) }}">{{ __('Back') }}</a>
         </div>
     </form>
 </x-layouts.admin>

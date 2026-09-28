@@ -12,15 +12,12 @@ use Illuminate\View\View;
 
 class GatewayController extends Controller
 {
-    public function index(ExtensionManager $extensions): View
+    /**
+     * The list moved to Extensions in 0.4.9; old links still work.
+     */
+    public function index(): RedirectResponse
     {
-        $gateways = $extensions->ofType(ExtensionManifest::TYPE_GATEWAY)->map(fn (ExtensionManifest $manifest): array => [
-            'manifest' => $manifest,
-            'enabled' => $extensions->isEnabled($manifest->slug),
-            'configured' => $extensions->gateway($manifest->slug)->isConfigured(),
-        ]);
-
-        return view('admin.settings.gateways.index', ['gateways' => $gateways]);
+        return redirect()->route('admin.extensions.index', ['tab' => 'gateways']);
     }
 
     public function edit(string $gateway, ExtensionManager $extensions): View
@@ -67,7 +64,7 @@ class GatewayController extends Controller
         $extensions->saveSettings($gateway, $settings, $enabled);
         Activity::log('gateway.updated', "Payment gateway {$manifest->name} ".($enabled ? 'enabled' : 'disabled'));
 
-        return redirect()->route('admin.settings.gateways.index')->with('status', __(':name saved.', ['name' => $manifest->name]));
+        return redirect()->route('admin.extensions.index', ['tab' => 'gateways'])->with('status', __(':name saved.', ['name' => $manifest->name]));
     }
 
     private function manifest(string $slug, ExtensionManager $extensions): ExtensionManifest

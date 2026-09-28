@@ -49,6 +49,8 @@ class Demo
         'admin.settings.social.update',
         'admin.settings.security.update',
         'admin.settings.security.captcha-check',
+        'admin.settings.import.preview',
+        'admin.extensions.toggle',
         'admin.settings.import.start',
         'admin.settings.import.cancel',
         'admin.domains.action',

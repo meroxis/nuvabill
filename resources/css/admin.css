@@ -113,6 +113,17 @@
         padding-inline: 6px;
     }
 
+    .nav-link .count[data-tone='warn'] {
+        background: var(--nb-warn);
+    }
+
+    /* Pages of switched-on add-ons, under Extensions */
+    .nav-link.nav-sub {
+        min-height: 32px;
+        padding-inline-start: 42px;
+        font-size: 0.84rem;
+    }
+
     .side-foot {
         margin: auto -12px -12px;
         display: flex;

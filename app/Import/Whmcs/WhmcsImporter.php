@@ -2,6 +2,8 @@
 
 namespace App\Import\Whmcs;
 
+use App\Auth\LegacyPassword;
+use App\Billing\RenewalGenerator;
 use App\Domains\DomainName;
 use App\Enums\AutoSetup;
 use App\Enums\BillingCycle;
@@ -12,10 +14,13 @@ use App\Enums\ProductType;
 use App\Enums\ServiceStatus;
 use App\Enums\TicketPriority;
 use App\Enums\TicketStatus;
+use App\Extensions\ExtensionManager;
+use App\Extensions\ExtensionManifest;
+use App\Import\ImportSource;
+use App\Import\Preflight;
 use App\Models\Admin;
 use App\Models\Client;
 use App\Models\Domain;
-use App\Models\ImportMapping;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Product;
@@ -28,30 +33,21 @@ use App\Models\TicketDepartment;
 use App\Models\TicketReply;
 use App\Models\TldPrice;
 use App\Models\Transaction;
-use App\Support\Money;
 use Carbon\CarbonImmutable;
-use Illuminate\Database\ConnectionInterface;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use InvalidArgumentException;
-use PDO;
-use RuntimeException;
 use stdClass;
 
 /**
  * Copies a WHMCS installation into Nuvabill by reading its MySQL database.
  *
- * Each step reads rows in ID order after a cursor, so a big import runs in small pieces. Every imported
- * record is kept in import_mappings, so running the import again updates what changed in WHMCS
- * (statuses, due dates, new invoices and replies) instead of adding duplicates.
- *
- * Not imported: server and service passwords (WHMCS encrypts them with its own key), saved cards,
- * addons, configurable options and custom fields (except a Virtualizor "vpsid").
+ * With WHMCS's encryption key (cc_encryption_hash from configuration.php) server and service
+ * passwords come across too; without it they are left empty. Not imported: saved cards, addons,
+ * configurable options and custom fields (except a Virtualizor "vpsid").
  */
-class WhmcsImporter
+class WhmcsImporter extends ImportSource
 {
     public const SOURCE = 'whmcs';
 
@@ -107,6 +103,19 @@ class WhmcsImporter
     private const REGISTRARS = ['resellerclub', 'namecheap', 'enom', 'opensrs'];
 
     /**
+     * WHMCS payment module names and the Nuvabill gateway each becomes. Others keep their WHMCS name.
+     */
+    private const GATEWAYS = [
+        'paypal' => 'paypal',
+        'paypalcheckout' => 'paypal',
+        'paypal_ppcpv' => 'paypal',
+        'stripe' => 'stripe',
+        'stripe_checkout' => 'stripe',
+        'banktransfer' => 'banktransfer',
+        'mailin' => 'banktransfer',
+    ];
+
+    /**
      * Billing cycle => [price column, setup fee column] in tblpricing.
      */
     private const CYCLE_COLUMNS = [
@@ -119,26 +128,11 @@ class WhmcsImporter
     ];
 
     /**
-     * @var array<string, array<int, int|null>>
-     */
-    private array $mappings = [];
-
-    /**
-     * @var array<string, bool>
-     */
-    private array $tables = [];
-
-    /**
      * @var array<int, string>|null
      */
     private ?array $currencies = null;
 
     private ?string $defaultCurrency = null;
-
-    /**
-     * @var array<int, string>
-     */
-    private array $clientCurrencies = [];
 
     /**
      * @var array<string, int|null>|null
@@ -150,86 +144,54 @@ class WhmcsImporter
      */
     private ?array $knownTlds = null;
 
-    /**
-     * @var array{created: int, updated: int, skipped: int}
-     */
-    private array $counts = ['created' => 0, 'updated' => 0, 'skipped' => 0];
-
-    public function __construct(private string $connection = self::CONNECTION) {}
-
-    /**
-     * Connect to a WHMCS MySQL database.
-     *
-     * @param  array{host?: string, port?: int|string|null, database?: string, username?: string, password?: string|null}  $credentials
-     */
-    public static function connect(array $credentials): self
+    public function __construct(string $connection = self::CONNECTION, ?string $secret = null)
     {
-        if (blank($credentials['host'] ?? null) || blank($credentials['database'] ?? null) || blank($credentials['username'] ?? null)) {
-            throw new InvalidArgumentException(__('Enter the WHMCS database host, name and username.'));
-        }
-
-        config(['database.connections.'.self::CONNECTION => [
-            'driver' => 'mysql',
-            'host' => $credentials['host'],
-            'port' => (int) ($credentials['port'] ?? 0) ?: 3306,
-            'database' => $credentials['database'],
-            'username' => $credentials['username'],
-            'password' => (string) ($credentials['password'] ?? ''),
-            'charset' => 'utf8mb4',
-            'collation' => 'utf8mb4_unicode_ci',
-            'prefix' => '',
-            'strict' => false,
-            'options' => [PDO::ATTR_TIMEOUT => 10],
-        ]]);
-
-        DB::purge(self::CONNECTION);
-
-        return new self;
+        parent::__construct($connection, $secret);
     }
 
-    /**
-     * The WHMCS version and how many rows each step will read. Throws when the database cannot be read.
-     *
-     * @return array{version: string, counts: array<string, int>}
-     */
-    public function check(): array
+    public static function connect(array $credentials, string $connection = self::CONNECTION): static
     {
-        if (! $this->hasTable('tblclients') || ! $this->hasTable('tblinvoices')) {
-            throw new RuntimeException(__('This database has no WHMCS tables (tblclients, tblinvoices).'));
-        }
-
-        $counts = [];
-
-        foreach (self::TABLES as $step => $table) {
-            $counts[$step] = $this->hasTable($table) ? $this->db()->table($table)->count() : 0;
-        }
-
-        $version = $this->hasTable('tblconfiguration') ? (string) $this->db()->table('tblconfiguration')->where('setting', 'Version')->value('value') : '';
-
-        return ['version' => $version, 'counts' => $counts];
+        return parent::connect($credentials, $connection);
     }
 
-    /**
-     * Import up to $limit rows of one step, starting after the given WHMCS ID.
-     *
-     * @return array{last_id: int, done: bool, created: int, updated: int, skipped: int}
-     */
-    public function run(string $step, int $afterId = 0, int $limit = 200): array
+    public static function key(): string
     {
-        $table = self::TABLES[$step] ?? throw new InvalidArgumentException("Unknown import step [{$step}].");
-        $this->counts = ['created' => 0, 'updated' => 0, 'skipped' => 0];
+        return self::SOURCE;
+    }
 
-        if (! $this->hasTable($table)) {
-            return ['last_id' => $afterId, 'done' => true] + $this->counts;
-        }
+    public static function name(): string
+    {
+        return 'WHMCS';
+    }
 
-        $rows = $this->db()->table($table)->where('id', '>', $afterId)->orderBy('id')->limit($limit)->get();
+    public static function steps(): array
+    {
+        return self::STEPS;
+    }
 
-        if ($rows->isNotEmpty()) {
-            DB::transaction(fn () => $this->{'import'.Str::studly($step)}($rows));
-        }
+    public static function keyHelp(): ?string
+    {
+        return 'Optional. The value of $cc_encryption_hash in configuration.php. With it, server and service passwords come across too.';
+    }
 
-        return ['last_id' => (int) ($rows->last()->id ?? $afterId), 'done' => $rows->count() < $limit] + $this->counts;
+    public static function configFile(): string
+    {
+        return 'configuration.php';
+    }
+
+    protected function tables(): array
+    {
+        return self::TABLES;
+    }
+
+    protected function requiredTables(): array
+    {
+        return ['tblclients', 'tblinvoices'];
+    }
+
+    public function version(): string
+    {
+        return $this->hasTable('tblconfiguration') ? (string) $this->db()->table('tblconfiguration')->where('setting', 'Version')->value('value') : '';
     }
 
     /**
@@ -237,7 +199,7 @@ class WhmcsImporter
      *
      * @param  Collection<int, stdClass>  $rows
      */
-    private function importStaff(Collection $rows): void
+    protected function importStaff(Collection $rows): void
     {
         foreach ($rows as $row) {
             $email = strtolower((string) $this->text($row->email ?? null));
@@ -267,7 +229,7 @@ class WhmcsImporter
     /**
      * @param  Collection<int, stdClass>  $rows
      */
-    private function importClients(Collection $rows): void
+    protected function importClients(Collection $rows): void
     {
         $passwords = $this->ownerPasswords($rows->pluck('id')->all());
 
@@ -303,7 +265,6 @@ class WhmcsImporter
                     'Closed' => ClientStatus::Closed,
                     default => ClientStatus::Active,
                 })->value,
-                'credit' => $this->money($row->credit ?? 0),
                 'notes' => $this->text($row->notes ?? null),
             ], [
                 'email' => $email,
@@ -312,18 +273,43 @@ class WhmcsImporter
                 'created_at' => $this->date($row->datecreated ?? null) ?? now(),
             ]);
 
-            // WHMCS 7+ keeps bcrypt hashes, which Nuvabill can check, so clients keep their password.
-            // Older MD5 hashes cannot be used: those clients choose a new password with "Forgot password".
-            if ($client->wasRecentlyCreated && ($hash = $this->bcrypt($passwords[$row->id] ?? $row->password ?? null)) !== null) {
-                DB::table('clients')->where('id', $client->id)->update(['password' => $hash]);
+            if ($client->wasRecentlyCreated) {
+                $this->importPassword($client, (string) ($passwords[$row->id] ?? $row->password ?? ''));
             }
+
+            $this->syncCredit($client, $this->money($row->credit ?? 0), (int) $row->id);
         }
+    }
+
+    /**
+     * WHMCS 7+ keeps bcrypt hashes, which work as they are. WHMCS 4.2 to 6.2 kept salted MD5, which is
+     * checked at the first sign-in. Very old versions kept passwords encrypted, which the key opens.
+     */
+    private function importPassword(Client $client, string $stored): void
+    {
+        if ($this->secret !== null && ! str_contains($stored, '$') && ! preg_match('/^[a-f0-9]{32}:/i', $stored)
+            && ($plain = (new WhmcsCrypt($this->secret))->decrypt($stored)) !== null) {
+            DB::table('clients')->where('id', $client->id)->update(['password' => Hash::make($plain)]);
+
+            return;
+        }
+
+        $this->applyPassword($client, $stored);
+    }
+
+    protected function legacyPassword(string $hash): ?string
+    {
+        if (preg_match('/^([a-f0-9]{32}):(.{1,32})$/i', $hash, $match)) {
+            return 'md5-salt:'.strtolower($match[1]).':'.$match[2];
+        }
+
+        return str_starts_with($hash, '$argon2') ? 'native:'.$hash : null;
     }
 
     /**
      * @param  Collection<int, stdClass>  $rows
      */
-    private function importProductGroups(Collection $rows): void
+    protected function importProductGroups(Collection $rows): void
     {
         foreach ($rows as $row) {
             $name = $this->text($row->name ?? null) ?? 'Group '.$row->id;
@@ -338,11 +324,12 @@ class WhmcsImporter
     }
 
     /**
-     * Servers are imported switched off: WHMCS encrypts their passwords, so staff enter them again and switch them on.
+     * Servers are imported switched off, so staff check them before Nuvabill uses them. With the WHMCS key
+     * their password comes across; the access hash (API token) is not encrypted in WHMCS.
      *
      * @param  Collection<int, stdClass>  $rows
      */
-    private function importServers(Collection $rows): void
+    protected function importServers(Collection $rows): void
     {
         foreach ($rows as $row) {
             $module = self::SERVER_MODULES[strtolower((string) ($row->type ?? ''))] ?? null;
@@ -355,8 +342,10 @@ class WhmcsImporter
 
             $ip = filter_var($row->ipaddress ?? null, FILTER_VALIDATE_IP) ?: null;
             $hostname = $this->text($row->hostname ?? null) ?? $ip ?? 'localhost';
+            $password = $this->decrypt($row->password ?? null);
+            $token = preg_replace('/\s+/', '', (string) ($row->accesshash ?? '')) ?: null;
 
-            $this->upsert('server', (int) $row->id, Server::class, [
+            $server = $this->upsert('server', (int) $row->id, Server::class, [
                 'name' => $this->text($row->name ?? null) ?? $hostname,
                 'module' => $module,
                 'hostname' => $hostname,
@@ -367,13 +356,19 @@ class WhmcsImporter
                 'nameservers' => array_values(array_filter(array_map(fn (int $number): ?string => $this->text($row->{'nameserver'.$number} ?? null), range(1, 5)))),
                 'max_accounts' => (int) ($row->maxaccounts ?? 0) ?: null,
             ], ['is_active' => false]);
+
+            // Only filled when empty, so passwords staff entered in Nuvabill are kept.
+            $server->forceFill(array_filter([
+                'password' => blank($server->password) ? $password : null,
+                'api_token' => blank($server->api_token) ? $token : null,
+            ]))->save();
         }
     }
 
     /**
      * @param  Collection<int, stdClass>  $rows
      */
-    private function importProducts(Collection $rows): void
+    protected function importProducts(Collection $rows): void
     {
         $prices = $this->hasTable('tblpricing')
             ? $this->db()->table('tblpricing')->where('type', 'product')->whereIn('relid', $rows->pluck('id'))->get()->groupBy('relid')
@@ -461,7 +456,7 @@ class WhmcsImporter
     /**
      * @param  Collection<int, stdClass>  $rows
      */
-    private function importServices(Collection $rows): void
+    protected function importServices(Collection $rows): void
     {
         $vpsIds = $this->customFieldValues('vpsid', $rows->pluck('id')->all());
 
@@ -476,14 +471,7 @@ class WhmcsImporter
             }
 
             $cycle = $this->cycle($row->billingcycle ?? '');
-            $status = match ((string) ($row->domainstatus ?? '')) {
-                'Active', 'Completed' => ServiceStatus::Active,
-                'Suspended' => ServiceStatus::Suspended,
-                'Terminated' => ServiceStatus::Terminated,
-                'Cancelled' => ServiceStatus::Cancelled,
-                'Fraud' => ServiceStatus::Fraud,
-                default => ServiceStatus::Pending,
-            };
+            $status = $this->serviceStatus($row->domainstatus ?? '');
 
             $service = $this->upsert('service', (int) $row->id, Service::class, [
                 'product_id' => $productId,
@@ -505,8 +493,25 @@ class WhmcsImporter
             ]);
 
             $service->suspended_at = $status === ServiceStatus::Suspended ? ($service->suspended_at ?? now()) : null;
+
+            if (blank($service->password) && ($password = $this->decrypt($row->password ?? null)) !== null) {
+                $service->password = $password;
+            }
+
             $service->save();
         }
+    }
+
+    private function serviceStatus(mixed $value): ServiceStatus
+    {
+        return match ((string) $value) {
+            'Active', 'Completed' => ServiceStatus::Active,
+            'Suspended' => ServiceStatus::Suspended,
+            'Terminated' => ServiceStatus::Terminated,
+            'Cancelled' => ServiceStatus::Cancelled,
+            'Fraud' => ServiceStatus::Fraud,
+            default => ServiceStatus::Pending,
+        };
     }
 
     /**
@@ -514,7 +519,7 @@ class WhmcsImporter
      *
      * @param  Collection<int, stdClass>  $rows
      */
-    private function importTlds(Collection $rows): void
+    protected function importTlds(Collection $rows): void
     {
         $prices = $this->hasTable('tblpricing')
             ? $this->db()->table('tblpricing')->whereIn('type', ['domainregister', 'domaintransfer', 'domainrenew'])->whereIn('relid', $rows->pluck('id'))->get()->groupBy('relid')
@@ -563,7 +568,7 @@ class WhmcsImporter
     /**
      * @param  Collection<int, stdClass>  $rows
      */
-    private function importDomains(Collection $rows): void
+    protected function importDomains(Collection $rows): void
     {
         $this->knownTlds ??= TldPrice::query()->distinct()->pluck('tld')->all();
 
@@ -612,7 +617,7 @@ class WhmcsImporter
      *
      * @param  Collection<int, stdClass>  $rows
      */
-    private function importInvoices(Collection $rows): void
+    protected function importInvoices(Collection $rows): void
     {
         $ids = $rows->pluck('id')->all();
         $payments = $this->hasTable('tblaccounts')
@@ -667,12 +672,16 @@ class WhmcsImporter
                 foreach ($items->get($row->id, collect()) as $item) {
                     $this->importInvoiceItem($invoice, $item);
                 }
+            } elseif ($status === InvoiceStatus::Cancelled) {
+                // Cancelled in WHMCS after the first run: its periods may be invoiced again.
+                $invoice->items()->whereNotNull('billing_key')->update(['billing_key' => null]);
             }
         }
     }
 
     /**
-     * Lines for services and domains keep their period, so paying an imported renewal invoice in Nuvabill renews them.
+     * Lines for services and domains keep their period, so paying an imported renewal invoice in Nuvabill
+     * renews them, and Nuvabill never invoices the same period again.
      */
     private function importInvoiceItem(Invoice $invoice, stdClass $item): void
     {
@@ -697,6 +706,18 @@ class WhmcsImporter
             default => null,
         };
 
+        $key = match (true) {
+            $end === null || $invoice->status === InvoiceStatus::Cancelled => null,
+            $type === InvoiceItem::TYPE_SERVICE && $service !== null => RenewalGenerator::billingKey('service', $service->id, $start),
+            $type === InvoiceItem::TYPE_DOMAIN_RENEW && $domain !== null => RenewalGenerator::billingKey('domain', $domain->id, $start),
+            default => null,
+        };
+
+        // WHMCS may hold two invoices for one period; only the first keeps the key.
+        if ($key !== null && InvoiceItem::query()->where('billing_key', $key)->exists()) {
+            $key = null;
+        }
+
         $invoice->items()->create([
             'service_id' => $service?->id,
             'domain_id' => $domain?->id,
@@ -705,13 +726,14 @@ class WhmcsImporter
             'amount' => $this->money($item->amount ?? 0),
             'period_start' => $end !== null ? $start : null,
             'period_end' => $end,
+            'billing_key' => $key,
         ]);
     }
 
     /**
      * @param  Collection<int, stdClass>  $rows
      */
-    private function importTransactions(Collection $rows): void
+    protected function importTransactions(Collection $rows): void
     {
         foreach ($rows as $row) {
             $invoiceId = $this->localId('invoice', $row->invoiceid ?? 0);
@@ -725,7 +747,7 @@ class WhmcsImporter
                 continue;
             }
 
-            $gateway = Str::limit($this->text($row->gateway ?? null) ?? 'manual', 60, '');
+            $gateway = $this->gateway($row->gateway ?? null);
             $reference = Str::limit($this->text($row->transid ?? null) ?? 'whmcs-'.$row->id, 180, '');
 
             if ($this->localId('transaction', $row->id) === null && Transaction::query()->where('gateway', $gateway)->where('reference', $reference)->exists()) {
@@ -748,12 +770,19 @@ class WhmcsImporter
         }
     }
 
+    private function gateway(mixed $name): string
+    {
+        $name = strtolower((string) $this->text($name));
+
+        return self::GATEWAYS[$name] ?? (Str::limit($name, 60, '') ?: 'manual');
+    }
+
     /**
      * Departments with the same name as an existing one are linked to it.
      *
      * @param  Collection<int, stdClass>  $rows
      */
-    private function importDepartments(Collection $rows): void
+    protected function importDepartments(Collection $rows): void
     {
         foreach ($rows as $row) {
             $name = $this->text($row->name ?? null) ?? 'Support';
@@ -782,7 +811,7 @@ class WhmcsImporter
      *
      * @param  Collection<int, stdClass>  $rows
      */
-    private function importTickets(Collection $rows): void
+    protected function importTickets(Collection $rows): void
     {
         $replies = $this->hasTable('tblticketreplies')
             ? $this->db()->table('tblticketreplies')->whereIn('tid', $rows->pluck('id'))->orderBy('id')->get()->groupBy('tid')
@@ -866,80 +895,128 @@ class WhmcsImporter
         return $reply;
     }
 
-    /**
-     * Create or update the Nuvabill record for a WHMCS row. $createOnly values are set on the first import only,
-     * so changes staff make in Nuvabill (slugs, module settings, emails) are kept when the import runs again.
-     *
-     * @template TModel of Model
-     *
-     * @param  class-string<TModel>  $model
-     * @param  array<string, mixed>  $attributes
-     * @param  array<string, mixed>  $createOnly
-     * @return TModel
-     */
-    private function upsert(string $entity, int $sourceId, string $model, array $attributes, array $createOnly = []): Model
+    protected function entities(): array
     {
-        $localId = $this->localId($entity, $sourceId);
-        $record = $localId !== null ? $model::query()->find($localId) : null;
-
-        if ($record !== null) {
-            $record->forceFill($attributes)->save();
-            $this->counts['updated']++;
-
-            return $record;
-        }
-
-        $record = (new $model)->forceFill($attributes + $createOnly);
-        $record->save();
-
-        $this->remember($entity, $sourceId, (int) $record->getKey());
-        $this->counts['created']++;
-
-        return $record;
-    }
-
-    private function localId(string $entity, mixed $sourceId): ?int
-    {
-        $sourceId = (int) $sourceId;
-
-        if ($sourceId <= 0) {
-            return null;
-        }
-
-        if (! array_key_exists($sourceId, $this->mappings[$entity] ?? [])) {
-            $this->mappings[$entity][$sourceId] = ImportMapping::query()
-                ->where(['source' => self::SOURCE, 'entity' => $entity, 'source_id' => $sourceId])
-                ->value('local_id');
-        }
-
-        return $this->mappings[$entity][$sourceId];
-    }
-
-    private function remember(string $entity, int $sourceId, int $localId): void
-    {
-        ImportMapping::query()->updateOrCreate(
-            ['source' => self::SOURCE, 'entity' => $entity, 'source_id' => $sourceId],
-            ['local_id' => $localId],
-        );
-
-        $this->mappings[$entity][$sourceId] = $localId;
+        return ['staff' => 'admin', 'clients' => 'client', 'product_groups' => 'product_group', 'servers' => 'server', 'products' => 'product', 'services' => 'service', 'domains' => 'domain', 'invoices' => 'invoice', 'transactions' => 'transaction', 'departments' => 'department', 'tickets' => 'ticket'];
     }
 
     /**
-     * The value, or the value with "-2", "-3"... when another record already uses it.
-     *
-     * @param  class-string<Model>  $model
+     * What an import would do, read without changing anything.
      */
-    private function unique(string $model, string $column, string $value): string
+    public function preflight(): Preflight
     {
-        $candidate = $value;
-        $suffix = 2;
+        $report = new Preflight(self::name(), $this->version());
 
-        while ($model::query()->where($column, $candidate)->exists()) {
-            $candidate = $value.'-'.$suffix++;
+        $this->addSteps($report);
+        $this->preflightClients($report);
+        $this->preflightCatalog($report);
+        $this->preflightBilling($report);
+        $this->preflightSupport($report);
+
+        $this->automationAdvice($report);
+
+        return $report;
+    }
+
+    private function preflightClients(Preflight $report): void
+    {
+        $clients = $this->db()->table('tblclients')->get(['id', 'email', 'password']);
+        $owners = $this->ownerPasswords($clients->pluck('id')->all());
+        $hashes = $clients->map(fn (stdClass $row): string => (string) ($owners[$row->id] ?? $row->password ?? ''));
+        $encrypted = $this->secret === null ? collect() : $hashes->filter(fn (string $hash): bool => ! LegacyPassword::isBcrypt($hash) && $this->legacyPassword($hash) === null && (new WhmcsCrypt($this->secret))->decrypt($hash) !== null);
+
+        $this->checkEmails($report, $clients->pluck('email'));
+        $this->checkPasswords($report, $hashes->diffKeys($encrypted));
+        $report->problem(Preflight::INFO, $encrypted->count(), 'Client passwords that WHMCS encrypted: :count. The key opens them, so they keep working.');
+
+        if ($this->hasTable('tblusers_clients')) {
+            $report->problem(Preflight::INFO, $this->db()->table('tblusers_clients')->where('owner', 0)->count(), 'Extra users of client accounts: :count. They are not imported; the account owner signs in.');
+        }
+    }
+
+    private function preflightCatalog(Preflight $report): void
+    {
+        if ($this->hasTable('tblservers')) {
+            $servers = $this->db()->table('tblservers')->get(['id', 'name', 'type', 'password']);
+            [$supported, $unsupported] = $servers->partition(fn (stdClass $row): bool => isset(self::SERVER_MODULES[strtolower((string) $row->type)]));
+            $withPassword = $supported->filter(fn (stdClass $row): bool => filled($row->password));
+            $unreadable = $withPassword->filter(fn (stdClass $row): bool => $this->decrypt($row->password) === null)->count();
+
+            $report->problem(Preflight::WARNING, $unsupported->count(), 'Servers with a module Nuvabill does not have: :count. They are skipped.', examples: $unsupported->map(fn (stdClass $row): string => $this->text($row->name).' ('.$row->type.')')->all());
+            $report->problem(Preflight::INFO, $supported->count(), 'Servers are imported switched off: :count. Check them in Servers, then switch them on.');
+
+            if ($this->secret === null) {
+                $report->problem(Preflight::WARNING, $unreadable, 'Server passwords that need the WHMCS key: :count. Add the key, or enter the passwords in Servers after the import.');
+            } elseif ($unreadable > 0 && $unreadable === $withPassword->count()) {
+                $report->problem(Preflight::ERROR, $unreadable, 'The WHMCS key did not open any of the :count server passwords. Check that it is the value of $cc_encryption_hash in configuration.php.');
+            } else {
+                $report->problem(Preflight::WARNING, $unreadable, 'Server passwords this key could not open: :count. Enter them in Servers after the import.');
+            }
         }
 
-        return $candidate;
+        if ($this->hasTable('tblproducts')) {
+            $products = $this->db()->table('tblproducts')->where('servertype', '!=', '')->whereNotIn(DB::raw('LOWER(servertype)'), array_keys(self::SERVER_MODULES))->get(['name', 'servertype']);
+            $report->problem(Preflight::WARNING, $products->count(), 'Products with a module Nuvabill does not have: :count. They are imported for manual setup.', examples: $products->map(fn (stdClass $row): string => $this->text($row->name).' ('.$row->servertype.')')->all());
+        }
+
+        $count = fn (string $table): int => $this->hasTable($table) ? $this->db()->table($table)->count() : 0;
+        $report->problem(Preflight::WARNING, $count('tblhostingaddons'), 'Addons on services, not imported: :count.');
+        $report->problem(Preflight::WARNING, $count('tblhostingconfigoptions'), 'Configurable option values, not imported: :count.');
+        $report->problem(Preflight::WARNING, $count('tblcustomfieldsvalues'), 'Custom field values, not imported: :count.');
+
+        if ($this->hasTable('tbldomains')) {
+            $other = $this->db()->table('tbldomains')->where('registrar', '!=', '')->whereNotIn(DB::raw('LOWER(registrar)'), self::REGISTRARS);
+            $report->problem(Preflight::INFO, (clone $other)->count(), 'Domains with a registrar Nuvabill does not have: :count. They are imported without one; renew them by hand.', examples: $other->distinct()->pluck('registrar')->all());
+        }
+    }
+
+    private function preflightBilling(Preflight $report): void
+    {
+        $suspendDays = (int) setting('automation.suspend_days');
+
+        if ($suspendDays > 0 && $this->hasTable('tblhosting') && $this->hasTable('tblinvoiceitems')) {
+            $overdue = $this->db()->table('tblhosting')
+                ->where('domainstatus', 'Active')
+                ->whereIn('id', fn ($query) => $query->select('relid')->from('tblinvoiceitems')
+                    ->join('tblinvoices', 'tblinvoices.id', '=', 'tblinvoiceitems.invoiceid')
+                    ->where('tblinvoiceitems.type', 'Hosting')
+                    ->where('tblinvoices.status', 'Unpaid')
+                    ->where('tblinvoices.duedate', '>', '0000-00-00')
+                    ->where('tblinvoices.duedate', '<=', today()->subDays($suspendDays)->toDateString()))
+                ->count();
+
+            $report->problem(Preflight::WARNING, $overdue, 'Active services with an invoice more than :days days overdue: :count. Nuvabill\'s first nightly run suspends them.', ['days' => $suspendDays]);
+        }
+
+        if ($this->hasTable('tblcurrencies')) {
+            $known = array_merge([strtoupper((string) setting('billing.currency'))], array_keys((array) setting('currency.rates', [])));
+            $other = $this->db()->table('tblcurrencies')->pluck('code')->map(fn (mixed $code): string => strtoupper((string) $code))->reject(fn (string $code): bool => in_array($code, $known, true));
+            $report->problem(Preflight::INFO, $other->count(), 'Currencies not set up in Nuvabill: :count. Their clients and invoices keep them; add exchange rates in Settings.', examples: $other->values()->all());
+        }
+
+        if ($this->hasTable('tblaccounts')) {
+            $known = array_merge(array_keys(self::GATEWAYS), app(ExtensionManager::class)->ofType(ExtensionManifest::TYPE_GATEWAY)->keys()->all());
+            $gateways = $this->db()->table('tblaccounts')->distinct()->pluck('gateway')->map(fn (mixed $name): string => strtolower((string) $name))->filter()->reject(fn (string $name): bool => in_array($name, $known, true));
+            $report->problem(Preflight::INFO, $gateways->count(), 'Payment methods not in Nuvabill: :count. Old payments keep their name.', examples: $gateways->values()->all());
+        }
+
+        $report->problem(Preflight::INFO, $this->db()->table('tblclients')->pluck('credit')->filter(fn (mixed $credit): bool => (float) $credit > 0)->count(), 'Clients with credit: :count. It becomes their Nuvabill wallet balance.');
+    }
+
+    private function preflightSupport(Preflight $report): void
+    {
+        if ($this->hasTable('tbltickets')) {
+            $report->problem(Preflight::WARNING, $this->db()->table('tbltickets')->where('userid', 0)->count(), 'Tickets from guests without a client account: :count. They are skipped.');
+            $report->problem(Preflight::INFO, $this->hasColumn('tbltickets', 'attachment') ? $this->db()->table('tbltickets')->where('attachment', '!=', '')->count() : 0, 'Tickets with attachments: :count. The messages are imported without the files.');
+        }
+    }
+
+    /**
+     * A value WHMCS encrypted with its own key, or null without the key or when it cannot be read.
+     */
+    private function decrypt(mixed $value): ?string
+    {
+        return $this->secret !== null && filled($value) ? (new WhmcsCrypt($this->secret))->decrypt((string) $value) : null;
     }
 
     /**
@@ -960,14 +1037,6 @@ class WhmcsImporter
             ->where('tblusers_clients.owner', 1)
             ->pluck('tblusers.password', 'tblusers_clients.client_id')
             ->all();
-    }
-
-    /**
-     * A bcrypt hash in the "$2y$" form Laravel checks, or null for any other kind of hash.
-     */
-    private function bcrypt(?string $hash): ?string
-    {
-        return preg_match('/^\$2[aby]\$\d{2}\$[.\/A-Za-z0-9]{53}$/', (string) $hash) ? '$2y$'.substr((string) $hash, 4) : null;
     }
 
     /**
@@ -1041,45 +1110,5 @@ class WhmcsImporter
         }
 
         return $this->currencies[(int) $currencyId] ?? $fallback ?? $this->defaultCurrency ?? (string) setting('billing.currency');
-    }
-
-    private function clientCurrency(int $clientId): string
-    {
-        return $this->clientCurrencies[$clientId] ??= (string) (Client::query()->whereKey($clientId)->value('currency') ?? setting('billing.currency'));
-    }
-
-    /**
-     * WHMCS stores most text HTML-encoded ("Raz &amp; Co").
-     */
-    private function text(mixed $value): ?string
-    {
-        $value = trim(html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-
-        return $value === '' ? null : $value;
-    }
-
-    /**
-     * WHMCS uses "0000-00-00" for "no date".
-     */
-    private function date(mixed $value): ?string
-    {
-        $value = trim((string) $value);
-
-        return $value === '' || str_starts_with($value, '0000-00-00') ? null : $value;
-    }
-
-    private function money(mixed $value): int
-    {
-        return is_numeric($value) ? Money::toMinor((string) $value) : 0;
-    }
-
-    private function hasTable(string $table): bool
-    {
-        return $this->tables[$table] ??= Schema::connection($this->connection)->hasTable($table);
-    }
-
-    private function db(): ConnectionInterface
-    {
-        return DB::connection($this->connection);
     }
 }

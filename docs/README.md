@@ -12,6 +12,7 @@ These pages cover running your own copy. The same guides, and the developer and 
 | [Payment gateways](integrations/payment-gateways.md) | Stripe, PayPal, FIB, FastPay, Wayl, bank transfer |
 | [Domain registrars](integrations/domain-registrars.md) | ResellerClub, Namecheap, Enom, OpenSRS |
 | [Migrating from WHMCS](whmcs-migration.md) | What the importer copies, what it leaves out, and a safe switch-over plan |
+| [Moving from Blesta, FOSSBilling or Paymenter](importing.md) | The dry run, what each importer copies, and what to do after the import |
 | [FAQ](faq.md) | License, White-label License, updates, backups, security and more |
 
 More:

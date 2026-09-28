@@ -49,14 +49,17 @@ class PaymentChecks extends CheckGroup
     public function run(): array
     {
         return [
-            $this->testMode(ExtensionManifest::TYPE_GATEWAY, 'payments.test_mode', 'No payment method is in test mode', 'Clients can check out, but no real money is taken.', 'admin.settings.gateways.index'),
+            $this->testMode(ExtensionManifest::TYPE_GATEWAY, 'payments.test_mode', 'No payment method is in test mode', 'Clients can check out, but no real money is taken.', 'admin.extensions.index', ['tab' => 'gateways']),
             $this->webhooks(),
             $this->serverHttps(),
-            $this->testMode(ExtensionManifest::TYPE_REGISTRAR, 'registrars.test_mode', 'No domain registrar is in test mode', 'Domains that clients pay for are not really registered.', 'admin.settings.registrars.index'),
+            $this->testMode(ExtensionManifest::TYPE_REGISTRAR, 'registrars.test_mode', 'No domain registrar is in test mode', 'Domains that clients pay for are not really registered.', 'admin.extensions.index', ['tab' => 'registrars']),
         ];
     }
 
-    private function testMode(string $type, string $id, string $title, string $why, string $route): CheckResult
+    /**
+     * @param  array<string, string>  $parameters
+     */
+    private function testMode(string $type, string $id, string $title, string $why, string $route, array $parameters = []): CheckResult
     {
         $check = $this->check($id, $title);
         $testing = [];
@@ -80,7 +83,7 @@ class PaymentChecks extends CheckGroup
         return $check->warning(':names: test mode', ['names' => implode(', ', $testing)],
             advice: $why.' Switch to live mode when you are done testing.',
             items: array_map(fn (string $name): array => ['label' => $name, 'value' => __('Test mode'), 'status' => 'warning'], $testing),
-            link: $this->link($route, 'Open the settings'),
+            link: $this->link($route, 'Open the settings', $parameters),
         );
     }
 
@@ -98,7 +101,7 @@ class PaymentChecks extends CheckGroup
 
         return $check->warning('PayPal has no webhook ID',
             advice: 'Without it, a payment is only seen when the client comes back to your site. If they close the page, the invoice stays unpaid until staff check it. Add a webhook in PayPal and paste its ID.',
-            link: $this->link('admin.settings.gateways.index', 'Open payment gateways'),
+            link: $this->link('admin.extensions.index', 'Open payment gateways', ['tab' => 'gateways']),
         );
     }
 

@@ -15,10 +15,11 @@ Yes, with a [White-label License](https://my.nuvabill.com/white-label). Enter it
 PHP 8.3 or newer, MySQL 8 or MariaDB 10.6+ (or SQLite for small sites), and a cron job every minute. Most shared hosting
 accounts with cPanel, DirectAdmin or Plesk have this. See [Installation](installation.md).
 
-## Can I move from WHMCS?
+## Can I move from WHMCS, Blesta, FOSSBilling or Paymenter?
 
-Yes. The importer copies clients (with their passwords when WHMCS stored them as bcrypt), products, services, domains,
-invoices, payments and tickets, and can run again before you switch. See [Migrating from WHMCS](whmcs-migration.md).
+Yes. The importer first shows a dry run of what would come across, then copies clients (with their passwords),
+products, services, domains, invoices, payments, wallet credit and tickets, and can run again before you switch. See
+[Migrating from WHMCS](whmcs-migration.md) and [Moving from Blesta, FOSSBilling or Paymenter](importing.md).
 
 ## Which control panels, gateways and registrars work?
 

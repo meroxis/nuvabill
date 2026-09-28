@@ -4,6 +4,7 @@ namespace App\View\Composers;
 
 use App\Enums\OrderStatus;
 use App\Enums\TicketStatus;
+use App\Extensions\ExtensionOverview;
 use App\Marketplace\LicenseChecker;
 use App\Marketplace\MarketplaceClient;
 use App\Models\HealthRun;
@@ -22,6 +23,7 @@ class AdminLayoutComposer
     public function __construct(
         private MarketplaceClient $marketplace,
         private LicenseChecker $licenses,
+        private ExtensionOverview $extensions,
     ) {}
 
     public function compose(View $view): void
@@ -38,6 +40,8 @@ class AdminLayoutComposer
             'marketplaceUpdates' => $this->marketplaceUpdates($installs),
             // Only the count: the results of a run are large and not needed on every page. Right
             // after an update the table may not exist for a minute, until its database change runs.
+            'extensionsNeedSettings' => (int) rescue(fn () => $this->extensions->needsSettingsCount(), 0),
+            'addonPages' => (array) rescue(fn () => $this->extensions->addonPages(), []),
             'healthUrgent' => (int) rescue(fn () => HealthRun::query()->latest('id')->value('urgent_count'), 0, report: false),
             'licenseWarnings' => $installs->toBase()->filter(fn (MarketplaceInstall $install): bool => $install->hasInvalidLicense())
                 ->map(fn (MarketplaceInstall $install): array => ['slug' => $install->slug, 'name' => $install->name, 'message' => (string) $install->license_message])

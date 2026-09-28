@@ -1,7 +1,7 @@
 <x-layouts.admin :title="$manifest->name">
     <div class="page-head">
         <div>
-            <p class="eyebrow"><a href="{{ route('admin.marketplace.index', ['tab' => 'installed']) }}">{{ __('Marketplace') }}</a></p>
+            <p class="eyebrow"><a href="{{ route('admin.extensions.index', ['tab' => 'addons']) }}">{{ __('Extensions') }}</a> · {{ __('Add-on') }}</p>
             <h1 style="margin-top:.2rem">{{ $manifest->name }}</h1>
             <p>{{ $manifest->description }}</p>
         </div>

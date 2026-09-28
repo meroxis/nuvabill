@@ -216,7 +216,8 @@ class DomainOrderTest extends TestCase
 
         $this->get(route('admin.domains.index'))->assertOk()->assertSee($domain->name);
         $this->get(route('admin.domains.show', $domain))->assertOk();
-        $this->get(route('admin.settings.registrars.index'))->assertOk()->assertSee('Test Registrar');
+        $this->get(route('admin.settings.registrars.index'))->assertRedirect(route('admin.extensions.index', ['tab' => 'registrars']));
+        $this->get(route('admin.extensions.index', ['tab' => 'registrars']))->assertOk()->assertSee('Test Registrar')->assertSee('Domains: 1');
         $this->get(route('admin.settings.registrars.edit', 'testreg'))->assertOk();
 
         $this->post(route('admin.settings.tlds.store'), [

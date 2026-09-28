@@ -102,6 +102,10 @@ class Settings
 
         'import.whmcs' => null,
         'import.whmcs_status' => null,
+        'import.connection' => null,
+        'import.status' => null,
+        'import.preview' => null,
+        'import.password_keys' => [],
 
         'social.google' => null,
         'social.github' => null,
@@ -140,7 +144,7 @@ class Settings
      *
      * @var list<string>
      */
-    public const SECRET_KEYS = ['license.white_label_key', 'mail.password', 'import.whmcs', 'social.google', 'social.github', 'social.facebook', 'security.captcha_secret'];
+    public const SECRET_KEYS = ['license.white_label_key', 'mail.password', 'import.whmcs', 'import.connection', 'import.password_keys', 'social.google', 'social.github', 'social.facebook', 'security.captcha_secret'];
 
     /**
      * @var array<string, mixed>|null

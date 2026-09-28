@@ -6,7 +6,7 @@ nameservers. Without a registrar, domain availability comes from free RDAP looku
 
 1. **Settings → Domains**: add the endings you sell (for example `.com`) with their register, transfer and renew prices,
    and choose the registrar for each.
-2. **Settings → Registrars**: connect the registrar and press **Test connection**.
+2. **Setup → Extensions → Registrars**: connect the registrar and press **Test connection**.
 
 ## ResellerClub (and other LogicBoxes brands)
 

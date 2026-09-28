@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Client\Auth;
 
+use App\Auth\LegacyPassword;
 use App\Auth\Social\SocialLogin;
 use App\Enums\ClientStatus;
 use App\Http\Controllers\Controller;
@@ -28,12 +29,12 @@ class LoginController extends Controller
 
         $guard = Auth::guard('web');
 
-        if (! $guard->validate($credentials)) {
+        if ($guard->validate($credentials)) {
+            /** @var Client $client */
+            $client = $guard->getLastAttempted();
+        } elseif (($client = $this->legacyClient($credentials['email'], $credentials['password'])) === null) {
             return back()->withInput($request->only('email'))->withErrors(['email' => __('The email or password is wrong.')]);
         }
-
-        /** @var Client $client */
-        $client = $guard->getLastAttempted();
 
         if ($client->status === ClientStatus::Closed) {
             return back()->withErrors(['email' => __('This account is closed. Contact support if you need help.')]);
@@ -44,6 +45,24 @@ class LoginController extends Controller
         }
 
         return self::signIn($request, $client, $request->boolean('remember'), 'to the client area');
+    }
+
+    /**
+     * A client imported with a password hash from their old billing system signs in with that
+     * password once; it is then saved with Nuvabill's own hash and the old one is forgotten.
+     */
+    private function legacyClient(string $email, string $password): ?Client
+    {
+        $client = Client::query()->where('email', strtolower($email))->whereNotNull('legacy_password')->first();
+
+        if ($client === null || ! LegacyPassword::check((string) $client->legacy_password, $password)) {
+            return null;
+        }
+
+        $client->forceFill(['password' => $password, 'legacy_password' => null])->save();
+        Activity::log('client.password_upgraded', 'Imported password replaced by a Nuvabill password at first sign-in', $client, actor: $client);
+
+        return $client;
     }
 
     public function destroy(Request $request): RedirectResponse

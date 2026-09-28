@@ -5,7 +5,7 @@
     <section class="card card-flush">
         <div class="card-header">
             <h2>{{ __('Domain prices') }}</h2>
-            <a class="btn btn-sm" href="{{ route('admin.settings.registrars.index') }}">{{ __('Registrars') }}</a>
+            <a class="btn btn-sm" href="{{ route('admin.extensions.index', ['tab' => 'registrars']) }}">{{ __('Registrars') }}</a>
         </div>
         @if ($prices->isEmpty())
             <div class="empty"><strong>{{ __('No extensions yet') }}</strong>{{ __('Add .com or another extension below to start selling domains.') }}</div>

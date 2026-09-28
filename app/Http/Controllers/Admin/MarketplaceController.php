@@ -216,7 +216,7 @@ class MarketplaceController extends Controller
         $this->extensions->saveSettings($slug, $settings, $enabled);
         Activity::log('extension.updated', "Extension {$manifest->name} ".($enabled ? 'switched on' : 'switched off'));
 
-        return redirect()->route('admin.marketplace.show', $slug)->with('status', __(':name saved.', ['name' => $manifest->name]));
+        return redirect()->route('admin.extensions.index', ['tab' => 'addons'])->with('status', __(':name saved.', ['name' => $manifest->name]));
     }
 
     /**
@@ -285,7 +285,7 @@ class MarketplaceController extends Controller
         return match ($listing->type) {
             PackageType::Gateway => route('admin.settings.gateways.edit', $listing->slug),
             PackageType::Registrar => route('admin.settings.registrars.edit', $listing->slug),
-            PackageType::Server => route('admin.servers.create'),
+            PackageType::Server => route('admin.servers.create', ['module' => $listing->slug]),
             PackageType::Addon => route('admin.marketplace.settings', $listing->slug),
             default => null,
         };

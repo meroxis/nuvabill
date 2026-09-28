@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.4.9](https://github.com/meroxis/nuvabill/releases/tag/v0.4.9) | 28 Sep 2026 | Import from Blesta, FOSSBilling and Paymenter; a dry run before every import; all extensions on one page |
 | [0.4.8](https://github.com/meroxis/nuvabill/releases/tag/v0.4.8) | 28 Sep 2026 | Site health (security and database checks); billing jobs never bill twice |
 | [0.4.7](https://github.com/meroxis/nuvabill/releases/tag/v0.4.7) | 28 Sep 2026 | Faster, steadier store pages; easier-to-read colours |
 | [0.4.6](https://github.com/meroxis/nuvabill/releases/tag/v0.4.6) | 28 Sep 2026 | Marketplace updates show up right away |
@@ -29,6 +30,25 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.4.9
+
+- **Import from Blesta, FOSSBilling and Paymenter**, next to WHMCS. In **Settings → Import**, choose the system you are leaving and enter its database details. Clients (with their passwords), products and prices, services, domains, invoices, payments, wallet credit and tickets come across. The other system is only read, and you can run the import again before you switch: it updates what changed instead of making copies.
+  - **Blesta:** add the system key from `config/blesta.php` and clients keep their passwords. Services of registrar modules become domains, and domain prices come from the Domain Manager.
+  - **FOSSBilling:** hosting and other orders become services, domain orders become domains, and the client balance becomes the wallet.
+  - **Paymenter:** everyone becomes a client, users with a role also become staff, and addresses come from user properties. Set up your servers in Nuvabill, then choose them on the products.
+- **A dry run before every import.** **Save and check** now shows, without changing anything, how many records each step would add or update, and the problems it would meet: clients without a valid email, clients who already have an account, passwords that will not work, server modules and registrars Nuvabill does not have, overdue services that the first nightly run would suspend, currencies and payment methods that are not set up, and more. Problems marked in red, such as a wrong WHMCS key, must be fixed before the import can start.
+- **A stronger WHMCS import:**
+  - Passwords from WHMCS 4.2 to 6.2 now work too. Nuvabill checks them at the client's first sign-in and then replaces them with its own.
+  - With WHMCS's encryption key (`$cc_encryption_hash` from `configuration.php`), server and service passwords come across too. Server API tokens always do.
+  - WHMCS credit becomes a wallet entry. Running the import again adds only what changed in WHMCS since.
+  - An unpaid renewal invoice from WHMCS is never billed a second time by Nuvabill, and an invoice cancelled in WHMCS later frees its period again.
+  - Payments made with PayPal, Stripe or bank transfer in WHMCS keep the right payment method.
+- **One bad row no longer stops an import.** It is skipped, and the import page lists it with the reason.
+- From the command line: `php artisan nuvabill:import blesta --dry-run` shows the dry run, and `--key` passes the encryption key. `nuvabill:import-whmcs` still works.
+- **Extensions**, a new page under **Setup**. Every payment gateway, server module, registrar and add-on in one place, with tabs, a search box and, for each one, whether it is on, how much it is used (payments in the last 30 days, servers and accounts, domains), new versions and license problems. Switch them on and off from the list, or open their settings. The sidebar shows how many are switched on but missing settings, and add-ons with their own page get a link under Extensions. Payment gateways and registrars moved here from Settings; old links still work.
+- Site health says why a check was skipped.
+- The ClientExec importer moves to a later release: we want to test it against a real ClientExec database first.
 
 ## 0.4.8
 

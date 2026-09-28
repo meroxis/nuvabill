@@ -22,7 +22,7 @@
             {{ $check->displayTitle() }}
             @if ($check->ignored)
                 <span class="faint" style="display:block;font-size:.8rem">{{ __('Ignored: ":reason"', ['reason' => $check->ignoreReason]) }}</span>
-            @elseif ($check->isProblem() && $check->summary !== '')
+            @elseif (($check->isProblem() || $check->status === \App\Health\Status::Skipped) && $check->summary !== '')
                 <span class="muted" style="display:block;font-size:.82rem">{{ $check->displaySummary() }}</span>
             @endif
         </span>
@@ -36,10 +36,6 @@
 @if ($hasDetails)
     </summary>
     <div class="health-check-body">
-        @if ($check->status === \App\Health\Status::Skipped && $check->summary !== '')
-            <p class="muted" style="margin:0">{{ $check->displaySummary() }}</p>
-        @endif
-
         @if ($check->advice !== '' && ! $check->ignored)
             <p style="margin:0">{{ $check->displayAdvice() }}</p>
         @endif

@@ -1,7 +1,7 @@
 <x-layouts.admin :title="$manifest->name">
     <div class="page-head">
         <div>
-            <p class="eyebrow">{{ __('Payment gateway') }}</p>
+            <p class="eyebrow"><a href="{{ route('admin.extensions.index', ['tab' => 'gateways']) }}">{{ __('Extensions') }}</a> · {{ __('Payment gateway') }}</p>
             <h1 style="margin-top:.2rem">{{ $manifest->name }}</h1>
             <p>{{ $manifest->description }}</p>
         </div>
@@ -23,7 +23,7 @@
         @endif
         <div class="form-actions">
             <button class="btn btn-primary" type="submit">{{ __('Save') }}</button>
-            <a class="btn" href="{{ route('admin.settings.gateways.index') }}">{{ __('Cancel') }}</a>
+            <a class="btn" href="{{ route('admin.extensions.index', ['tab' => 'gateways']) }}">{{ __('Cancel') }}</a>
         </div>
     </form>
 </x-layouts.admin>
