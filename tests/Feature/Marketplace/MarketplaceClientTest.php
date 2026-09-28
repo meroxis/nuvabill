@@ -211,6 +211,34 @@ class MarketplaceClientTest extends TestCase
         $this->assertSame(MarketplaceInstall::LICENSE_VALID, $install->fresh()->license_status);
     }
 
+    public function test_the_updates_tab_asks_the_store_for_new_versions(): void
+    {
+        MarketplaceInstall::create(['slug' => 'chat-alerts', 'type' => 'addon', 'name' => 'Team chat alerts', 'version' => '1.0.0']);
+        Http::fakeSequence(self::STORE.'/api/marketplace/v1/catalog*')
+            ->push(['items' => [$this->item('chat-alerts', 'addon')]])
+            ->push(['items' => [$this->item('chat-alerts', 'addon', ['version' => '1.0.1'])]]);
+
+        $this->get(route('admin.marketplace.index'))->assertOk()->assertDontSee('Update to 1.0.1');
+        $this->get(route('admin.marketplace.index', ['tab' => 'updates']))->assertOk()->assertSee('Update to 1.0.1')->assertDontSee('Everything is up to date');
+    }
+
+    public function test_the_sidebar_shows_new_versions_from_the_daily_check_even_while_the_store_is_down(): void
+    {
+        MarketplaceInstall::create(['slug' => 'chat-alerts', 'type' => 'addon', 'name' => 'Team chat alerts', 'version' => '1.0.0']);
+        Http::fakeSequence(self::STORE.'/api/marketplace/v1/catalog*')
+            ->push(['items' => [$this->item('chat-alerts', 'addon', ['version' => '1.0.1'])]])
+            ->push('down', 503);
+        Http::fake([self::STORE.'/*' => Http::response('down', 503)]);
+
+        $this->artisan('nuvabill:marketplace-licenses')->assertSuccessful();
+        $this->travel(1)->day();
+
+        $this->get(route('admin.dashboard'))->assertOk()->assertSee('<span class="count">1</span>', false);
+        $this->get(route('admin.marketplace.index', ['tab' => 'updates']))->assertOk()
+            ->assertSee('Update to 1.0.1')
+            ->assertSee('The marketplace cannot be reached right now.');
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>

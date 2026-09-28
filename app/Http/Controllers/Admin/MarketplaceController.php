@@ -37,7 +37,8 @@ class MarketplaceController extends Controller
     public function index(Request $request): View
     {
         $tab = in_array($request->query('tab'), self::TABS, true) ? (string) $request->query('tab') : 'discover';
-        $catalog = $this->catalog();
+        // Ask the store for new versions whenever staff look at what they have installed.
+        $catalog = $this->catalog(fresh: in_array($tab, ['installed', 'updates'], true));
         $installed = $this->installed($catalog);
         $updates = $catalog->filter(fn (Listing $listing): bool => $listing->hasUpdate())->values();
 
@@ -221,11 +222,11 @@ class MarketplaceController extends Controller
     /**
      * @return Collection<int, Listing>
      */
-    private function catalog(): Collection
+    private function catalog(bool $fresh = false): Collection
     {
         $installs = MarketplaceInstall::all()->keyBy('slug');
 
-        return collect($this->client->catalog())
+        return collect($this->client->catalog($fresh))
             ->map(fn (array $item): Listing => Listing::fromCatalog($item, $installs->get($item['slug'])))
             ->values();
     }

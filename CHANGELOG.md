@@ -4,6 +4,11 @@ What changed in each Nuvabill release. The release workflow copies the section f
 release, and the **Updates** page in the admin area shows it. Write for hosting companies, in plain words.
 Add `[security]` to a section to let installs apply it automatically as a security fix.
 
+## 0.4.6
+
+- **Marketplace updates show up right away.** The Updates and Installed tabs now ask the store for new versions every time you open them, so you no longer need to remove and reinstall an extension to get its new version. The rest of the marketplace is kept for 10 minutes instead of 30.
+- The daily license check also looks for new versions, so the Marketplace menu shows how many updates are waiting even if nobody opened the marketplace. When the store cannot be reached, the last list it sent is used.
+
 ## 0.4.5
 
 - **Marketplace extensions can bring their own database tables.** When an extension that asks for the **database** permission is installed or updated, Nuvabill makes or updates its tables for you, so no command line is needed. A package that changes the database without asking for that permission is refused.

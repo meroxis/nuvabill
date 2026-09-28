@@ -16,6 +16,8 @@ class MarketplaceClient
 {
     private const CATALOG_CACHE = 'nuvabill.marketplace.catalog';
 
+    private const LAST_CATALOG = 'nuvabill.marketplace.catalog.last';
+
     private ?string $lastError = null;
 
     public function baseUrl(): string
@@ -24,17 +26,14 @@ class MarketplaceClient
     }
 
     /**
-     * Every item in the marketplace, cached for half an hour. Empty when the store cannot be reached.
+     * Every item in the marketplace, cached for ten minutes. Pass $fresh to ask the store now, for
+     * example to look for new versions. When the store cannot be reached, the last list it sent.
      *
      * @return list<array<string, mixed>>
      */
     public function catalog(bool $fresh = false): array
     {
-        if ($fresh) {
-            Cache::forget(self::CATALOG_CACHE);
-        }
-
-        $cached = Cache::get(self::CATALOG_CACHE);
+        $cached = $fresh ? null : Cache::get(self::CATALOG_CACHE);
 
         if (is_array($cached)) {
             return $cached;
@@ -46,20 +45,21 @@ class MarketplaceClient
             $this->lastError = __('The marketplace cannot be reached right now. Try again in a few minutes.');
             report($exception);
 
-            return [];
+            return $this->cachedCatalog() ?? [];
         }
 
         if (! $response->successful() || ! is_array($response->json('items'))) {
             $this->lastError = __('The marketplace cannot be reached right now. Try again in a few minutes.');
 
-            return [];
+            return $this->cachedCatalog() ?? [];
         }
 
         $items = array_values(array_filter($response->json('items'), fn ($item): bool => is_array($item)
             && is_string($item['slug'] ?? null)
             && PackageType::tryFrom((string) ($item['type'] ?? '')) !== null));
 
-        Cache::put(self::CATALOG_CACHE, $items, 1800);
+        Cache::put(self::CATALOG_CACHE, $items, 600);
+        Cache::forever(self::LAST_CATALOG, $items);
 
         return $items;
     }
@@ -79,13 +79,13 @@ class MarketplaceClient
     }
 
     /**
-     * The catalog if it is in the cache, without calling the store.
+     * The last catalog the store sent, however old, without calling the store.
      *
      * @return list<array<string, mixed>>|null
      */
     public function cachedCatalog(): ?array
     {
-        $cached = Cache::get(self::CATALOG_CACHE);
+        $cached = Cache::get(self::LAST_CATALOG);
 
         return is_array($cached) ? $cached : null;
     }
