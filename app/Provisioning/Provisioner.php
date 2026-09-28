@@ -7,6 +7,8 @@ use App\Contracts\HasLoginForm;
 use App\Contracts\ServerModule;
 use App\Enums\ServiceStatus;
 use App\Events\ServiceActivated;
+use App\Events\ServiceSuspended;
+use App\Events\ServiceTerminated;
 use App\Extensions\ExtensionManager;
 use App\Extensions\Servers\Module;
 use App\Extensions\Servers\ModuleResult;
@@ -98,6 +100,7 @@ class Provisioner
 
         Activity::log('service.suspended', "Service #{$service->id} ({$service->label()}) suspended: {$reason}", $service);
         $this->mailer->send('service.suspended', $service->client, TemplateMailer::serviceContext($service) + ['reason' => $reason]);
+        ServiceSuspended::dispatch($service);
 
         return $result;
     }
@@ -153,6 +156,7 @@ class Provisioner
         ]);
 
         Activity::log('service.terminated', "Service #{$service->id} ({$service->label()}) terminated", $service);
+        ServiceTerminated::dispatch($service);
 
         return $result;
     }

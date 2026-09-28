@@ -70,6 +70,31 @@ class TemplateMailer
     }
 
     /**
+     * Send a message written elsewhere (for example in an automation) with the same placeholders
+     * and look as the email templates.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    public function sendText(string $email, string $name, string $subject, string $body, array $context = []): bool
+    {
+        $context += $this->baseContext();
+        $html = Str::markdown(self::render($body, $context), [
+            'html_input' => 'escape',
+            'allow_unsafe_links' => false,
+        ]);
+
+        try {
+            Locales::inEnglish(fn () => Mail::to($email, $name)->send(new TemplatedMessage(self::render($subject, $context), $html)));
+
+            return true;
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return false;
+        }
+    }
+
+    /**
      * Replace {{ dotted.keys }} with values from the context. Unknown keys become empty.
      *
      * @param  array<string, mixed>  $context

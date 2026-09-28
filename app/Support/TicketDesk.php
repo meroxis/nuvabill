@@ -58,6 +58,49 @@ class TicketDesk
         return $ticket;
     }
 
+    /**
+     * Open a ticket about a client where the first message comes from the company, for example from
+     * an automation. Staff are told as for any new ticket; the client only when asked.
+     */
+    public function openFromCompany(
+        Client $client,
+        TicketDepartment $department,
+        string $subject,
+        string $message,
+        TicketPriority $priority = TicketPriority::Medium,
+        ?Service $service = null,
+        bool $notifyClient = false,
+    ): Ticket {
+        $ticket = DB::transaction(function () use ($client, $department, $subject, $message, $priority, $service): Ticket {
+            $ticket = Ticket::create([
+                'number' => $this->uniqueNumber(),
+                'client_id' => $client->id,
+                'ticket_department_id' => $department->id,
+                'service_id' => $service?->id,
+                'subject' => mb_substr($subject, 0, 190),
+                'status' => TicketStatus::Open,
+                'priority' => $priority,
+                'last_reply_at' => now(),
+            ]);
+
+            // A company message without a staff member: shown with the company name.
+            $ticket->replies()->create(['author_type' => 'admin', 'author_id' => null, 'message' => $message]);
+
+            return $ticket;
+        });
+
+        $ticket->load('department', 'client');
+
+        Activity::log('ticket.opened', "Ticket #{$ticket->number} opened by an automation: {$subject}", $ticket);
+        $this->notifyStaff($ticket, 'admin.ticket_opened', $message);
+
+        if ($notifyClient) {
+            $this->mailer->send('ticket.opened', $client, TemplateMailer::ticketContext($ticket));
+        }
+
+        return $ticket;
+    }
+
     public function replyAsClient(Ticket $ticket, Client $client, string $message): TicketReply
     {
         $reply = $this->addReply($ticket, $client, $message);

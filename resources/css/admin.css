@@ -849,6 +849,152 @@
         }
     }
 
+    /* Automations */
+    .automation-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 360px;
+        gap: 18px;
+        align-items: start;
+    }
+
+    @media (max-width: 1100px) {
+        .automation-layout {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+
+    .automation-label {
+        margin: 4px 0 -6px;
+        font-size: 0.75rem;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--nb-muted);
+    }
+
+    .automation-template {
+        display: grid;
+        gap: 2px;
+        padding: 10px 12px;
+        border: 1px solid var(--nb-line);
+        border-radius: 6px;
+        color: inherit;
+        text-decoration: none;
+        font-size: 0.88rem;
+    }
+
+    .automation-template:hover {
+        border-color: var(--nb-accent);
+    }
+
+    .automation-step.is-open {
+        box-shadow: inset 0 0 0 2px var(--nb-accent);
+    }
+
+    .automation-step-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .automation-step-title {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 10px;
+        padding: 4px 0;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: start;
+        cursor: pointer;
+    }
+
+    .automation-step-title .muted {
+        font-size: 0.85rem;
+        overflow-wrap: anywhere;
+    }
+
+    .automation-num {
+        flex: none;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: var(--nb-accent-soft);
+        color: var(--nb-accent-2);
+        font-size: 0.8rem;
+        font-weight: 800;
+    }
+
+    .automation-condition {
+        display: grid;
+        grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) minmax(0, 1fr);
+        gap: 8px;
+    }
+
+    @media (max-width: 700px) {
+        .automation-condition {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+
+    .automation-run {
+        border-top: 1px solid var(--nb-line);
+    }
+
+    .automation-run > summary {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 11px 1.1rem;
+        cursor: pointer;
+        list-style: none;
+        font-size: 0.9rem;
+    }
+
+    .automation-run > summary::-webkit-details-marker {
+        display: none;
+    }
+
+    .automation-run .grow {
+        flex: 1;
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
+    .automation-run time {
+        font-size: 0.82rem;
+        white-space: nowrap;
+    }
+
+    .automation-log {
+        margin: 0;
+        padding: 0 1.1rem 1rem 2.6rem;
+        display: grid;
+        gap: 6px;
+        font-size: 0.86rem;
+    }
+
+    .automation-log li {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .automation-preview {
+        display: grid;
+        gap: 6px;
+        padding: 12px 14px;
+        border-radius: 6px;
+        background: var(--nb-surface-2);
+        font-size: 0.88rem;
+        justify-items: start;
+    }
     /* Search engines: how a page looks on Google, and the length of titles and descriptions */
     .serp {
         display: grid;

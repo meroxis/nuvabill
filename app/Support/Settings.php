@@ -134,6 +134,10 @@ class Settings
         'database.keep_jobs_days' => 30,
         'database.keep_health_days' => 90,
         'database.last_optimized_at' => null,
+        // Automations: the hour timed triggers are checked each day, and the last day they were.
+        'automations.scan_hour' => 9,
+        'automations.last_scan' => null,
+
         // Search engines: what the store tells Google, Bing and the apps that show link previews.
         'seo.visible' => true,
         'seo.title_pattern' => '{page} · {company}',

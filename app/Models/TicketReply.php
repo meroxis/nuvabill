@@ -35,6 +35,11 @@ class TicketReply extends Model
 
     public function authorName(): string
     {
+        // Messages written by an automation are staff messages without a staff member.
+        if ($this->author_type === 'admin' && $this->author_id === null) {
+            return (string) setting('company.name');
+        }
+
         return $this->author?->name ?? __('Deleted user');
     }
 }

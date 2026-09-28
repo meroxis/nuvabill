@@ -4,6 +4,7 @@ namespace App\Auth;
 
 use App\Billing\Affiliates;
 use App\Enums\ClientStatus;
+use App\Events\ClientRegistered;
 use App\Mail\TemplateMailer;
 use App\Models\Client;
 use App\Support\Activity;
@@ -47,6 +48,7 @@ class ClientRegistrar
         Activity::log('client.registered', "{$client->name} created an account", $client, $client, $client);
         app(Affiliates::class)->recordReferral($client, request()->cookie(Affiliates::COOKIE));
         $this->mailer->send('client.welcome', $client, ['login_url' => route('client.login'), 'reset_url' => route('client.password.request')]);
+        ClientRegistered::dispatch($client);
 
         return $client;
     }

@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\Auth\LoginController;
 use App\Http\Controllers\Admin\Auth\PasskeyLoginController;
 use App\Http\Controllers\Admin\Auth\PasswordResetController;
 use App\Http\Controllers\Admin\Auth\TwoFactorChallengeController;
+use App\Http\Controllers\Admin\AutomationController;
 use App\Http\Controllers\Admin\ClientController;
 use App\Http\Controllers\Admin\CouponController;
 use App\Http\Controllers\Admin\CurrencyController;
@@ -165,6 +166,7 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::get('tickets/{ticket}', [TicketController::class, 'show'])->name('tickets.show');
         Route::post('tickets/{ticket}/reply', [TicketController::class, 'reply'])->name('tickets.reply');
         Route::post('tickets/{ticket}/close', [TicketController::class, 'close'])->name('tickets.close');
+        Route::post('tickets/{ticket}/assign', [TicketController::class, 'assign'])->name('tickets.assign');
     });
 
     Route::middleware('admin.can:products.manage')->group(function (): void {
@@ -273,6 +275,18 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::post('install', [UpdateController::class, 'install'])->name('install');
         Route::get('finish', [UpdateController::class, 'finish'])->name('finish');
         Route::put('settings', [UpdateController::class, 'settings'])->name('settings');
+    });
+
+    Route::middleware('admin.can:automations.manage')->prefix('automations')->name('automations.')->group(function (): void {
+        Route::get('/', [AutomationController::class, 'index'])->name('index');
+        Route::get('create', [AutomationController::class, 'create'])->name('create');
+        Route::post('/', [AutomationController::class, 'store'])->name('store');
+        Route::get('runs', [AutomationController::class, 'runs'])->name('runs');
+        Route::get('{automation}/edit', [AutomationController::class, 'edit'])->name('edit');
+        Route::put('{automation}', [AutomationController::class, 'update'])->name('update');
+        Route::delete('{automation}', [AutomationController::class, 'destroy'])->name('destroy');
+        Route::post('{automation}/toggle', [AutomationController::class, 'toggle'])->name('toggle');
+        Route::post('{automation}/test', [AutomationController::class, 'test'])->middleware('throttle:30,1')->name('test');
     });
 
     Route::middleware('admin.can:security.manage')->prefix('health')->name('health.')->group(function (): void {

@@ -2,12 +2,21 @@
 
 namespace App\Providers;
 
+use App\Automations\Registry;
 use App\Billing\Affiliates;
 use App\Domains\Rdap;
+use App\Events\ClientRegistered;
 use App\Events\InvoicePaid;
+use App\Events\OrderPlaced;
+use App\Events\ServiceActivated;
+use App\Events\ServiceSuspended;
+use App\Events\ServiceTerminated;
+use App\Events\TicketOpened;
+use App\Events\TicketReplied;
 use App\Extensions\ExtensionManager;
 use App\Models\ActivityLog;
 use App\Models\Admin;
+use App\Models\Automation;
 use App\Models\Client;
 use App\Models\Domain;
 use App\Models\Invoice;
@@ -27,6 +36,7 @@ use App\Support\Themes;
 use App\View\Composers\AdminLayoutComposer;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\Paginator;
@@ -49,6 +59,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(Settings::class);
         $this->app->singleton(ServicePanels::class);
         $this->app->scoped(Seo::class);
+        $this->app->singleton(Registry::class);
         $this->app->singleton(Themes::class, fn (): Themes => new Themes(config('nuvabill.themes_path'), config('nuvabill.orderforms_path')));
         $this->app->singleton(ExtensionManager::class, fn (): ExtensionManager => new ExtensionManager(config('nuvabill.extensions_path')));
     }
@@ -65,6 +76,7 @@ class AppServiceProvider extends ServiceProvider
 
         Relation::enforceMorphMap([
             'admin' => Admin::class,
+            'automation' => Automation::class,
             'client' => Client::class,
             'domain' => Domain::class,
             'invoice' => Invoice::class,
@@ -97,6 +109,7 @@ class AppServiceProvider extends ServiceProvider
             $this->app->make(ExtensionManager::class)->bootAddons();
             // A problem with an affiliate commission must never stop a payment.
             Event::listen(InvoicePaid::class, fn (InvoicePaid $event) => rescue(fn () => $this->app->make(Affiliates::class)->onInvoicePaid($event->invoice)));
+            $this->listenForAutomations();
         }
 
         if (Demo::isEnabled()) {
@@ -107,6 +120,26 @@ class AppServiceProvider extends ServiceProvider
             Http::allowStrayRequests([Rdap::BOOTSTRAP_URL, 'https://rdap.*', 'https://*.rdap.*', 'https://*/rdap/*', config('nuvabill.marketplace.url').'/api/marketplace/v1/catalog*']);
             Demo::fakeServers();
         }
+    }
+
+    /**
+     * Start automations when something happens. Registry::fire() never throws and waits for the
+     * database transaction around the event to finish.
+     */
+    private function listenForAutomations(): void
+    {
+        $fire = fn (string $trigger, Model $subject, string $occurrence = '') => $this->app->make(Registry::class)->fire($trigger, $subject, $occurrence);
+
+        Event::listen(ClientRegistered::class, fn (ClientRegistered $event) => $fire('client.registered', $event->client));
+        Event::listen(OrderPlaced::class, fn (OrderPlaced $event) => $fire('order.placed', $event->order));
+        Event::listen(InvoicePaid::class, fn (InvoicePaid $event) => $fire('invoice.paid', $event->invoice));
+        Event::listen(ServiceActivated::class, fn (ServiceActivated $event) => $fire('service.activated', $event->service));
+        Event::listen(ServiceSuspended::class, fn (ServiceSuspended $event) => $fire('service.suspended', $event->service, 's'.$event->service->suspended_at?->timestamp));
+        Event::listen(ServiceTerminated::class, fn (ServiceTerminated $event) => $fire('service.terminated', $event->service));
+        Event::listen(TicketOpened::class, fn (TicketOpened $event) => $fire('ticket.opened', $event->ticket));
+        Event::listen(TicketReplied::class, fn (TicketReplied $event) => $event->reply->author_type === 'client'
+            ? $fire('ticket.client_reply', $event->ticket, 'r'.$event->reply->id)
+            : null);
     }
 
     /**

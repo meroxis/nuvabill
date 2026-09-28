@@ -32,7 +32,7 @@
                 <tbody>
                 @foreach ($tickets as $ticket)
                     <tr>
-                        <td><a class="row-link" href="{{ route('admin.tickets.show', $ticket) }}">{{ $ticket->subject }}</a><div class="faint" style="font-size:.8rem"><span class="mono">#{{ $ticket->number }}</span> · <x-status :value="$ticket->priority" /></div></td>
+                        <td><a class="row-link" href="{{ route('admin.tickets.show', $ticket) }}">{{ $ticket->subject }}</a><div class="faint" style="font-size:.8rem"><span class="mono">#{{ $ticket->number }}</span> · <x-status :value="$ticket->priority" />@if ($ticket->assignee) · {{ $ticket->assignee->name }}@endif</div></td>
                         <td>{{ $ticket->client->name }}</td>
                         <td>{{ $ticket->department->name }}</td>
                         <td style="white-space:nowrap">{{ $ticket->last_reply_at?->diffForHumans() }}</td>

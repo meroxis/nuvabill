@@ -22,6 +22,9 @@ if (Installation::isInstalled()) {
 
     Schedule::command('queue:work --stop-when-empty --max-time=50 --tries=1')->everyMinute()->withoutOverlapping();
 
+    // Automations: runs whose wait is over, and the timed triggers once a day.
+    Schedule::command('nuvabill:automations')->everyFiveMinutes()->withoutOverlapping(30);
+
     if (Demo::isEnabled()) {
         // Every hour, and within a minute on a new demo site with an empty database.
         Schedule::command('nuvabill:demo-reset')->everyMinute()->withoutOverlapping()

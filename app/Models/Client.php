@@ -42,6 +42,7 @@ class Client extends Authenticatable
         'notes',
         'tax_exempt',
         'tax_id',
+        'tags',
     ];
 
     public const TWO_FACTOR_APP = 'totp';
@@ -78,7 +79,45 @@ class Client extends Authenticatable
             'two_factor_confirmed_at' => 'datetime',
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'tags' => 'array',
         ];
+    }
+
+    /**
+     * Staff labels such as "VIP" or "Reseller", used in automations and on the client page.
+     *
+     * @return list<string>
+     */
+    public function tagList(): array
+    {
+        return self::cleanTags($this->tags);
+    }
+
+    public function hasTag(string $tag): bool
+    {
+        return in_array(mb_strtolower(trim($tag)), array_map('mb_strtolower', $this->tagList()), true);
+    }
+
+    /**
+     * Tags from a list or a comma-separated text: trimmed, at most 30 letters each, no doubles, at most 20.
+     *
+     * @param  iterable<mixed>|string|null  $tags
+     * @return list<string>
+     */
+    public static function cleanTags(iterable|string|null $tags): array
+    {
+        $list = is_string($tags) ? explode(',', $tags) : (array) $tags;
+        $clean = [];
+
+        foreach ($list as $tag) {
+            $tag = mb_substr(trim((string) preg_replace('/\s+/u', ' ', (string) $tag)), 0, 30);
+
+            if ($tag !== '' && ! in_array(mb_strtolower($tag), array_map('mb_strtolower', $clean), true)) {
+                $clean[] = $tag;
+            }
+        }
+
+        return array_slice($clean, 0, 20);
     }
 
     /**

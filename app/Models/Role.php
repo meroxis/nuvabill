@@ -41,6 +41,7 @@ class Role extends Model
             'system.update' => 'Install updates',
             'marketplace.manage' => 'Install themes and extensions from the marketplace',
             'security.manage' => 'See site health and fix security issues',
+            'automations.manage' => 'Create and switch automations on and off',
         ],
         'Marketplace store' => [
             'marketplace.review' => 'Review submissions, and manage developers, licenses and payouts',

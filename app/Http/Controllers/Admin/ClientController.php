@@ -46,6 +46,7 @@ class ClientController extends Controller
     public function store(ClientRequest $request, TemplateMailer $mailer): RedirectResponse
     {
         $data = $request->safe()->except(['password', 'send_welcome']);
+        $data['tags'] = Client::cleanTags($data['tags'] ?? null);
 
         $client = Client::create($data + [
             'password' => $request->filled('password') ? $request->input('password') : Str::password(24),
@@ -109,6 +110,7 @@ class ClientController extends Controller
     public function update(ClientRequest $request, Client $client): RedirectResponse
     {
         $data = $request->safe()->except(['password', 'send_welcome']);
+        $data['tags'] = Client::cleanTags($data['tags'] ?? null);
 
         if ($request->filled('password')) {
             $data['password'] = $request->input('password');

@@ -7,6 +7,7 @@ use App\Auth\Social\SocialLogin;
 use App\Auth\Social\SocialUser;
 use App\Billing\Affiliates;
 use App\Enums\ClientStatus;
+use App\Events\ClientRegistered;
 use App\Http\Controllers\Controller;
 use App\Mail\TemplateMailer;
 use App\Models\Client;
@@ -146,6 +147,7 @@ class SocialLoginController extends Controller
         Activity::log('client.registered', "{$client->name} created an account with {$driver->name()}", $client, $client, $client);
         app(Affiliates::class)->recordReferral($client, request()->cookie(Affiliates::COOKIE));
         $mailer->send('client.welcome', $client, ['login_url' => route('client.login'), 'reset_url' => route('client.password.request')]);
+        ClientRegistered::dispatch($client);
 
         return $client;
     }

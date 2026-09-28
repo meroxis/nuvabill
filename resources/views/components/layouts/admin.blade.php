@@ -17,6 +17,7 @@
         ['route' => 'admin.coupons.index', 'match' => 'admin.coupons.*', 'icon' => 'tag', 'label' => __('Coupons'), 'show' => $can('coupons.manage')],
         ['route' => 'admin.affiliates.index', 'match' => 'admin.affiliates.*', 'icon' => 'star', 'label' => __('Affiliates'), 'show' => $can('affiliates.manage')],
         ['route' => 'admin.servers.index', 'match' => 'admin.servers.*', 'icon' => 'server', 'label' => __('Servers'), 'show' => $can('products.manage')],
+        ['route' => 'admin.automations.index', 'match' => 'admin.automations.*', 'icon' => 'zap', 'label' => __('Automations'), 'show' => $can('automations.manage')],
         ['route' => 'admin.extensions.index', 'match' => ['admin.extensions.*', 'admin.settings.gateways.*', 'admin.settings.registrars.*', 'admin.marketplace.settings', 'admin.addons.*'], 'icon' => 'plug', 'label' => __('Extensions'), 'show' => $can('settings.manage') || $can('products.manage') || $can('marketplace.manage'), 'count' => $extensionsNeedSettings ?: null, 'pages' => $can('marketplace.manage') ? $addonPages : []],
         ['route' => 'admin.marketplace.index', 'match' => 'admin.marketplace.*', 'except' => 'admin.marketplace.settings', 'icon' => 'puzzle', 'label' => __('Marketplace'), 'show' => $can('marketplace.manage'), 'count' => $marketplaceUpdates ?: null],
         ['route' => 'admin.health.index', 'match' => 'admin.health.*', 'icon' => 'shield', 'label' => __('Site health'), 'show' => $can('security.manage'), 'count' => $healthUrgent ?: null],

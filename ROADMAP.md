@@ -11,13 +11,16 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.2 | Domains with ResellerClub, Namecheap, Enom and OpenSRS; DirectAdmin, Plesk, Proxmox VE and Virtualizor; FIB, FastPay and Wayl; refunds; the WHMCS importer; fraud checks; social sign-in; CAPTCHA; client two-factor sign-in |
 | 0.3 | Marketplace with signed one-click installs and a developer program, add-on extensions, coupons, product add-ons, exchange rates, one-page ordering |
 | 0.4 | Taxes, quotes, client wallet, affiliates, REST API, White-label License, passkeys, 26 languages with right-to-left pages, one-command install, backups, faster store pages, Site health (security and database checks), billing jobs that never bill twice, importers for Blesta, FOSSBilling and Paymenter with a dry run, all extensions on one page, free CyberPanel, HestiaCP, VirtFusion and SolusVM modules, search engine tools (sitemap, titles and descriptions, prices on Google, language links) |
+| 0.5.0 | Automations ("when this happens, do that") with 9 templates, Try it and a runs log; client tags; ticket assignment |
 
 ## Next
 
 | Version | Focus |
 |---|---|
-| Later in 0.4 | **ClientExec importer**, once we have tested it against a real ClientExec database |
-| 0.5 | Automation builder, AI help for ticket replies, WhatsApp and Telegram bot, admin phone app |
+| 0.5.1 | **AI help**: draft ticket replies and summaries with Claude, using your own API key |
+| 0.5.2 | **Telegram and WhatsApp**: invoices, payments and tickets in the apps your clients already use |
+| 0.5.3 | **Admin phone app**: install the admin area on your phone, with notifications |
+| Later | **ClientExec importer**, once we have tested it against a real ClientExec database |
 
 ## The path to 1.0
 

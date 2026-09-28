@@ -32,6 +32,7 @@ takes one import.
 ### At a glance
 
 - **Automation**: cPanel & WHM, DirectAdmin, Plesk, Proxmox VE and Virtualizor accounts created on payment, suspended when overdue, unsuspended when paid, plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules on the Marketplace
+- **Automations**: "when this happens, do that", like late fees, welcome emails, quote follow-ups and VIP tickets first, with 9 templates and a log of every run
 - **Billing**: invoices with PDFs, renewals, reminders, taxes (VAT, GST, sales tax), coupons, product add-ons, quotes, a client wallet and affiliates
 - **Payments**: Stripe, PayPal, bank transfer and Iraqi payments (FIB, FastPay and Wayl), with refunds and exchange rates
 - **Domains**: search, register, transfer and renew at ResellerClub, Namecheap, Enom or OpenSRS
@@ -48,7 +49,7 @@ takes one import.
 curl -fsSL https://nuvabill.com/install.sh | bash
 ```
 
-> **Status: v0.4.** Taxes, a client wallet, quotes, affiliates, a REST API, passkeys, and 26 languages with right-to-left pages for Arabic, Hebrew and Kurdish. See the [roadmap](#roadmap).
+> **Status: v0.5.** New: **Automations**, "when this happens, do that", with 9 ready-made templates. Also taxes, a client wallet, quotes, affiliates, a REST API, passkeys, and 26 languages with right-to-left pages for Arabic, Hebrew and Kurdish. See the [roadmap](#roadmap).
 >
 > **Try it:** the [live demo](https://demo.nuvabill.com/admin/login) has sample clients, invoices and tickets. One click signs you in, and the data resets every hour.
 
@@ -209,6 +210,15 @@ The whole client area works on a phone: services, invoices, payments, tickets an
 
 ![Invoice with payment recording](.github/screenshots/invoice.png)
 
+### Automations: when this happens, do that
+
+Pick what starts it (an invoice is overdue, a client signs up, a client opens a ticket, a domain expires soon, and
+nine more), add conditions like "the client does not have the tag VIP", then the steps: email the client or staff, add
+a late fee, add wallet credit, tag the client, open or assign a ticket, suspend a service, send the details to a web
+address, wait, and only go on if something is still true. Start from **9 templates**, **Try it** on a real invoice
+before you switch it on, and see every run in the log. A waiting run stops by itself when the invoice was paid in
+the meantime. See the [automations guide](docs/automations.md).
+
 ### Quotes and affiliates
 
 Send a **quote** for custom work, like a dedicated server or a migration. The client accepts it in their account and
@@ -247,7 +257,8 @@ with power controls in the client area. Install one with a click and it shows up
 
 ### Support tickets
 
-Departments, priorities, email notifications for clients and staff, and a clean conversation view.
+Departments, priorities, assign a ticket to a staff member, email notifications for clients and staff, and a clean
+conversation view.
 
 ![Support ticket](.github/screenshots/support.png)
 
@@ -365,8 +376,9 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 | Version | Focus |
 |---|---|
 | v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor (plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules), domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, search engine tools, Site health ([changelog](CHANGELOG.md)) |
-| **next** | **A ClientExec importer** |
-| v0.5 | Automation builder, AI ticket replies, WhatsApp and Telegram bot, admin phone app |
+| v0.5.0 | Done: **Automations** with 9 templates, client tags and ticket assignment |
+| **next** | **v0.5.1 AI help** for ticket replies, then Telegram and WhatsApp, and an admin phone app |
+| later | A ClientExec importer |
 | v1.0 | Automatic card payments, client upgrades, knowledge base and status page, security audit, and more |
 
 The full plan, including what we think is still missing before 1.0, is in [ROADMAP.md](ROADMAP.md).

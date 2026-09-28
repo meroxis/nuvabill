@@ -5,6 +5,9 @@
             <p class="eyebrow">{{ __('Client') }} #{{ $client->id }}</p>
             <h1 style="margin-top:.2rem">{{ $client->name }} <x-status :value="$client->status" style="vertical-align:middle" /></h1>
             <p>{{ $client->company_name ? $client->company_name.' · ' : '' }}{{ $client->email }}</p>
+            @if ($client->tagList() !== [])
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:.4rem">@foreach ($client->tagList() as $tag)<x-pill tone="info">{{ $tag }}</x-pill>@endforeach</div>
+            @endif
         </div>
         <div class="form-actions">
             @if ($admin->hasPermission('billing.manage'))

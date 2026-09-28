@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Automations\Runner;
+use App\Automations\Templates;
 use App\Billing\ExchangeRates;
 use App\Billing\QuoteManager;
 use App\Billing\Wallet;
@@ -16,6 +18,7 @@ use App\Extensions\ExtensionManager;
 use App\Models\Admin;
 use App\Models\Affiliate;
 use App\Models\AffiliateCommission;
+use App\Models\Automation;
 use App\Models\Client;
 use App\Models\Coupon;
 use App\Models\Domain;
@@ -160,6 +163,35 @@ class DatabaseSeeder extends Seeder
         $this->addonsAndCoupons();
         $this->billingExtras($demo, $clients, $admin);
         $this->activity($clients, $admin);
+        $this->automations($clients);
+    }
+
+    /**
+     * A few automations from the templates, some on, and two VIP clients, so the Automations page has something to show.
+     *
+     * @param  Collection<int, Client>  $clients
+     */
+    private function automations(Collection $clients): void
+    {
+        foreach ($clients->take(2) as $client) {
+            $client->forceFill(['tags' => ['VIP']])->save();
+        }
+
+        foreach (['late-fee' => true, 'welcome' => true, 'big-order' => true, 'vip-tickets' => true, 'win-back' => false] as $key => $active) {
+            $template = Templates::find($key);
+
+            Automation::query()->create([
+                'name' => $template['name'],
+                'trigger' => $template['trigger'],
+                'trigger_days' => $template['days'],
+                'conditions' => $template['conditions'],
+                'steps' => $template['steps'],
+                'is_active' => $active,
+                'template' => $key,
+            ]);
+        }
+
+        app(Runner::class)->scan(CarbonImmutable::today());
     }
 
     /**

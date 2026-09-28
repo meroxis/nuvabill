@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.5.0](https://github.com/meroxis/nuvabill/releases/tag/v0.5.0) | 29 Sep 2026 | Automations: "when this happens, do that", with 9 ready-made templates; client tags; ticket assignment |
 | [0.4.11](https://github.com/meroxis/nuvabill/releases/tag/v0.4.11) | 28 Sep 2026 | Search engine tools: sitemap, titles and descriptions, prices on Google, link previews |
 | [0.4.10](https://github.com/meroxis/nuvabill/releases/tag/v0.4.10) | 28 Sep 2026 | Free CyberPanel, HestiaCP, VirtFusion and SolusVM modules; remove extensions and themes added by hand |
 | [0.4.9](https://github.com/meroxis/nuvabill/releases/tag/v0.4.9) | 28 Sep 2026 | Import from Blesta, FOSSBilling and Paymenter; a dry run before every import; all extensions on one page |
@@ -32,6 +33,35 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.5.0
+
+- **Automations.** A new **Automations** page in the admin area: when something happens, Nuvabill does the next
+  step for you. No code, and every run is logged.
+  - **13 starting points**: a client signs up, an order is placed, an invoice is paid, due soon or overdue, a service
+    is set up, suspended, terminated or has been active for a while, a domain expires soon, a client opens or replies
+    to a ticket, and a quote is not answered.
+  - **Conditions** so it only runs sometimes, for example "the invoice total is more than 10" or "the client does not
+    have the tag VIP". You can check the client's tags, country, paid invoices, active services and open tickets, and
+    the invoice, order, service, ticket, quote or domain itself.
+  - **14 steps**: email the client, email staff, add a fee to the invoice, add wallet credit, tag or untag the client,
+    open a ticket, assign a ticket, change its priority, suspend or unsuspend the service, send the details to a web
+    address, **wait** hours or days, and **only go on if** something is still true.
+  - A run that waits **stops by itself** when what started it is no longer true, for example when the late invoice
+    was paid in the meantime.
+  - **9 ready-made templates**: late fee after 7 days, welcome new clients, thank you after the first payment,
+    domain expires soon, ask for a review after 30 days, chase quotes that were not answered, win back clients who
+    left, tell the team about big orders, and VIP tickets first. Pick one, change what you like, and switch it on.
+  - **Try it** on a real invoice, client, service or ticket before you switch it on: it shows what each step would
+    do, and nothing changes and nothing is sent.
+  - **Runs**: every time an automation starts, what each step did, and the runs that are waiting.
+  - **Nothing runs twice for the same event**, even if a payment is reported twice, and a late fee is added only
+    once per invoice.
+- **Client tags**, like VIP or Reseller, on the client's page. Only staff see them, and automations can check them.
+- **Assign tickets** to a staff member from the ticket page. The ticket list shows who has each ticket.
+- A new permission, **Create and switch automations on and off**, which roles that can manage settings get.
+- The cron job you already have runs automations every five minutes (`php artisan nuvabill:automations`). Timed
+  starting points, like "an invoice is overdue", are checked once a day from 9:00.
 
 ## 0.4.11
 

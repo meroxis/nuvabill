@@ -25,6 +25,7 @@ class Ticket extends Model
         'priority',
         'last_reply_at',
         'closed_at',
+        'assigned_admin_id',
     ];
 
     protected function casts(): array
@@ -35,6 +36,16 @@ class Ticket extends Model
             'last_reply_at' => 'datetime',
             'closed_at' => 'datetime',
         ];
+    }
+
+    /**
+     * The staff member who looks after the ticket, if any.
+     *
+     * @return BelongsTo<Admin, $this>
+     */
+    public function assignee(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'assigned_admin_id');
     }
 
     /**

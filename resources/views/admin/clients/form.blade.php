@@ -27,6 +27,7 @@
             <x-input name="password" type="password" :label="$editing ? __('New password') : __('Password')" :help="$editing ? __('Leave empty to keep the current password.') : __('Leave empty and the client can set one with “Forgot password”.')" autocomplete="new-password" />
             <x-input name="tax_id" :label="setting('tax.id_label')" :value="$client->tax_id" />
             <x-checkbox name="tax_exempt" :label="__('Tax exempt')" :help="__('No tax on this client\'s invoices, for example a business with a valid VAT number in another country.')" :checked="(bool) $client->tax_exempt" />
+            <x-input name="tags" :label="__('Tags')" :value="implode(', ', $client->tagList())" class="span-2" :help="__('Separate tags with commas, for example VIP, Reseller. Only staff see them; automations can check them.')" autocomplete="off" />
             <x-textarea name="notes" :label="__('Staff notes')" :value="$client->notes" :help="__('Only staff can see these notes.')" class="span-2" rows="3" />
             @unless ($editing)
                 <x-checkbox name="send_welcome" :label="__('Send the welcome email')" :checked="true" class="span-2" />

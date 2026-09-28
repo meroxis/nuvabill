@@ -66,6 +66,12 @@ Yes. Nuvabill makes a sitemap and robots.txt, gives every store page a title and
 and links your language versions, with every theme. Add your site to Google Search Console and send it your
 sitemap. See the [search engines guide](search-engines.md).
 
+## Can Nuvabill add late fees or send follow-up emails by itself?
+
+Yes. **Automations** do "when this happens, do that": add a late fee after 7 days, welcome new clients, chase quotes,
+remind clients before a domain expires, give VIP tickets high priority, and more. Start from one of nine templates,
+try it on a real invoice first, and see every run in the log. See the [automations guide](automations.md).
+
 ## Can the nightly job bill a client twice?
 
 No. Only one automation run works at a time, and each renewal period can only be invoiced once: the database itself

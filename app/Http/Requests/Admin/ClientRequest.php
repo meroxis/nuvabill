@@ -41,6 +41,7 @@ class ClientRequest extends FormRequest
             'country' => ['nullable', Rule::in(array_keys(Countries::all()))],
             'status' => ['required', Rule::enum(ClientStatus::class)],
             'notes' => ['nullable', 'string', 'max:5000'],
+            'tags' => ['nullable', 'string', 'max:700'],
             'tax_id' => ['nullable', 'string', 'max:64'],
             'tax_exempt' => ['sometimes', 'boolean'],
             'password' => ['nullable', Password::min(8)],

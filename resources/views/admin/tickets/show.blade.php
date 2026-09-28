@@ -8,6 +8,17 @@
             </p>
         </div>
         <div class="form-actions">
+            <form method="POST" action="{{ route('admin.tickets.assign', $ticket) }}" style="display:flex;gap:6px;align-items:center">
+                @csrf
+                <label for="f-assign" class="muted" style="font-size:.85rem">{{ __('Assigned to') }}</label>
+                <select id="f-assign" name="admin" class="select" style="width:auto" data-autosubmit>
+                    <option value="">{{ __('Nobody') }}</option>
+                    @foreach ($staff as $id => $name)
+                        <option value="{{ $id }}" @selected((int) $ticket->assigned_admin_id === (int) $id)>{{ $name }}</option>
+                    @endforeach
+                </select>
+                <noscript><button class="btn btn-sm" type="submit">{{ __('Assign') }}</button></noscript>
+            </form>
             <x-status :value="$ticket->status" />
             <x-status :value="$ticket->priority" />
             @if ($ticket->status !== \App\Enums\TicketStatus::Closed)
