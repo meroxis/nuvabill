@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.6.5](https://github.com/meroxis/nuvabill/releases/tag/v0.6.5) | 30 Sep 2026 | Emails and PDF invoices in each client's language |
 | [0.6.4](https://github.com/meroxis/nuvabill/releases/tag/v0.6.4) | 30 Sep 2026 | Upgrades and downgrades with a fair price for the days left |
 | [0.6.3](https://github.com/meroxis/nuvabill/releases/tag/v0.6.3) | 30 Sep 2026 | A browser tab icon on every page; your own icon with a White-label License |
 | [0.6.2](https://github.com/meroxis/nuvabill/releases/tag/v0.6.2) | 29 Sep 2026 | Settings opens as a home page with grouped cards |
@@ -44,6 +45,17 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.6.5
+
+- **Emails in each client's language.** Every email goes out in the language the client picked in the client area:
+  the words, the dates and the frame around it. Arabic and Kurdish emails read right to left. Staff emails use your
+  default language. A client whose language you no longer offer gets your default language.
+- **All 28 built-in emails come translated** into the 10 languages. If you rewrote an email in English, your words
+  stay in every language until you translate them yourself.
+- **Settings → Email templates** has a tab per language. Empty fields use the English text, and the list shows how
+  many languages each email has.
+- **PDF invoices and quotes** follow the client's language too. Arabic, Kurdish and Chinese PDFs stay in English for now, because the PDF engine cannot draw those scripts.
 
 ## 0.6.4
 

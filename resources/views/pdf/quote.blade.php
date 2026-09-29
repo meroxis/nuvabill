@@ -50,8 +50,8 @@
             </td>
             <td class="right">
                 <table>
-                    <tr><td class="muted right">{{ __('Date') }}</td><td class="right" style="width: 45%">{{ ($quote->sent_at ?? $quote->created_at)->format('d M Y') }}</td></tr>
-                    <tr><td class="muted right">{{ __('Valid until') }}</td><td class="right">{{ $quote->valid_until->format('d M Y') }}</td></tr>
+                    <tr><td class="muted right">{{ __('Date') }}</td><td class="right" style="width: 45%">{{ ($quote->sent_at ?? $quote->created_at)->translatedFormat('d M Y') }}</td></tr>
+                    <tr><td class="muted right">{{ __('Valid until') }}</td><td class="right">{{ $quote->valid_until->translatedFormat('d M Y') }}</td></tr>
                 </table>
             </td>
         </tr>

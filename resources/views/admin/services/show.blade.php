@@ -85,7 +85,7 @@
             <section class="card" style="display:grid;gap:.8rem">
                 <div class="card-header" style="margin:0"><h2>{{ __('Change plan') }}</h2></div>
                 @if ($planChange['pending'])
-                    @php($pending = $planChange['pending'])
+                    @php $pending = $planChange['pending']; @endphp
                     <p style="margin:0">
                         @if ($pending->mode === \App\Models\PlanChange::MODE_RENEWAL)
                             {{ __('Moves to :plan on :date.', ['plan' => $pending->toProduct?->name, 'date' => $pending->apply_on->translatedFormat('d M Y')]) }}

@@ -11,6 +11,7 @@ use App\Models\Client;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Support\Activity;
+use App\Support\Locales;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
@@ -109,7 +110,7 @@ class Affiliates
         }
 
         $this->mailer->send('affiliate.commission', $affiliate->client, [
-            'commission' => ['amount' => money($amount, $invoice->currency), 'available_on' => $commission->available_at->format('d M Y')],
+            'commission' => ['amount' => money($amount, $invoice->currency), 'available_on' => Locales::in(Locales::forClient($affiliate->client), fn (): string => $commission->available_at->translatedFormat('d M Y'))],
             'affiliate_url' => route('client.affiliate'),
         ]);
 

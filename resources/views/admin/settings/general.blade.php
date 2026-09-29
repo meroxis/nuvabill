@@ -72,7 +72,7 @@
                                 </label>
                             @endforeach
                         </div>
-                        <p class="help">{{ __('Arabic and Kurdish pages read right to left. Invoices, PDFs and emails stay in English.') }}</p>
+                        <p class="help">{{ __('Arabic and Kurdish pages read right to left. Emails and PDF invoices follow each client\'s language; Arabic, Kurdish and Chinese PDFs stay in English.') }}</p>
                     </fieldset>
                 </div>
             </section>

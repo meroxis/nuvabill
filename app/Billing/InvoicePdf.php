@@ -10,7 +10,8 @@ use Dompdf\Dompdf;
 use Dompdf\Options;
 
 /**
- * Renders invoices and quotes as PDF files.
+ * Renders invoices and quotes as PDF files, in the client's language. Arabic, Kurdish and Chinese PDFs
+ * stay in English: the PDF engine cannot join Arabic letters or draw Chinese ones.
  */
 class InvoicePdf
 {
@@ -18,7 +19,7 @@ class InvoicePdf
     {
         $invoice->loadMissing('items', 'client', 'transactions');
 
-        return Locales::inEnglish(fn (): string => $this->pdf(view('pdf.invoice', ['invoice' => $invoice] + $this->shared())->render()));
+        return Locales::in(Locales::forPdf(Locales::forClient($invoice->client)), fn (): string => $this->pdf(view('pdf.invoice', ['invoice' => $invoice] + $this->shared())->render()));
     }
 
     /**
@@ -60,7 +61,7 @@ class InvoicePdf
     {
         $quote->loadMissing('items', 'client');
 
-        return Locales::inEnglish(fn (): string => $this->pdf(view('pdf.quote', ['quote' => $quote] + $this->shared())->render()));
+        return Locales::in(Locales::forPdf(Locales::forClient($quote->client)), fn (): string => $this->pdf(view('pdf.quote', ['quote' => $quote] + $this->shared())->render()));
     }
 
     public function quoteFilename(Quote $quote): string

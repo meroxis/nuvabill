@@ -22,12 +22,12 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.6.2 | Settings opens as a home page with grouped cards |
 | 0.6.3 | A browser tab icon on every page; your own icon with a White-label License |
 | 0.6.4 | Upgrades and downgrades with a fair price for the days left |
+| 0.6.5 | Emails and PDF invoices in each client's language |
 
 ## Next
 
 | Version | Focus |
 |---|---|
-| 0.6.5 | **Emails and PDF invoices in the client's language** |
 | 0.6.6 | **Knowledge base, announcements and a network status page** |
 | 0.6.7 | **Credit notes, CSV exports** for accountants, and **privacy tools** (export or erase a client's data) |
 | Later | **ClientExec importer**, once we have tested it against a real ClientExec database |

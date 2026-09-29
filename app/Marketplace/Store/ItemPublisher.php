@@ -14,6 +14,7 @@ use App\Models\MarketplaceVersion;
 use App\Models\Product;
 use App\Models\ProductGroup;
 use App\Support\Activity;
+use App\Support\Locales;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -150,11 +151,11 @@ class ItemPublisher
             'client' => TemplateMailer::clientContext($client),
             'item' => ['name' => $version->item->name, 'version' => $version->version],
             'review' => [
-                'outcome' => match ($outcome) {
+                'outcome' => Locales::in(Locales::forClient($client), fn (): string => match ($outcome) {
                     'approved' => __('approved and live in the marketplace'),
                     'changes' => __('waiting for a few changes'),
                     default => __('not accepted'),
-                },
+                }),
                 'message' => (string) $message,
             ],
             'developer_url' => route('developer.items.show', $version->item),

@@ -54,6 +54,8 @@ class DefaultDataSeeder extends Seeder
                 'is_active' => true,
             ]);
         }
+
+        EmailTemplateTranslations::install();
     }
 
     /**

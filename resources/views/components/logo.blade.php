@@ -1,5 +1,5 @@
 {{-- The site's icon: the company's own icon when it has a White-label License, otherwise the Nuvabill mark (a cloud holding a bill; its color comes from currentColor). --}}
-@php($ownIcon = \App\Support\BrandIcon::url())
+@php $ownIcon = \App\Support\BrandIcon::url(); @endphp
 @if ($ownIcon)
     <img src="{{ $ownIcon }}" alt="" width="32" height="32" data-brand-icon {{ $attributes }}>
 @else

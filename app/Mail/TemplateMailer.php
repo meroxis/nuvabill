@@ -25,7 +25,7 @@ class TemplateMailer
     public function send(string $key, Client $client, array $context = []): bool
     {
         $context = ['client' => self::clientContext($client)] + $context;
-        $sent = $this->sendTo($key, $client->email, $client->name, $context);
+        $sent = $this->sendTo($key, $client->email, $client->name, $context, Locales::forClient($client));
 
         // The same news on Telegram or WhatsApp, for clients who linked them.
         rescue(fn () => app(ChatNotifier::class)->clientEmailed($key, $client, $context));
@@ -42,24 +42,29 @@ class TemplateMailer
     {
         $email = (string) setting('company.email');
 
-        return $email !== '' && $this->sendTo($key, $email, (string) setting('company.name'), $context);
+        return $email !== '' && $this->sendTo($key, $email, (string) setting('company.name'), $context, Locales::default());
     }
 
     /**
+     * Send a template in a language: the translation where there is one, otherwise the main text.
+     * Staff emails use the site's default language.
+     *
      * @param  array<string, mixed>  $context
      */
-    public function sendTo(string $key, string $email, string $name, array $context = []): bool
+    public function sendTo(string $key, string $email, string $name, array $context = [], ?string $locale = null): bool
     {
-        $template = EmailTemplate::query()->where('key', $key)->where('is_active', true)->first();
+        $template = EmailTemplate::query()->with('translations')->where('key', $key)->where('is_active', true)->first();
 
         if ($template === null) {
             return false;
         }
 
+        $locale ??= Locales::default();
         $context += $this->baseContext();
+        [$subjectText, $bodyText] = $template->textFor($locale);
 
-        $subject = self::render($template->subject, $context);
-        $html = Str::markdown(self::render($template->body, $context), [
+        $subject = self::render($subjectText, $context);
+        $html = Str::markdown(self::render($bodyText, $context), [
             'html_input' => 'escape',
             'allow_unsafe_links' => false,
         ]);
@@ -70,8 +75,8 @@ class TemplateMailer
         }
 
         try {
-            // Email templates are written in English, so the wrapper around them is too.
-            Locales::inEnglish(fn () => Mail::to($email, $name)->send(new TemplatedMessage($subject, $html)));
+            // The frame around the message is in the same language as the message.
+            Mail::to($email, $name)->locale($locale)->send(new TemplatedMessage($subject, $html));
 
             return true;
         } catch (Throwable $exception) {
@@ -96,7 +101,7 @@ class TemplateMailer
         ]);
 
         try {
-            Locales::inEnglish(fn () => Mail::to($email, $name)->send(new TemplatedMessage(self::render($subject, $context), $html)));
+            Mail::to($email, $name)->locale(Locales::default())->send(new TemplatedMessage(self::render($subject, $context), $html));
 
             return true;
         } catch (Throwable $exception) {
@@ -140,7 +145,7 @@ class TemplateMailer
      */
     public static function invoiceContext(Invoice $invoice): array
     {
-        return [
+        return Locales::in(Locales::forClient($invoice->client), fn (): array => [
             'client' => self::clientContext($invoice->client),
             'invoice' => [
                 'id' => $invoice->id,
@@ -149,10 +154,10 @@ class TemplateMailer
                 'tax' => money($invoice->tax, $invoice->currency),
                 'total' => money($invoice->total, $invoice->currency),
                 'balance' => money($invoice->balance(), $invoice->currency),
-                'due_date' => $invoice->due_at->format('d M Y'),
+                'due_date' => $invoice->due_at->translatedFormat('d M Y'),
                 'url' => route('client.invoices.show', $invoice),
             ],
-        ];
+        ]);
     }
 
     /**
@@ -160,7 +165,7 @@ class TemplateMailer
      */
     public static function serviceContext(Service $service): array
     {
-        return [
+        return Locales::in(Locales::forClient($service->client), fn (): array => [
             'client' => self::clientContext($service->client),
             'service' => [
                 'id' => $service->id,
@@ -168,11 +173,11 @@ class TemplateMailer
                 'domain' => $service->domain,
                 'username' => $service->username,
                 'server' => $service->server?->hostname,
-                'next_due_date' => $service->next_due_date?->format('d M Y'),
+                'next_due_date' => $service->next_due_date?->translatedFormat('d M Y'),
                 'amount' => money($service->recurring_amount, $service->currency),
                 'url' => route('client.services.show', $service),
             ],
-        ];
+        ]);
     }
 
     /**
@@ -180,7 +185,7 @@ class TemplateMailer
      */
     public static function ticketContext(Ticket $ticket): array
     {
-        return [
+        return Locales::in(Locales::forClient($ticket->client), fn (): array => [
             'client' => self::clientContext($ticket->client),
             'ticket' => [
                 'number' => $ticket->number,
@@ -189,7 +194,7 @@ class TemplateMailer
                 'status' => $ticket->status->label(),
                 'url' => route('client.tickets.show', $ticket),
             ],
-        ];
+        ]);
     }
 
     /**

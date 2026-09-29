@@ -8,6 +8,7 @@ use App\Models\Client;
 use App\Models\Invoice;
 use App\Models\Quote;
 use App\Support\Activity;
+use App\Support\Locales;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
@@ -159,7 +160,7 @@ class QuoteManager
                 'number' => $quote->displayNumber(),
                 'subject' => $quote->subject,
                 'total' => money($quote->total, $quote->currency),
-                'valid_until' => $quote->valid_until->format('d M Y'),
+                'valid_until' => Locales::in(Locales::forClient($quote->client), fn (): string => $quote->valid_until->translatedFormat('d M Y')),
                 'url' => route('client.quotes.show', $quote),
             ],
         ];

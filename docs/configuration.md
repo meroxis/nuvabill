@@ -47,7 +47,8 @@ for the client.
 ## Sending email
 
 **Settings → General → Sending email**: SMTP details, then send yourself a test email. Email templates are in
-**Settings → Email templates**. Emails and PDFs are written in English.
+**Settings → Email templates**, with a tab for each language. Emails and PDF invoices go out in the language each client
+picked (staff emails in your default language). Arabic, Kurdish and Chinese PDFs stay in English for now, because the PDF engine cannot draw those scripts.
 
 ## Automation
 

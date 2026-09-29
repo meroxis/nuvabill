@@ -89,7 +89,7 @@ class AutoPay
             return $summary;
         }
 
-        // Messages kept on invoices and in emails are in English, like the email templates.
+        // Error messages kept on invoices for staff are in English; emails are built in each client's language.
         return Locales::inEnglish(function () use ($today, $summary): array {
             $summary['notices'] = $this->sendNotices($today);
 
@@ -255,7 +255,9 @@ class AutoPay
         $this->mailer->send('invoice.autopay_failed', $invoice->client, TemplateMailer::invoiceContext($invoice) + [
             'payment_method' => ['name' => $method->label()],
             'failure' => $message,
-            'next_try' => $retryAt ? 'We will try again on '.$retryAt->format('d M Y').'.' : 'We will not try again by ourselves, so please pay the invoice with the button below.',
+            'next_try' => Locales::in(Locales::forClient($invoice->client), fn (): string => $retryAt
+                ? __('We will try again on :date.', ['date' => $retryAt->translatedFormat('d M Y')])
+                : __('We will not try again by ourselves, so please pay the invoice with the button below.')),
             'payment_methods_url' => route('client.account.payment-methods'),
         ]);
     }
@@ -290,7 +292,7 @@ class AutoPay
 
                 $this->mailer->send('invoice.autopay_upcoming', $invoice->client, TemplateMailer::invoiceContext($invoice) + [
                     'payment_method' => ['name' => $method->label()],
-                    'charge_date' => $this->chargeDate($invoice)->format('d M Y'),
+                    'charge_date' => Locales::in(Locales::forClient($invoice->client), fn (): string => $this->chargeDate($invoice)->translatedFormat('d M Y')),
                     'payment_methods_url' => route('client.account.payment-methods'),
                 ]);
                 $sent++;
@@ -320,7 +322,7 @@ class AutoPay
                 }
 
                 $this->mailer->send('payment.method_expiring', $method->client, [
-                    'payment_method' => ['name' => $method->label(), 'expires' => $method->expiresOn()?->format('F Y')],
+                    'payment_method' => Locales::in(Locales::forClient($method->client), fn (): array => ['name' => $method->label(), 'expires' => $method->expiresOn()?->translatedFormat('F Y')]),
                     'payment_methods_url' => route('client.account.payment-methods'),
                 ]);
                 $sent++;

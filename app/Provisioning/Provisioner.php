@@ -16,6 +16,7 @@ use App\Mail\TemplateMailer;
 use App\Models\Server;
 use App\Models\Service;
 use App\Support\Activity;
+use App\Support\Locales;
 use Closure;
 use Throwable;
 
@@ -99,7 +100,7 @@ class Provisioner
         ]);
 
         Activity::log('service.suspended', "Service #{$service->id} ({$service->label()}) suspended: {$reason}", $service);
-        $this->mailer->send('service.suspended', $service->client, TemplateMailer::serviceContext($service) + ['reason' => $reason]);
+        $this->mailer->send('service.suspended', $service->client, TemplateMailer::serviceContext($service) + ['reason' => Locales::in(Locales::forClient($service->client), fn (): string => __($reason))]);
         ServiceSuspended::dispatch($service);
 
         return $result;

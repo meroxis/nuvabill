@@ -10,6 +10,7 @@ use App\Extensions\Registrars\RegistrarResult;
 use App\Mail\TemplateMailer;
 use App\Models\Domain;
 use App\Support\Activity;
+use App\Support\Locales;
 use Carbon\CarbonImmutable;
 use Closure;
 use Throwable;
@@ -212,7 +213,7 @@ class DomainProvisioner
         return [
             'domain' => [
                 'name' => $domain->name,
-                'expires_at' => $domain->expires_at?->format('d M Y'),
+                'expires_at' => Locales::in(Locales::forClient($domain->client), fn (): ?string => $domain->expires_at?->translatedFormat('d M Y')),
                 'years' => $domain->years,
                 'nameservers' => implode(', ', $domain->nameserverList()),
                 'url' => route('client.domains.show', $domain),

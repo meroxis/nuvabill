@@ -33,6 +33,13 @@ class Locales
         'zh_CN' => ['name' => 'Chinese (Simplified)', 'native' => '简体中文', 'short' => 'ZH', 'rtl' => false],
     ];
 
+    /**
+     * Languages whose PDFs stay in English: see forPdf().
+     *
+     * @var list<string>
+     */
+    public const PDF_IN_ENGLISH = ['ar', 'ckb', 'zh_CN'];
+
     public const SESSION_CLIENT = 'locale';
 
     public const SESSION_ADMIN = 'admin_locale';
@@ -155,7 +162,7 @@ class Locales
     }
 
     /**
-     * Run something in English, like PDFs (the PDF engine cannot join Arabic letters).
+     * Run something in English, like staff reports.
      *
      * @template T
      *
@@ -164,18 +171,52 @@ class Locales
      */
     public static function inEnglish(Closure $callback): mixed
     {
-        $previous = app()->getLocale();
+        return self::in('en', $callback);
+    }
 
-        if ($previous === 'en') {
+    /**
+     * Run something in a language, like an email to a client, then switch back.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $callback
+     * @return T
+     */
+    public static function in(string $locale, Closure $callback): mixed
+    {
+        $previous = app()->getLocale();
+        $locale = isset(self::ALL[$locale]) ? $locale : 'en';
+
+        if ($previous === $locale) {
             return $callback();
         }
 
-        app()->setLocale('en');
+        app()->setLocale($locale);
 
         try {
             return $callback();
         } finally {
             app()->setLocale($previous);
         }
+    }
+
+    /**
+     * The language a client gets emails and PDF invoices in: the one they picked, if clients may
+     * still pick it, otherwise the site's default language.
+     */
+    public static function forClient(?Client $client): string
+    {
+        $language = $client?->language;
+
+        return is_string($language) && isset(self::enabled()[$language]) ? $language : self::default();
+    }
+
+    /**
+     * The language of a PDF. The PDF engine cannot join Arabic letters or draw Chinese ones, so
+     * those PDFs stay in English.
+     */
+    public static function forPdf(string $locale): string
+    {
+        return in_array($locale, self::PDF_IN_ENGLISH, true) ? 'en' : $locale;
     }
 }

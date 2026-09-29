@@ -13,6 +13,7 @@ use App\Models\Product;
 use App\Models\Service;
 use App\Provisioning\Provisioner;
 use App\Support\Activity;
+use App\Support\Locales;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -230,8 +231,8 @@ class PlanChanges
                 'old' => $change->fromProduct?->name,
                 'new' => $change->toProduct?->name,
                 'amount' => money($change->new_amount, $change->currency),
-                'cycle' => $change->billing_cycle->label(),
-                'note' => $credit > 0 ? __('We added :amount to your wallet for the unused time of your old plan.', ['amount' => money($credit, $change->currency)]) : '',
+                'cycle' => Locales::in(Locales::forClient($service->client), fn (): string => $change->billing_cycle->label()),
+                'note' => $credit > 0 ? Locales::in(Locales::forClient($service->client), fn (): string => __('We added :amount to your wallet for the unused time of your old plan.', ['amount' => money($credit, $change->currency)])) : '',
             ],
         ]);
 

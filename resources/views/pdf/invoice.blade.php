@@ -56,10 +56,10 @@
             </td>
             <td class="right">
                 <table>
-                    <tr><td class="muted right">{{ __('Invoice date') }}</td><td class="right" style="width: 45%">{{ $invoice->issued_at->format('d M Y') }}</td></tr>
-                    <tr><td class="muted right">{{ __('Due date') }}</td><td class="right">{{ $invoice->due_at->format('d M Y') }}</td></tr>
+                    <tr><td class="muted right">{{ __('Invoice date') }}</td><td class="right" style="width: 45%">{{ $invoice->issued_at->translatedFormat('d M Y') }}</td></tr>
+                    <tr><td class="muted right">{{ __('Due date') }}</td><td class="right">{{ $invoice->due_at->translatedFormat('d M Y') }}</td></tr>
                     @if ($invoice->paid_at)
-                        <tr><td class="muted right">{{ __('Paid on') }}</td><td class="right">{{ $invoice->paid_at->format('d M Y') }}</td></tr>
+                        <tr><td class="muted right">{{ __('Paid on') }}</td><td class="right">{{ $invoice->paid_at->translatedFormat('d M Y') }}</td></tr>
                     @endif
                 </table>
             </td>

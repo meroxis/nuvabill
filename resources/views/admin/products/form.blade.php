@@ -108,7 +108,7 @@
         <section class="card" style="display:grid;gap:1rem">
             <div class="card-header" style="margin:0"><h2>{{ __('Upgrades and downgrades') }}</h2></div>
             <p class="muted" style="margin:0">{{ __('Clients with this product can switch to the plans you tick. They pay only the difference for the days left. Only plans on the same kind of server are shown.') }}</p>
-            @php($chosen = array_map('intval', (array) old('upgrade_product_ids', $product->upgrade_product_ids ?? [])))
+            @php $chosen = array_map('intval', (array) old('upgrade_product_ids', $product->upgrade_product_ids ?? [])); @endphp
             <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px 14px">
                 @foreach ($otherProducts as $other)
                     <label class="check" for="f-upgrade-{{ $other->id }}" x-show="(module || '') === @js((string) $other->server_module)">
