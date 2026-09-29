@@ -149,6 +149,34 @@ class Settings
         'ai.descriptions' => true,
         'ai.warned_month' => null,
 
+        // Chat apps. Telegram: a bot the owner makes with @BotFather. WhatsApp: Meta's Cloud API,
+        // connected by QR code through the Nuvabill connect page, or by hand with the owner's own Meta app.
+        'chat.telegram_token' => '',
+        'chat.telegram_bot' => '',
+        'chat.telegram_secret' => '',
+        'chat.telegram_staff_chat' => '',
+        'chat.telegram_groups' => [],
+        'chat.whatsapp_token' => '',
+        'chat.whatsapp_waba' => '',
+        'chat.whatsapp_phone_id' => '',
+        'chat.whatsapp_number' => '',
+        'chat.whatsapp_name' => '',
+        'chat.whatsapp_via' => '',
+        'chat.whatsapp_webhook_key' => '',
+        'chat.whatsapp_app_secret' => '',
+        'chat.whatsapp_templates' => [],
+        'chat.whatsapp_tickets' => true,
+        'chat.department' => null,
+        'chat.events' => [
+            'invoice.created' => ['telegram' => true, 'whatsapp' => false],
+            'invoice.reminder' => ['telegram' => true, 'whatsapp' => true],
+            'invoice.payment_received' => ['telegram' => true, 'whatsapp' => false],
+            'service.welcome' => ['telegram' => true, 'whatsapp' => true],
+            'service.suspended' => ['telegram' => true, 'whatsapp' => true],
+            'ticket.reply' => ['telegram' => true, 'whatsapp' => true],
+            'domain.expiring' => ['telegram' => true, 'whatsapp' => true],
+        ],
+
         // Search engines: what the store tells Google, Bing and the apps that show link previews.
         'seo.visible' => true,
         'seo.title_pattern' => '{page} · {company}',
@@ -171,7 +199,7 @@ class Settings
      *
      * @var list<string>
      */
-    public const SECRET_KEYS = ['license.white_label_key', 'mail.password', 'import.whmcs', 'import.connection', 'import.password_keys', 'social.google', 'social.github', 'social.facebook', 'security.captcha_secret', 'ai.key'];
+    public const SECRET_KEYS = ['license.white_label_key', 'mail.password', 'import.whmcs', 'import.connection', 'import.password_keys', 'social.google', 'social.github', 'social.facebook', 'security.captcha_secret', 'ai.key', 'chat.telegram_token', 'chat.telegram_secret', 'chat.whatsapp_token', 'chat.whatsapp_app_secret', 'chat.whatsapp_webhook_key'];
 
     /**
      * @var array<string, mixed>|null

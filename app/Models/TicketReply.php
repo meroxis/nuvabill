@@ -12,7 +12,7 @@ class TicketReply extends Model
      * "language" is the language the message is in, "translation" a client message in the staff
      * language, and "original_message" what staff wrote when the reply was sent translated.
      */
-    protected $fillable = ['ticket_id', 'author_type', 'author_id', 'message', 'ip_address', 'language', 'translation', 'original_message'];
+    protected $fillable = ['ticket_id', 'author_type', 'author_id', 'message', 'ip_address', 'language', 'translation', 'original_message', 'channel'];
 
     /**
      * @return BelongsTo<Ticket, $this>

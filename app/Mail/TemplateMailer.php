@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Chat\ChatNotifier;
 use App\Models\Client;
 use App\Models\EmailTemplate;
 use App\Models\Invoice;
@@ -23,7 +24,13 @@ class TemplateMailer
      */
     public function send(string $key, Client $client, array $context = []): bool
     {
-        return $this->sendTo($key, $client->email, $client->name, ['client' => self::clientContext($client)] + $context);
+        $context = ['client' => self::clientContext($client)] + $context;
+        $sent = $this->sendTo($key, $client->email, $client->name, $context);
+
+        // The same news on Telegram or WhatsApp, for clients who linked them.
+        rescue(fn () => app(ChatNotifier::class)->clientEmailed($key, $client, $context));
+
+        return $sent;
     }
 
     /**
@@ -56,6 +63,11 @@ class TemplateMailer
             'html_input' => 'escape',
             'allow_unsafe_links' => false,
         ]);
+
+        // Staff emails, such as a new ticket or order, also go to the team's Telegram group.
+        if (str_starts_with($key, 'admin.')) {
+            rescue(fn () => app(ChatNotifier::class)->staffEmailed($subject, isset($context['admin_url']) ? (string) $context['admin_url'] : null));
+        }
 
         try {
             // Email templates are written in English, so the wrapper around them is too.

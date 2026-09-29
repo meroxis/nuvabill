@@ -1,6 +1,7 @@
 import Alpine from 'alpinejs';
 import automationEditor from './automation-editor';
 import { aiMessage, productAi, ticketAi } from './ai-help';
+import { whatsappConnect } from './chat-apps';
 
 /**
  * Light / dark mode. "system" follows the device; the choice is remembered on this device only.
@@ -210,6 +211,7 @@ Alpine.data('automationEditor', automationEditor);
 Alpine.data('ticketAi', ticketAi);
 Alpine.data('aiMessage', aiMessage);
 Alpine.data('productAi', productAi);
+Alpine.data('whatsappConnect', whatsappConnect);
 
 // Start once the page is parsed, after every deferred script, so themes, order forms and add-ons can
 // load their scripts with "defer" (not blocking the first paint) and still register with Alpine first.

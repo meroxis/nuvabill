@@ -151,6 +151,37 @@
                 <p class="muted" data-passkey-unsupported hidden style="margin:0;font-size:.88rem">{{ __('This browser cannot use passkeys. Try an up-to-date Chrome, Edge, Safari or Firefox.') }}</p>
             </section>
 
+            @if ($chat)
+                <section class="card" id="chat-apps" style="display:grid;gap:.9rem;scroll-margin-top:90px">
+                    <style>.chat-qr svg { display: block; width: 100%; height: 100%; }</style>
+                    <div>
+                        <h2 style="font-size:1.05rem">{{ __('Get alerts on your phone') }}</h2>
+                        <p class="muted" style="margin:.3rem 0 0;font-size:.88rem">{{ __('Get invoices, reminders and ticket replies in your chat app, and write to support from there. Scan the QR code with your phone, or tap the link on this phone.') }}</p>
+                    </div>
+                    @if ($chat['apps'] !== [])
+                        <div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))">
+                            @foreach ($chat['apps'] as $app)
+                                <div style="display:grid;gap:.5rem;justify-items:center;text-align:center">
+                                    <div class="chat-qr" style="width:150px;height:150px;padding:8px;background:#fff;border-radius:6px;box-sizing:border-box" role="img" aria-label="{{ __('QR code for :app', ['app' => $app['name']]) }}">{!! $app['qr'] !!}</div>
+                                    <a class="btn btn-sm" href="{{ $app['url'] }}" target="_blank" rel="noopener">{{ __('Open :app', ['app' => $app['name']]) }}</a>
+                                </div>
+                            @endforeach
+                        </div>
+                        <p class="muted" style="margin:0;font-size:.82rem">{{ __('The code is for your account only and works for 30 minutes. Send /stop in the chat to disconnect.') }}</p>
+                    @endif
+                    @foreach ($chat['links'] as $link)
+                        <div class="summary-row" style="align-items:center">
+                            <span style="min-width:0;overflow-wrap:anywhere">{{ $link->channelLabel() }}@if ($link->name)<span class="muted" style="font-size:.85rem"> · {{ $link->name }}</span>@endif <span class="muted" style="font-size:.85rem"> · {{ __('connected :date', ['date' => $link->created_at->translatedFormat('d M Y')]) }}</span></span>
+                            <form method="POST" action="{{ route('client.account.chat.destroy', $link) }}" data-confirm="{{ __('Disconnect :app? You will not get messages there anymore.', ['app' => $link->channelLabel()]) }}">
+                                @csrf
+                                @method('DELETE')
+                                <button class="btn btn-sm" type="submit">{{ __('Disconnect') }}</button>
+                            </form>
+                        </div>
+                    @endforeach
+                </section>
+            @endif
+
             @if ($socialProviders || $socialAccounts->isNotEmpty())
                 <section class="card" style="display:grid;gap:.8rem">
                     <div>

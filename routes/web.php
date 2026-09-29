@@ -26,6 +26,7 @@ use App\Http\Controllers\Store\CheckoutController;
 use App\Http\Controllers\Store\DomainSearchController;
 use App\Http\Controllers\Store\QuickOrderController;
 use App\Http\Controllers\Store\StoreController;
+use App\Http\Controllers\WhatsAppConnectController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -47,6 +48,10 @@ Route::post('cart/coupon', [CartController::class, 'coupon'])->middleware('throt
 Route::delete('cart/{index}', [CartController::class, 'destroy'])->whereNumber('index')->name('cart.destroy');
 
 Route::post('language', [LanguageController::class, 'client'])->middleware('throttle:30,1')->name('language.update');
+
+// WhatsApp connect page. It only works on the Nuvabill store, where Meta's app keys are set.
+Route::get('connect/whatsapp', [WhatsAppConnectController::class, 'show'])->name('connect.whatsapp');
+Route::post('connect/whatsapp/exchange', [WhatsAppConnectController::class, 'exchange'])->middleware('throttle:10,1')->name('connect.whatsapp.exchange');
 
 Route::get('preview/stop', [PreviewController::class, 'stop'])->name('preview.stop');
 Route::get('preview/{kind}/{slug}', [PreviewController::class, 'start'])->whereIn('kind', ['theme', 'orderform'])->where('slug', '[a-z0-9][a-z0-9_-]*')->name('preview.start');
@@ -146,5 +151,6 @@ Route::middleware(['auth:web', 'client.active', 'client.two-factor'])->prefix('c
     Route::post('account/passkeys/options', [PasskeyController::class, 'options'])->middleware('throttle:6,1')->name('account.passkeys.options');
     Route::post('account/passkeys', [PasskeyController::class, 'store'])->middleware('throttle:10,1')->name('account.passkeys.store');
     Route::delete('account/passkeys/{passkey}', [PasskeyController::class, 'destroy'])->name('account.passkeys.destroy');
+    Route::delete('account/chat/{chatLink}', [AccountController::class, 'disconnectChat'])->name('account.chat.destroy');
     Route::delete('account/social/{provider}', [SocialLoginController::class, 'destroy'])->whereIn('provider', array_keys(SocialLogin::PROVIDERS))->name('account.social.destroy');
 });

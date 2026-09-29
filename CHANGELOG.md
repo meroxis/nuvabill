@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.5.2](https://github.com/meroxis/nuvabill/releases/tag/v0.5.2) | 29 Sep 2026 | Telegram and WhatsApp: invoices, reminders and ticket replies in chat apps; clients link by QR code; tickets from chats |
 | [0.5.1](https://github.com/meroxis/nuvabill/releases/tag/v0.5.1) | 29 Sep 2026 | AI help with your own Claude key: reply drafts, two-way ticket translation, summaries, product texts |
 | [0.5.0](https://github.com/meroxis/nuvabill/releases/tag/v0.5.0) | 29 Sep 2026 | Automations: "when this happens, do that", with 9 ready-made templates; client tags; ticket assignment |
 | [0.4.11](https://github.com/meroxis/nuvabill/releases/tag/v0.4.11) | 28 Sep 2026 | Search engine tools: sitemap, titles and descriptions, prices on Google, link previews |
@@ -35,6 +36,25 @@ the [roadmap](ROADMAP.md).
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
 
+## 0.5.2
+
+- **Telegram and WhatsApp.** A new **Settings → Chat apps** page sends invoices, overdue reminders, payment receipts,
+  "your service is ready", suspensions, ticket replies and domain renewal reminders to clients on Telegram and
+  WhatsApp, next to the email, in each client's own language, with a button to the invoice or ticket. A table lets you
+  turn each message on or off per app.
+- **Telegram in two minutes.** Make a bot with @BotFather, paste its token, done. Add the bot to your team's Telegram
+  group to get new tickets, client replies and orders there too.
+- **WhatsApp by QR code.** Press **Connect with a QR code**, sign in with Facebook and scan the code with the WhatsApp
+  Business app on your phone. Your number keeps working in the app. Businesses with their own Meta app can enter its
+  details instead. Nuvabill sends its message templates to Meta for approval and shows their status. The QR code
+  signup opens once Meta has approved Nuvabill for it; until then, use your own Meta app.
+- **Clients link by QR code.** The client area's Account page has a QR code and a link for each app. Linked clients can
+  send `/invoices`, `/services` and `/tickets`, and disconnect with `/stop`.
+- **Tickets from chats.** Anything else a linked client writes becomes a ticket, or a reply on their open chat ticket,
+  and your answer goes back to the chat. Replies from a chat show **via Telegram** or **via WhatsApp**. You can turn this
+  off for WhatsApp if you answer clients in the WhatsApp Business app yourself.
+- Tokens and keys are stored encrypted, and Nuvabill only accepts messages that carry your site's secret Telegram or
+  WhatsApp key. See the [Telegram and WhatsApp guide](docs/chat-apps.md).
 ## 0.5.1
 
 - **AI help, with your own Claude key.** Add an Anthropic API key in the new **Settings → AI** and pick a model:

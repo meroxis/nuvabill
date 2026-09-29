@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\Auth\PasskeyLoginController;
 use App\Http\Controllers\Admin\Auth\PasswordResetController;
 use App\Http\Controllers\Admin\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\Admin\AutomationController;
+use App\Http\Controllers\Admin\ChatSettingsController;
 use App\Http\Controllers\Admin\ClientController;
 use App\Http\Controllers\Admin\CouponController;
 use App\Http\Controllers\Admin\CurrencyController;
@@ -200,6 +201,18 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::get('license', [WhiteLabelController::class, 'edit'])->name('license.edit');
         Route::put('license', [WhiteLabelController::class, 'update'])->middleware('throttle:10,1')->name('license.update');
         Route::post('license/check', [WhiteLabelController::class, 'check'])->middleware('throttle:10,1')->name('license.check');
+
+        Route::prefix('chat-apps')->name('chat.')->middleware('throttle:30,1')->group(function (): void {
+            Route::get('/', [ChatSettingsController::class, 'edit'])->name('edit')->withoutMiddleware('throttle:30,1');
+            Route::put('telegram', [ChatSettingsController::class, 'telegram'])->name('telegram');
+            Route::put('telegram/staff', [ChatSettingsController::class, 'telegramStaff'])->name('telegram.staff');
+            Route::delete('telegram', [ChatSettingsController::class, 'telegramDisconnect'])->name('telegram.destroy');
+            Route::post('whatsapp/connect', [ChatSettingsController::class, 'whatsappConnect'])->name('whatsapp.connect');
+            Route::put('whatsapp', [ChatSettingsController::class, 'whatsappManual'])->name('whatsapp.manual');
+            Route::post('whatsapp/templates', [ChatSettingsController::class, 'whatsappTemplates'])->name('whatsapp.templates');
+            Route::delete('whatsapp', [ChatSettingsController::class, 'whatsappDisconnect'])->name('whatsapp.destroy');
+            Route::put('messages', [ChatSettingsController::class, 'messages'])->name('messages');
+        });
 
         Route::get('ai', [AiSettingsController::class, 'edit'])->name('ai.edit');
         Route::put('ai', [AiSettingsController::class, 'update'])->name('ai.update');

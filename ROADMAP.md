@@ -13,12 +13,12 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.4 | Taxes, quotes, client wallet, affiliates, REST API, White-label License, passkeys, 26 languages with right-to-left pages, one-command install, backups, faster store pages, Site health (security and database checks), billing jobs that never bill twice, importers for Blesta, FOSSBilling and Paymenter with a dry run, all extensions on one page, free CyberPanel, HestiaCP, VirtFusion and SolusVM modules, search engine tools (sitemap, titles and descriptions, prices on Google, language links) |
 | 0.5.0 | Automations ("when this happens, do that") with 9 templates, Try it and a runs log; client tags; ticket assignment |
 | 0.5.1 | AI help with your own Claude key: reply drafts, two-way ticket translation, summaries, product texts, a monthly spending limit |
+| 0.5.2 | Telegram and WhatsApp: invoices, reminders and ticket replies in chat apps, clients link by QR code, WhatsApp connects by QR code, tickets from chats, staff alerts in a Telegram group |
 
 ## Next
 
 | Version | Focus |
 |---|---|
-| 0.5.2 | **Telegram and WhatsApp**: invoices, payments and tickets in the apps your clients already use |
 | 0.5.3 | **Admin phone app**: install the admin area on your phone, with notifications |
 | Later | **ClientExec importer**, once we have tested it against a real ClientExec database |
 

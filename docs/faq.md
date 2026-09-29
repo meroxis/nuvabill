@@ -79,6 +79,13 @@ writes product texts. Staff always check and send; AI never answers by itself. P
 and phone numbers are taken out before anything goes to the AI, and a monthly limit keeps spending in check. See the
 [AI help guide](ai-help.md).
 
+## Can clients get invoices on WhatsApp or Telegram?
+
+Yes. Connect Telegram with a bot token, and WhatsApp by scanning a QR code with the WhatsApp Business app or with your
+own Meta app. Clients scan a QR code in the client area to link their chat app, then get invoices, reminders and ticket
+replies there next to the email, and can write to support from the chat. Telegram is free; Meta charges a small fee for
+WhatsApp messages you send first. See the [Telegram and WhatsApp guide](chat-apps.md).
+
 ## Can the nightly job bill a client twice?
 
 No. Only one automation run works at a time, and each renewal period can only be invoiced once: the database itself

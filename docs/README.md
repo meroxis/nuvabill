@@ -14,6 +14,7 @@ These pages cover running your own copy. The same guides, and the developer and 
 | [Migrating from WHMCS](whmcs-migration.md) | What the importer copies, what it leaves out, and a safe switch-over plan |
 | [Moving from Blesta, FOSSBilling or Paymenter](importing.md) | The dry run, what each importer copies, and what to do after the import |
 | [AI help](ai-help.md) | Reply drafts, two-way ticket translation, summaries and product texts with Claude and your own key; spending limit and privacy |
+| [Telegram and WhatsApp](chat-apps.md) | Invoices, reminders and ticket replies in chat apps, WhatsApp by QR code or your own Meta app, message templates, client commands, tickets from chats |
 | [Automations](automations.md) | "When this happens, do that": templates, starting points, conditions, steps, Try it and the runs log |
 | [Search engines](search-engines.md) | Titles and descriptions, sitemap, robots.txt, prices on Google, language links and link previews |
 | [FAQ](faq.md) | License, White-label License, updates, backups, security and more |

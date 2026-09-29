@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ChatWebhookController;
 use App\Http\Controllers\PackageAssetController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\WebhookController;
@@ -52,6 +53,14 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::post('webhooks/{gateway}', WebhookController::class)
                 ->where('gateway', '[a-z0-9_-]+')
                 ->name('webhooks.gateway');
+
+            // Chat apps: messages from Telegram and WhatsApp.
+            Route::middleware('throttle:240,1')->group(function (): void {
+                Route::post('webhooks/chat/telegram', [ChatWebhookController::class, 'telegram'])->name('webhooks.telegram');
+                Route::match(['get', 'post'], 'webhooks/chat/whatsapp/{key}', [ChatWebhookController::class, 'whatsapp'])
+                    ->where('key', '[A-Za-z0-9]{32,64}')
+                    ->name('webhooks.whatsapp');
+            });
 
             // Theme, order form and extension files. No session or cookies: these are static files.
             Route::get('package-assets/{kind}/{slug}/{path}', PackageAssetController::class)

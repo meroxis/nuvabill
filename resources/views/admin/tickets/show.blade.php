@@ -55,6 +55,9 @@
                         <div class="bubble">
                             <header>
                                 <b>{{ $reply->authorName() }}</b><span>{{ $reply->isFromStaff() ? __('Staff') : __('Client') }}</span><time datetime="{{ $reply->created_at->toIso8601String() }}">{{ $reply->created_at->translatedFormat('d M Y H:i') }}</time>
+                                @if ($reply->channel)
+                                    <span class="pill">{{ __('via :app', ['app' => $reply->channel === 'whatsapp' ? 'WhatsApp' : 'Telegram']) }}</span>
+                                @endif
                                 @if ($reply->original_message !== null)
                                     <span class="pill" data-tone="info">{{ __('Sent in :language', ['language' => $languageName($reply->language)]) }}</span>
                                 @elseif ($reply->translation !== null)

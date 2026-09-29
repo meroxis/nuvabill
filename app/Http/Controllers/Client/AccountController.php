@@ -3,12 +3,17 @@
 namespace App\Http\Controllers\Client;
 
 use App\Auth\Social\SocialLogin;
+use App\Chat\LinkCodes;
+use App\Chat\Telegram;
+use App\Chat\WhatsApp;
 use App\Http\Controllers\Controller;
+use App\Models\ChatLink;
 use App\Models\Client;
 use App\Security\EmailCode;
 use App\Security\Totp;
 use App\Support\Activity;
 use App\Support\Countries;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -36,7 +41,52 @@ class AccountController extends Controller
                 'emailPending' => ! $client->hasTwoFactorEnabled() && $codes->isPending($client, 'setup'),
                 'recoveryCodes' => session('recovery_codes'),
             ],
+            'chat' => $this->chatApps($client),
         ]);
+    }
+
+    /**
+     * Disconnect a Telegram chat or WhatsApp number from the account.
+     */
+    public function disconnectChat(Request $request, ChatLink $chatLink): RedirectResponse
+    {
+        abort_unless($chatLink->client_id === $request->user('web')->id, 404);
+        $chatLink->delete();
+
+        return back()->with('status', __(':app is disconnected. You will not get messages there anymore.', ['app' => $chatLink->channelLabel()]));
+    }
+
+    /**
+     * "Get alerts on your phone": a QR code and a link per chat app the company connected, and the
+     * chats this client already linked. Null when the company uses no chat app.
+     *
+     * @return array{apps: list<array{name: string, url: string, qr: string}>, links: Collection<int, ChatLink>}|null
+     */
+    private function chatApps(Client $client): ?array
+    {
+        $telegram = app(Telegram::class);
+        $whatsApp = app(WhatsApp::class);
+        $links = ChatLink::query()->where('client_id', $client->id)->oldest('id')->get();
+
+        if (! $telegram->isConnected() && ! $whatsApp->isConnected() && $links->isEmpty()) {
+            return null;
+        }
+
+        $code = LinkCodes::for($client);
+        $apps = [];
+
+        if ($telegram->isConnected()) {
+            $apps[] = ['name' => 'Telegram', 'url' => $telegram->link($code)];
+        }
+
+        if ($whatsApp->isConnected() && $whatsApp->number() !== '') {
+            $apps[] = ['name' => 'WhatsApp', 'url' => $whatsApp->link($code)];
+        }
+
+        return [
+            'apps' => array_map(fn (array $app): array => $app + ['qr' => Totp::qrCodeSvg($app['url'])], $apps),
+            'links' => $links,
+        ];
     }
 
     public function update(Request $request): RedirectResponse

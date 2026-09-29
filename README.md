@@ -34,6 +34,7 @@ takes one import.
 - **Automation**: cPanel & WHM, DirectAdmin, Plesk, Proxmox VE and Virtualizor accounts created on payment, suspended when overdue, unsuspended when paid, plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules on the Marketplace
 - **Automations**: "when this happens, do that", like late fees, welcome emails, quote follow-ups and VIP tickets first, with 9 templates and a log of every run
 - **AI help** with your own Claude key: ticket reply drafts, two-way ticket translation, summaries and product texts; staff always send, and private details never reach the AI
+- **Telegram and WhatsApp**: invoices, reminders and ticket replies in the chat apps clients already use; clients link by QR code, and chats become tickets
 - **Billing**: invoices with PDFs, renewals, reminders, taxes (VAT, GST, sales tax), coupons, product add-ons, quotes, a client wallet and affiliates
 - **Payments**: Stripe, PayPal, bank transfer and Iraqi payments (FIB, FastPay and Wayl), with refunds and exchange rates
 - **Domains**: search, register, transfer and renew at ResellerClub, Namecheap, Enom or OpenSRS
@@ -50,7 +51,7 @@ takes one import.
 curl -fsSL https://nuvabill.com/install.sh | bash
 ```
 
-> **Status: v0.5.** New: **AI help** with your own Claude key (reply drafts, tickets in two languages, summaries) and **Automations**, "when this happens, do that", with 9 ready-made templates. Also taxes, a client wallet, quotes, affiliates, a REST API, passkeys, and 26 languages with right-to-left pages for Arabic, Hebrew and Kurdish. See the [roadmap](#roadmap).
+> **Status: v0.5.** New: **Telegram and WhatsApp** (invoices, reminders and tickets in chat apps, linked by QR code), **AI help** with your own Claude key (reply drafts, tickets in two languages, summaries) and **Automations**, "when this happens, do that", with 9 ready-made templates. Also taxes, a client wallet, quotes, affiliates, a REST API, passkeys, and 26 languages with right-to-left pages for Arabic, Hebrew and Kurdish. See the [roadmap](#roadmap).
 >
 > **Try it:** the [live demo](https://demo.nuvabill.com/admin/login) has sample clients, invoices and tickets. One click signs you in, and the data resets every hour.
 
@@ -268,6 +269,11 @@ translation. There is an AI summary with a suggested department and priority, an
 Passwords, card details, email addresses and phone numbers never reach the AI, and a monthly limit keeps spending in
 check. See the [AI help guide](docs/ai-help.md).
 
+**Telegram and WhatsApp**: clients scan a QR code in the client area to get invoices, reminders and ticket replies in
+their chat app, and can write to support from there; their messages become tickets and your answers go back to the
+chat. Connect WhatsApp by scanning a QR code with the WhatsApp Business app, and get staff alerts in your team's
+Telegram group. See the [Telegram and WhatsApp guide](docs/chat-apps.md).
+
 ![Support ticket](.github/screenshots/support.png)
 
 ### A dashboard that tells you what matters
@@ -384,8 +390,8 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 | Version | Focus |
 |---|---|
 | v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor (plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules), domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, search engine tools, Site health ([changelog](CHANGELOG.md)) |
-| v0.5.0–v0.5.1 | Done: **Automations** with 9 templates, client tags and ticket assignment; **AI help** with your own Claude key |
-| **next** | **v0.5.2 Telegram and WhatsApp**, then an admin phone app |
+| v0.5.0–v0.5.2 | Done: **Automations** with 9 templates, client tags and ticket assignment; **AI help** with your own Claude key; **Telegram and WhatsApp** |
+| **next** | **v0.5.3 admin phone app**: the admin area on your phone, with notifications |
 | later | A ClientExec importer |
 | v1.0 | Automatic card payments, client upgrades, knowledge base and status page, security audit, and more |
 

@@ -12,7 +12,7 @@ return [
     |
     */
 
-    'version' => '0.5.1',
+    'version' => '0.5.2',
 
     /*
     |--------------------------------------------------------------------------
@@ -77,6 +77,27 @@ return [
     | and payouts.
     |
     */
+
+    /*
+    |--------------------------------------------------------------------------
+    | WhatsApp connect
+    |--------------------------------------------------------------------------
+    |
+    | Owners connect WhatsApp by scanning a QR code on Meta's official signup
+    | page. It runs on the Nuvabill store (Meta only allows it on the domains
+    | of the Meta app that hosts it), which swaps Meta's short code for the
+    | owner's own access token and hands it back. Only the store sets the
+    | META_* values; every other site uses the "url" to reach it.
+    |
+    */
+
+    'whatsapp_connect' => [
+        'url' => rtrim((string) env('NUVABILL_WHATSAPP_CONNECT_URL', 'https://my.nuvabill.com/connect/whatsapp'), '/'),
+        'app_id' => env('META_APP_ID'),
+        'app_secret' => env('META_APP_SECRET'),
+        'config_id' => env('META_CONFIG_ID'),
+        'graph_version' => env('META_GRAPH_VERSION', 'v25.0'),
+    ],
 
     'marketplace' => [
         'url' => rtrim((string) env('NUVABILL_MARKETPLACE_URL', 'https://my.nuvabill.com'), '/'),

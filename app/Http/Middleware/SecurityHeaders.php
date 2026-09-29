@@ -16,6 +16,16 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class SecurityHeaders
 {
+    /**
+     * Request attribute: extra sources for one page, as directive => list of sources.
+     */
+    public const PAGE_SOURCES = 'security.page_sources';
+
+    /**
+     * Request attribute: the Cross-Origin-Opener-Policy for one page.
+     */
+    public const OPENER_POLICY = 'security.opener_policy';
+
     public function __construct(private Vite $vite) {}
 
     public function handle(Request $request, Closure $next): Response
@@ -31,7 +41,8 @@ class SecurityHeaders
         $headers->set('X-Frame-Options', 'SAMEORIGIN');
         $headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
         $headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), browsing-topics=()');
-        $headers->set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+        // A page opened as a window by another site keeps its link back to that site only without isolation.
+        $headers->set('Cross-Origin-Opener-Policy', $request->attributes->get(self::OPENER_POLICY, 'same-origin-allow-popups'));
 
         if ($request->isSecure()) {
             $headers->set('Strict-Transport-Security', 'max-age=31536000');
@@ -59,7 +70,9 @@ class SecurityHeaders
     {
         $captcha = implode(' ', app(Captcha::class)->details((string) setting('security.captcha_provider'))['hosts'] ?? []);
         $addons = Installation::isInstalled() ? app(ExtensionManager::class)->contentSecurityPolicy() : [];
-        $extra = fn (string $directive): string => implode(' ', $addons[$directive] ?? []);
+        // One page can allow more, such as Meta's script on the WhatsApp connect page.
+        $page = (array) $request->attributes->get(self::PAGE_SOURCES, []);
+        $extra = fn (string $directive): string => implode(' ', [...($addons[$directive] ?? []), ...($page[$directive] ?? [])]);
         $frames = trim($captcha.' '.$extra('frame-src'));
         $cloudflare = $request->headers->has('CF-Ray');
         $sources = fn (string ...$parts): string => implode(' ', array_filter(array_map('trim', $parts), fn (string $part): bool => $part !== ''));
