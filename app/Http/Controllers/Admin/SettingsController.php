@@ -36,7 +36,7 @@ class SettingsController extends Controller
         $admin = $request->user('admin');
         abort_unless($admin->hasPermission('settings.manage') || $admin->hasPermission('staff.manage'), 403);
 
-        return view('admin.settings.index', ['menu' => SettingsMenu::groups($admin)]);
+        return view('admin.settings.index', ['cards' => SettingsMenu::cards($admin)]);
     }
 
     public function edit(Themes $themes): View

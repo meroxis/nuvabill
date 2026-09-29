@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.6.2](https://github.com/meroxis/nuvabill/releases/tag/v0.6.2) | 29 Sep 2026 | Settings opens as a home page with grouped cards |
 | [0.6.1](https://github.com/meroxis/nuvabill/releases/tag/v0.6.1) | 29 Sep 2026 | A clearer Settings menu with search; add-ons can show your company website; 10 languages |
 | [0.6.0](https://github.com/meroxis/nuvabill/releases/tag/v0.6.0) | 29 Sep 2026 | Automatic payments: clients save a card or PayPal account and renewals are charged by themselves, with retries and notices |
 | [0.5.6](https://github.com/meroxis/nuvabill/releases/tag/v0.5.6) | 29 Sep 2026 | The phone app's QR code fits its box |
@@ -41,6 +42,16 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.6.2
+
+- **Settings is now a home page with cards.** **Settings** in the side menu opens one page with every setting in
+  grouped cards: Business, Payments with Sign-in and security, Messages, Growth, Team and System. Each item has an
+  icon and a short line on what it is for. **Find a setting** at the top filters the cards as you type; press Enter to
+  open the first match.
+- Settings pages no longer have a menu on the left, so the page gets the full width. **Settings / group** above the
+  title (and **All settings** on phones) takes you back.
+- **General** settings moved to `/admin/settings/general`; `/admin/settings` is now the Settings home.
 
 ## 0.6.1
 

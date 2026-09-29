@@ -19,15 +19,16 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.5.5 | Admin phone app: install the admin area on your phone, a Today screen, push alerts for orders, payments and tickets |
 | 0.6.0 | Automatic payments: clients save a card or PayPal account, renewals are charged by themselves, wallet first, retries and notices |
 | 0.6.1 | A grouped Settings menu with search; add-ons can show your company website and home page (the Website Builder); 10 languages |
+| 0.6.2 | Settings opens as a home page with grouped cards |
 
 ## Next
 
 | Version | Focus |
 |---|---|
-| 0.6.2 | **Client upgrades and downgrades** with prorated prices |
-| 0.6.3 | **Emails and PDF invoices in the client's language** |
-| 0.6.4 | **Knowledge base, announcements and a network status page** |
-| 0.6.5 | **Credit notes, CSV exports** for accountants, and **privacy tools** (export or erase a client's data) |
+| 0.6.3 | **Client upgrades and downgrades** with prorated prices |
+| 0.6.4 | **Emails and PDF invoices in the client's language** |
+| 0.6.5 | **Knowledge base, announcements and a network status page** |
+| 0.6.6 | **Credit notes, CSV exports** for accountants, and **privacy tools** (export or erase a client's data) |
 | Later | **ClientExec importer**, once we have tested it against a real ClientExec database |
 
 ## The path to 1.0

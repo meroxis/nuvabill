@@ -8,7 +8,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
- * The Settings menu: grouped pages, the page header, and only what each role may open.
+ * The Settings home with its grouped cards, the header of every settings page, and only what each
+ * role may open.
  */
 class SettingsMenuTest extends TestCase
 {
@@ -21,42 +22,49 @@ class SettingsMenuTest extends TestCase
         $this->seed(DefaultDataSeeder::class);
     }
 
-    public function test_settings_pages_show_the_grouped_menu_and_their_own_header(): void
+    public function test_the_settings_home_shows_every_page_in_grouped_cards(): void
+    {
+        $this->actingAs(Admin::factory()->create(), 'admin');
+
+        $this->get(route('admin.dashboard'))->assertSee('href="'.route('admin.settings.index').'"', false);
+
+        $this->get(route('admin.settings.index'))
+            ->assertOk()
+            ->assertSee('Find a setting')
+            ->assertSeeInOrder(['Business', 'General', 'Company, billing and look', 'Domains', 'Payments', 'Automatic payments', 'Saved cards pay renewals',
+                'Sign-in and security', 'Security', 'Messages', 'Growth', 'Team', 'Roles', 'System', 'Activity log'])
+            ->assertSee(route('admin.extensions.index', ['tab' => 'gateways']), false);
+    }
+
+    public function test_settings_pages_have_their_own_header_and_a_way_back(): void
     {
         $this->actingAs(Admin::factory()->create(), 'admin');
 
         $this->get(route('admin.settings.taxes.index'))
             ->assertOk()
-            ->assertSeeInOrder(['Business', 'General', 'Currencies', 'Taxes', 'Domains', 'Payments', 'Automatic payments', 'Messages', 'Team', 'Staff', 'System', 'Activity log'])
-            ->assertSee('VAT, GST or sales tax rules by country and state.')
             ->assertSee('<h1>Taxes</h1>', false)
-            ->assertSee('Find a setting');
+            ->assertSee('VAT, GST or sales tax rules by country and state.')
+            ->assertSee('href="'.route('admin.settings.index').'"', false)
+            ->assertDontSee('Saved cards pay renewals');
+
+        $this->get(route('admin.settings.edit'))->assertOk()->assertSee('<h1>General</h1>', false);
     }
 
     public function test_staff_only_see_the_settings_their_role_allows(): void
     {
         $this->actingAs(Admin::factory()->withPermissions(['staff.manage'])->create(), 'admin');
 
-        $this->get(route('admin.settings.staff.index'))
-            ->assertOk()
-            ->assertSee('Roles')
-            ->assertDontSee('Automatic payments')
-            ->assertDontSee('Email templates');
-
-        $this->get(route('admin.settings.index'))->assertOk()->assertSee('What each role can see and do.')->assertDontSee('Taxes');
-    }
-
-    public function test_all_settings_lists_every_page_with_what_it_is_for(): void
-    {
-        $this->actingAs(Admin::factory()->create(), 'admin');
-
         $this->get(route('admin.settings.index'))
             ->assertOk()
-            ->assertSee('Charge saved cards and PayPal accounts for renewals.')
-            ->assertSee(route('admin.extensions.index', ['tab' => 'gateways']), false);
+            ->assertSee('What each role can do')
+            ->assertDontSee('Taxes')
+            ->assertDontSee('Automatic payments');
+
+        $this->get(route('admin.settings.staff.index'))->assertOk()->assertSee('<h1>Staff</h1>', false);
+        $this->get(route('admin.settings.edit'))->assertForbidden();
     }
 
-    public function test_staff_without_a_settings_permission_cannot_open_all_settings(): void
+    public function test_staff_without_a_settings_permission_cannot_open_settings(): void
     {
         $this->actingAs(Admin::factory()->withPermissions(['clients.view'])->create(), 'admin');
 

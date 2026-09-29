@@ -21,10 +21,9 @@
         ['route' => 'admin.extensions.index', 'match' => ['admin.extensions.*', 'admin.settings.gateways.*', 'admin.settings.registrars.*', 'admin.marketplace.settings', 'admin.addons.*'], 'icon' => 'plug', 'label' => __('Extensions'), 'show' => $can('settings.manage') || $can('products.manage') || $can('marketplace.manage'), 'count' => $extensionsNeedSettings ?: null, 'pages' => $can('marketplace.manage') ? $addonPages : []],
         ['route' => 'admin.marketplace.index', 'match' => 'admin.marketplace.*', 'except' => 'admin.marketplace.settings', 'icon' => 'puzzle', 'label' => __('Marketplace'), 'show' => $can('marketplace.manage'), 'count' => $marketplaceUpdates ?: null],
         ['route' => 'admin.health.index', 'match' => 'admin.health.*', 'icon' => 'shield', 'label' => __('Site health'), 'show' => $can('security.manage'), 'count' => $healthUrgent ?: null],
-        ['route' => 'admin.settings.edit', 'match' => ['admin.settings.*'], 'except' => ['admin.settings.gateways.*', 'admin.settings.registrars.*'], 'icon' => 'settings', 'label' => __('Settings'), 'show' => $can('settings.manage') || $can('staff.manage')],
+        ['route' => 'admin.settings.index', 'match' => ['admin.settings.*'], 'except' => ['admin.settings.gateways.*', 'admin.settings.registrars.*'], 'icon' => 'settings', 'label' => __('Settings'), 'show' => $can('settings.manage') || $can('staff.manage')],
         ['route' => 'admin.updates.index', 'match' => 'admin.updates.*', 'icon' => 'refresh', 'label' => __('Updates'), 'show' => $can('system.update'), 'count' => $updateAvailable ? 1 : null],
     ], fn (array $item): bool => $item['show']);
-    $settingsRoute = $can('settings.manage') ? 'admin.settings.edit' : 'admin.settings.staff.index';
     $storeNav = config('nuvabill.marketplace.store') && $can('marketplace.review') ? [
         ['route' => 'admin.store.reviews.index', 'match' => 'admin.store.reviews.*', 'icon' => 'shield', 'label' => __('Review queue'), 'count' => \App\Models\MarketplaceVersion::query()->where('status', \App\Models\MarketplaceVersion::STATUS_PENDING)->count() ?: null],
         ['route' => 'admin.store.items.index', 'match' => 'admin.store.items.*', 'icon' => 'package', 'label' => __('Items')],
@@ -59,7 +58,7 @@
             <div class="nav-label">{{ __('Setup') }}</div>
             @foreach ($setup as $item)
                 @php $current = request()->routeIs($item['match']) && ! request()->routeIs($item['except'] ?? []); @endphp
-                <a class="nav-link" href="{{ route($item['route'] === 'admin.settings.edit' ? $settingsRoute : $item['route']) }}" @if ($current) aria-current="page" @endif>
+                <a class="nav-link" href="{{ route($item['route']) }}" @if ($current) aria-current="page" @endif>
                     <x-icon :name="$item['icon']" />{{ $item['label'] }}
                     @if (! empty($item['count']) && $item['route'] === 'admin.extensions.index')<span class="count" data-tone="warn" title="{{ __('Switched on, but not working yet') }}">{{ $item['count'] }}</span>@elseif (! empty($item['count']))<span class="count">{{ $item['count'] }}</span>@endif
                 </a>

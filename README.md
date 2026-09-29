@@ -397,8 +397,8 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 |---|---|
 | v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor (plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules), domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, languages with right-to-left pages, search engine tools, Site health ([changelog](CHANGELOG.md)) |
 | v0.5.0–v0.5.6 | Done: **Automations** with 9 templates, client tags and ticket assignment; **AI help** with your own Claude key; **Telegram and WhatsApp**; the **admin phone app** with push alerts |
-| v0.6.0–v0.6.1 | Done: **Automatic payments** with saved cards and PayPal accounts; a grouped **Settings** menu with search; add-ons that show your **company website**; 10 languages |
-| **next** | 0.6.2 client upgrades and downgrades, 0.6.3 emails and PDFs in the client's language, 0.6.4 knowledge base and status page, 0.6.5 credit notes and exports ([ROADMAP.md](ROADMAP.md)) |
+| v0.6.0–v0.6.2 | Done: **Automatic payments** with saved cards and PayPal accounts; a **Settings** home with grouped cards and search; add-ons that show your **company website**; 10 languages |
+| **next** | 0.6.3 client upgrades and downgrades, 0.6.4 emails and PDFs in the client's language, 0.6.5 knowledge base and status page, 0.6.6 credit notes and exports ([ROADMAP.md](ROADMAP.md)) |
 | v1.0 | Client upgrades, knowledge base and status page, security audit, and more |
 
 The full plan, including what we think is still missing before 1.0, is in [ROADMAP.md](ROADMAP.md).
