@@ -118,7 +118,7 @@ class DatabaseSafetyChecks extends CheckGroup
             return $check->skipped('SQLite has no database users.');
         }
 
-        $connection = config('database.connections.'.config('database.default'));
+        $connection = $this->connectionSettings();
 
         if (strtolower((string) ($connection['username'] ?? '')) === 'root') {
             return $check->urgent('Nuvabill uses the "root" user',
@@ -135,6 +135,17 @@ class DatabaseSafetyChecks extends CheckGroup
         return $check->passed();
     }
 
+    /**
+     * The settings the database connection really uses: a DB_URL address is split into user, password
+     * and host only when Laravel connects, so the raw config can look as if there were no password.
+     *
+     * @return array<string, mixed>
+     */
+    private function connectionSettings(): array
+    {
+        return (array) DB::connection()->getConfig();
+    }
+
     private function location(): CheckResult
     {
         $check = $this->check('db.location', 'The database password never crosses the internet', weight: 1);
@@ -143,7 +154,7 @@ class DatabaseSafetyChecks extends CheckGroup
             return $check->passed('SQLite: a file on this server');
         }
 
-        $connection = config('database.connections.'.config('database.default'));
+        $connection = $this->connectionSettings();
         $host = (string) ($connection['host'] ?? '');
 
         if (filled($connection['unix_socket'] ?? null) || in_array($host, ['localhost', '127.0.0.1', '::1'], true) || filled($connection['options'][\PDO::MYSQL_ATTR_SSL_CA] ?? null)) {
