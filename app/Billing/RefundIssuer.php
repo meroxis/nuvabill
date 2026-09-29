@@ -5,6 +5,7 @@ namespace App\Billing;
 use App\Contracts\PaymentGateway;
 use App\Enums\InvoiceStatus;
 use App\Extensions\ExtensionManager;
+use App\Models\CreditNote;
 use App\Models\Invoice;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\Cache;
@@ -21,6 +22,19 @@ class RefundIssuer
         private ExtensionManager $extensions,
         private Wallet $wallet,
     ) {}
+
+    /**
+     * Refund what no credit note took back yet, with a credit note, and mark the invoice Refunded.
+     * Kept for add-ons written before 0.6.7; new code uses CreditNotes::issue().
+     *
+     * @throws RuntimeException When a gateway refuses a refund, or another refund of this invoice is running.
+     */
+    public function refund(Invoice $invoice, bool $throughGateway): Invoice
+    {
+        app(CreditNotes::class)->issue($invoice, $invoice->creditableAmount(), CreditNote::METHOD_REFUND, __('Refund'), null, $throughGateway);
+
+        return $invoice->fresh();
+    }
 
     /**
      * Send back part or all of what was paid on the invoice: each payment gets a matching refund

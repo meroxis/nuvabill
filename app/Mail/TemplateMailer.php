@@ -20,6 +20,12 @@ use Throwable;
 class TemplateMailer
 {
     /**
+     * The language to write in travels in the context under this key, so sendTo() keeps the
+     * signature add-ons that extend this class (such as Crystal Mail) were built against.
+     */
+    public const LOCALE_KEY = '_locale';
+
+    /**
      * @param  array<string, mixed>  $context
      */
     public function send(string $key, Client $client, array $context = []): bool
@@ -30,7 +36,7 @@ class TemplateMailer
         }
 
         $context = ['client' => self::clientContext($client)] + $context;
-        $sent = $this->sendTo($key, $client->email, $client->name, $context, Locales::forClient($client));
+        $sent = $this->sendTo($key, $client->email, $client->name, $context + [self::LOCALE_KEY => Locales::forClient($client)]);
 
         // The same news on Telegram or WhatsApp, for clients who linked them.
         rescue(fn () => app(ChatNotifier::class)->clientEmailed($key, $client, $context));
@@ -47,16 +53,19 @@ class TemplateMailer
     {
         $email = (string) setting('company.email');
 
-        return $email !== '' && $this->sendTo($key, $email, (string) setting('company.name'), $context, Locales::default());
+        return $email !== '' && $this->sendTo($key, $email, (string) setting('company.name'), $context + [self::LOCALE_KEY => Locales::default()]);
     }
 
     /**
      * Send a template in a language: the translation where there is one, otherwise the main text.
-     * Staff emails use the site's default language.
+     * The language comes from $context[LOCALE_KEY] (send() and sendToStaff() set it); without it,
+     * the site's default language.
+     *
+     * Add-ons extend this method, so its signature must not change.
      *
      * @param  array<string, mixed>  $context
      */
-    public function sendTo(string $key, string $email, string $name, array $context = [], ?string $locale = null): bool
+    public function sendTo(string $key, string $email, string $name, array $context = []): bool
     {
         $template = EmailTemplate::query()->with('translations')->where('key', $key)->where('is_active', true)->first();
 
@@ -64,7 +73,9 @@ class TemplateMailer
             return false;
         }
 
-        $locale ??= Locales::default();
+        $locale = $context[self::LOCALE_KEY] ?? null;
+        $locale = is_string($locale) && Locales::isSupported($locale) ? $locale : Locales::default();
+        unset($context[self::LOCALE_KEY]);
         $context += $this->baseContext();
         [$subjectText, $bodyText] = $template->textFor($locale);
 

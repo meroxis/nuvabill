@@ -25,6 +25,7 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.6.5 | Emails and PDF invoices in each client's language |
 | 0.6.6 | Knowledge base, announcements and a network status page with server checks |
 | 0.6.7 | Credit notes, CSV exports for accountants, and privacy tools |
+| 0.6.8 | Fix for sites with the Crystal Mail add-on |
 
 ## Next
 

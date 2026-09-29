@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.6.8](https://github.com/meroxis/nuvabill/releases/tag/v0.6.8) | 30 Sep 2026 | Fix: sites with the Crystal Mail add-on could not send email or sign clients in with Google |
 | [0.6.7](https://github.com/meroxis/nuvabill/releases/tag/v0.6.7) | 30 Sep 2026 | Credit notes, CSV exports for accountants, and privacy tools |
 | [0.6.6](https://github.com/meroxis/nuvabill/releases/tag/v0.6.6) | 30 Sep 2026 | Knowledge base, announcements and a network status page |
 | [0.6.5](https://github.com/meroxis/nuvabill/releases/tag/v0.6.5) | 30 Sep 2026 | Emails and PDF invoices in each client's language |
@@ -47,6 +48,14 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.6.8
+
+- **Fix:** on sites with an add-on that changes how emails look, such as **Crystal Mail**, every page that sends an
+  email showed "Server Error" since 0.6.5: signing in with Google, GitHub or Facebook, sign-up, checkout, tickets and
+  password resets. 0.6.5 had changed a part of Nuvabill these add-ons build on. It is back as it was, and emails still
+  go out in each client's language.
+- A test now keeps that part stable for add-ons.
 
 ## 0.6.7
 
