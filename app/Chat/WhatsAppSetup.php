@@ -101,6 +101,31 @@ class WhatsAppSetup
     }
 
     /**
+     * Whether some of Nuvabill's templates were never sent or still wait for Meta. Meta only reports
+     * template decisions to the Meta app's own address, so a site connected by QR code has to ask.
+     */
+    public function hasUndecidedTemplates(): bool
+    {
+        if (! $this->whatsApp->isConnected()) {
+            return false;
+        }
+
+        $known = (array) setting('chat.whatsapp_templates');
+
+        foreach (ChatMessages::EVENTS as $definition) {
+            foreach (ChatMessages::templateLanguages() as $locale) {
+                $status = $known[$definition['template']][ChatMessages::META_LANGUAGES[$locale]] ?? null;
+
+                if ($status === null || $status === 'PENDING') {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Whether the Nuvabill store's QR connect page runs Meta's signup yet. It only does once Meta
      * has approved the store's Meta app, so until then the owner is told so before opening it.
      */

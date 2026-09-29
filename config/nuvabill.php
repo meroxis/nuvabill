@@ -12,7 +12,7 @@ return [
     |
     */
 
-    'version' => '0.5.3',
+    'version' => '0.5.4',
 
     /*
     |--------------------------------------------------------------------------
@@ -97,6 +97,10 @@ return [
         'app_secret' => env('META_APP_SECRET'),
         'config_id' => env('META_CONFIG_ID'),
         'graph_version' => env('META_GRAPH_VERSION', 'v25.0'),
+        // The token Meta sends when it checks the Meta app's own webhook address on the store.
+        'verify_token' => env('META_WEBHOOK_VERIFY_TOKEN'),
+        // Other Nuvabill sites only show the QR button once this is true, after Meta approved the app.
+        'open' => (bool) env('META_WHATSAPP_QR_OPEN', false),
     ],
 
     'marketplace' => [

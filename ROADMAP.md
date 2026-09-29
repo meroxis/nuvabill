@@ -15,12 +15,13 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.5.1 | AI help with your own Claude key: reply drafts, two-way ticket translation, summaries, product texts, a monthly spending limit |
 | 0.5.2 | Telegram and WhatsApp: invoices, reminders and ticket replies in chat apps, clients link by QR code, WhatsApp connects by QR code, tickets from chats, staff alerts in a Telegram group |
 | 0.5.3 | A clear note while connecting WhatsApp by QR code is not available yet |
+| 0.5.4 | Ready for WhatsApp by QR code on every site: the store's Meta app address, hourly template checks |
 
 ## Next
 
 | Version | Focus |
 |---|---|
-| 0.5.4 | **Admin phone app**: install the admin area on your phone, with notifications |
+| 0.5.5 | **Admin phone app**: install the admin area on your phone, with notifications |
 | Later | **ClientExec importer**, once we have tested it against a real ClientExec database |
 
 ## The path to 1.0

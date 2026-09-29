@@ -4,6 +4,7 @@ use App\Http\Controllers\ChatWebhookController;
 use App\Http\Controllers\PackageAssetController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\WebhookController;
+use App\Http\Controllers\WhatsAppConnectController;
 use App\Http\Middleware\AddSearchEngineTags;
 use App\Http\Middleware\ApplyCouponFromLink;
 use App\Http\Middleware\ApplyThemePreview;
@@ -60,6 +61,8 @@ return Application::configure(basePath: dirname(__DIR__))
                 Route::match(['get', 'post'], 'webhooks/chat/whatsapp/{key}', [ChatWebhookController::class, 'whatsapp'])
                     ->where('key', '[A-Za-z0-9]{32,64}')
                     ->name('webhooks.whatsapp');
+                // The Nuvabill store's Meta app (WhatsApp by QR code for every site).
+                Route::match(['get', 'post'], 'webhooks/meta/whatsapp', [WhatsAppConnectController::class, 'webhook'])->name('webhooks.meta');
             });
 
             // Theme, order form and extension files. No session or cookies: these are static files.

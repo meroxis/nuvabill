@@ -62,7 +62,8 @@ Nuvabill points the account's webhooks at your site for you. You do not need to 
 WhatsApp only lets a business send free text to someone who wrote to it in the last 24 hours. Messages you send first,
 like an invoice reminder, must use a **template** Meta approved. When you connect WhatsApp, Nuvabill sends its seven
 templates to Meta in English and in your store's main language. Meta usually checks them within a day. Settings → Chat
-apps shows each template as **Waiting for Meta**, approved or **Rejected**; press **Check templates again** to refresh.
+apps shows each template as **Waiting for Meta**, approved or **Rejected**. Nuvabill asks Meta again every hour until
+all are decided, or press **Check templates again**.
 
 Until a template is approved, that message is not sent on WhatsApp. The email still goes out. Meta has no templates in
 Kurdish, so Kurdish-speaking clients get the English template.
@@ -70,8 +71,9 @@ Kurdish, so Kurdish-speaking clients get the English template.
 ### What WhatsApp costs
 
 Meta charges a small fee per template message, which depends on the client's country. Replies within 24 hours of a
-client's message are free. Meta bills you directly; Nuvabill adds nothing. Because of this, **New invoice** and
-**Payment received** are off for WhatsApp by default, and on for Telegram.
+client's message are free. Meta bills you directly; Nuvabill adds nothing. Add a payment method to your WhatsApp
+account in [WhatsApp Manager](https://business.facebook.com/wa/manage/), or template messages will not be delivered. Because of this, **New invoice** and **Payment received** are off for WhatsApp by default, and on for
+Telegram.
 
 ## Which messages go where
 
@@ -135,13 +137,26 @@ chats are not disturbed.
 ## For people who run their own signup page
 
 The QR code button uses the Meta app of `my.nuvabill.com`. If you want the signup window on your own domain instead,
-you need your own approved Meta app (a verified business, Tech Provider access and an Embedded Signup configuration for
-"WhatsApp Business app onboarding"), and these lines in the `.env` of the site that shows the window:
+you need your own approved Meta app (a verified business, Tech Provider access with advanced access to
+`whatsapp_business_messaging` and `whatsapp_business_management`, and an Embedded Signup configuration for "WhatsApp
+Business app onboarding"), and these lines in the `.env` of the site that shows the window:
 
 ```
 META_APP_ID=
 META_APP_SECRET=
 META_CONFIG_ID=
+META_WEBHOOK_VERIFY_TOKEN=
+META_WHATSAPP_QR_OPEN=false
 ```
+
+- In the Meta app, set the WhatsApp webhook address to `https://your-site/webhooks/meta/whatsapp` with the verify token
+  from `META_WEBHOOK_VERIFY_TOKEN`, and subscribe to `messages`, `smb_message_echoes`, `smb_app_state_sync`, `history`,
+  `message_template_status_update` and `account_update`. Each connected site gets its own messages at its own address;
+  Meta only sends template and account updates to the app's address, so sites ask Meta for template decisions
+  themselves.
+- Allow your domain for the JavaScript SDK in Facebook Login for Business.
+- While `META_WHATSAPP_QR_OPEN` is false, only the admin area of the site that shows the window has the QR button, so
+  you can try it first. Set it to true once Meta has approved the app, and every site that uses your page gets the
+  button within 10 minutes.
 
 Then set `NUVABILL_WHATSAPP_CONNECT_URL=https://your-site/connect/whatsapp` on the sites that should use it.

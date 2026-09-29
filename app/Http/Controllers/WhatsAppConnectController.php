@@ -6,6 +6,7 @@ use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\View\View;
 
@@ -48,10 +49,35 @@ class WhatsAppConnectController extends Controller
 
     /**
      * Lets a Nuvabill site check that this page can run Meta's signup before it sends the owner here.
+     * The store's own staff can try the signup as soon as the keys are set; other sites only get the
+     * button once Meta has approved the app and the store opened it to everyone.
      */
     public function status(): JsonResponse
     {
-        return response()->json(['ready' => self::isReady()]);
+        return response()->json(['ready' => self::isReady() && config('nuvabill.whatsapp_connect.open')]);
+    }
+
+    /**
+     * The Meta app's own webhook address. Each connected site gets its messages at its own address
+     * (set per WhatsApp account when it connects), but Meta needs a checked address for the app too,
+     * and sends template and account updates only here. Those are left alone: sites ask Meta for
+     * their template decisions themselves.
+     */
+    public function webhook(Request $request): Response
+    {
+        $token = (string) config('nuvabill.whatsapp_connect.verify_token');
+        $secret = (string) config('nuvabill.whatsapp_connect.app_secret');
+        abort_if($token === '' || $secret === '', 404);
+
+        if ($request->isMethod('GET')) {
+            abort_unless($request->query('hub_mode') === 'subscribe' && hash_equals($token, (string) $request->query('hub_verify_token')), 403);
+
+            return response((string) $request->query('hub_challenge'), 200, ['Content-Type' => 'text/plain']);
+        }
+
+        abort_unless(hash_equals('sha256='.hash_hmac('sha256', $request->getContent(), $secret), (string) $request->header('X-Hub-Signature-256')), 403);
+
+        return response('ok', 200, ['Content-Type' => 'text/plain']);
     }
 
     public function exchange(Request $request): JsonResponse

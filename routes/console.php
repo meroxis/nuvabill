@@ -1,5 +1,6 @@
 <?php
 
+use App\Chat\WhatsAppSetup;
 use App\Extensions\ExtensionManager;
 use App\Support\Demo;
 use App\Support\Installation;
@@ -43,6 +44,11 @@ if (Installation::isInstalled()) {
             ->when(fn (): bool => setting('health.nightly') && setting('health.check_requested'));
         Schedule::command('nuvabill:database --clean --scheduled')->dailyAt('04:40')->withoutOverlapping(60);
         Schedule::command('nuvabill:database --optimize --scheduled')->weeklyOn(0, '04:50')->withoutOverlapping(60);
+
+        // WhatsApp: Meta only tells its own app about template decisions, so ask until all are decided.
+        Schedule::call(fn () => rescue(fn () => app(WhatsAppSetup::class)->refreshTemplates(), report: false))
+            ->hourly()->name('nuvabill:whatsapp-templates')->withoutOverlapping(30)
+            ->when(fn (): bool => app(WhatsAppSetup::class)->hasUndecidedTemplates());
 
         // Scheduled work of switched-on add-ons, for example off-site backups.
         app(ExtensionManager::class)->scheduleAddons(Schedule::getFacadeRoot());

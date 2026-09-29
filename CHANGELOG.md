@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.5.4](https://github.com/meroxis/nuvabill/releases/tag/v0.5.4) | 29 Sep 2026 | Ready for WhatsApp by QR code on every site: the store's Meta app address, hourly template checks |
 | [0.5.3](https://github.com/meroxis/nuvabill/releases/tag/v0.5.3) | 29 Sep 2026 | WhatsApp: clear note while connecting by QR code is not available yet |
 | [0.5.2](https://github.com/meroxis/nuvabill/releases/tag/v0.5.2) | 29 Sep 2026 | Telegram and WhatsApp: invoices, reminders and ticket replies in chat apps; clients link by QR code; tickets from chats |
 | [0.5.1](https://github.com/meroxis/nuvabill/releases/tag/v0.5.1) | 29 Sep 2026 | AI help with your own Claude key: reply drafts, two-way ticket translation, summaries, product texts |
@@ -36,6 +37,17 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.5.4
+
+- **Getting WhatsApp by QR code ready for every Nuvabill site.** The store that runs the QR signup now has the webhook
+  address Meta needs for its app, and a switch (`META_WHATSAPP_QR_OPEN`) so its own staff can try the signup before it
+  opens to everyone.
+- **Template decisions arrive by themselves.** Meta only reports template decisions to the Meta app, not to each site,
+  so sites connected by QR code now ask Meta every hour until all their templates are approved or rejected. Before,
+  they stayed at "Waiting for Meta" until someone pressed **Check templates again**.
+- The guide now says to add a payment method in WhatsApp Manager, which Meta needs before it delivers template
+  messages.
 
 ## 0.5.3
 

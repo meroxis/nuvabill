@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Chat\ChatMessages;
 use App\Chat\LinkCodes;
+use App\Chat\WhatsAppSetup;
 use App\Mail\TemplatedMessage;
 use App\Mail\TemplateMailer;
 use App\Models\Admin;
@@ -269,6 +271,9 @@ class ChatAppsTest extends TestCase
         $this->getJson(route('connect.whatsapp.status'))->assertOk()->assertExactJson(['ready' => false]);
 
         config(['nuvabill.whatsapp_connect.app_id' => '111', 'nuvabill.whatsapp_connect.app_secret' => 'shh', 'nuvabill.whatsapp_connect.config_id' => '222']);
+        // Keys alone let the store's own staff try it; other sites wait until it is opened.
+        $this->getJson(route('connect.whatsapp.status'))->assertExactJson(['ready' => false]);
+        config(['nuvabill.whatsapp_connect.open' => true]);
         $this->getJson(route('connect.whatsapp.status'))->assertExactJson(['ready' => true]);
 
         $page = $this->get(route('connect.whatsapp').$query)->assertOk()->assertSee('connect.facebook.net')->assertSee('billing.example.com');
@@ -294,6 +299,38 @@ class ChatAppsTest extends TestCase
         // A store that is down or has no connect page counts as not ready.
         Cache::flush();
         $this->get(route('admin.settings.chat.edit'))->assertSee('Connecting by QR code is not available yet');
+    }
+
+    public function test_the_stores_meta_app_webhook_is_verified_and_only_takes_signed_posts(): void
+    {
+        $this->get(route('webhooks.meta').'?hub_mode=subscribe&hub_verify_token=x&hub_challenge=1')->assertNotFound();
+
+        config(['nuvabill.whatsapp_connect.app_secret' => 'shh', 'nuvabill.whatsapp_connect.verify_token' => 'checkMe']);
+
+        $this->get(route('webhooks.meta').'?hub_mode=subscribe&hub_verify_token=wrong&hub_challenge=42')->assertForbidden();
+        $this->get(route('webhooks.meta').'?hub_mode=subscribe&hub_verify_token=checkMe&hub_challenge=42')->assertOk()->assertSeeText('42');
+
+        $body = (string) json_encode(['object' => 'whatsapp_business_account', 'entry' => []]);
+        $this->call('POST', route('webhooks.meta'), [], [], [], ['CONTENT_TYPE' => 'application/json'], $body)->assertForbidden();
+        $this->call('POST', route('webhooks.meta'), [], [], [], ['CONTENT_TYPE' => 'application/json', 'HTTP_X_HUB_SIGNATURE_256' => 'sha256='.hash_hmac('sha256', $body, 'shh')], $body)->assertOk();
+    }
+
+    public function test_sites_keep_asking_meta_about_templates_until_all_are_decided(): void
+    {
+        $setup = app(WhatsAppSetup::class);
+        $this->assertFalse($setup->hasUndecidedTemplates());
+
+        $this->connectWhatsApp(['nuvabill_invoice_created' => ['en' => 'APPROVED']]);
+        $this->assertTrue($setup->hasUndecidedTemplates());
+
+        $decided = collect(ChatMessages::EVENTS)->mapWithKeys(fn (array $event): array => [$event['template'] => ['en' => 'APPROVED']])->all();
+        $decided['nuvabill_ticket_reply']['en'] = 'REJECTED';
+        $this->connectWhatsApp($decided);
+        $this->assertFalse($setup->hasUndecidedTemplates());
+
+        $decided['nuvabill_domain_expiring']['en'] = 'PENDING';
+        $this->connectWhatsApp($decided);
+        $this->assertTrue($setup->hasUndecidedTemplates());
     }
 
     public function test_staff_alerts_go_to_the_team_group(): void
