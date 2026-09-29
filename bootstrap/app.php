@@ -1,12 +1,14 @@
 <?php
 
 use App\Extensions\ExtensionManager;
+use App\Http\Controllers\BrandIconController;
 use App\Http\Controllers\ChatWebhookController;
 use App\Http\Controllers\PackageAssetController;
 use App\Http\Controllers\SeoController;
 use App\Http\Controllers\WebhookController;
 use App\Http\Controllers\WhatsAppConnectController;
 use App\Http\Middleware\AddSearchEngineTags;
+use App\Http\Middleware\AddSiteIcon;
 use App\Http\Middleware\ApplyCouponFromLink;
 use App\Http\Middleware\ApplyThemePreview;
 use App\Http\Middleware\AuthenticateApiToken;
@@ -80,6 +82,11 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->where('name', 'share-[a-z0-9]{10}\.(jpg|png|webp)')
                 ->name('seo.share-image');
 
+            // The site's own icon, when it has a White-label License. No session or cookies.
+            Route::get('brand-icon/{name}', BrandIconController::class)
+                ->where('name', 'icon-[a-z0-9]{10}\.png')
+                ->name('brand.icon');
+
             // Visitor pages of add-ons, such as Website Builder pages. Last, so they never replace a page above.
             Route::middleware('web')->group(fn () => rescue(fn () => app(ExtensionManager::class)->registerPublicRoutes(), report: false));
         },
@@ -87,7 +94,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(SecurityHeaders::class);
 
-        $middleware->web(append: [AddSearchEngineTags::class, RedirectToInstaller::class, SetLocale::class, ProtectDemo::class, ApplyThemePreview::class, ApplyCouponFromLink::class, TrackAffiliateLink::class]);
+        $middleware->web(append: [AddSearchEngineTags::class, AddSiteIcon::class, RedirectToInstaller::class, SetLocale::class, ProtectDemo::class, ApplyThemePreview::class, ApplyCouponFromLink::class, TrackAffiliateLink::class]);
 
         // The proxy list comes from config/trustedproxy.php. Only the visitor IP and HTTPS
         // headers are read, so a visitor cannot fake the host name in links and emails.

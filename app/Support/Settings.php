@@ -85,6 +85,7 @@ class Settings
         'fraud.check_country' => true,
 
         'branding.accent' => '#0B7A70',
+        'branding.icon' => null,
 
         'theme.active' => 'nova',
         'orderform.active' => 'standard',

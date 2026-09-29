@@ -126,6 +126,13 @@
         height: 19px;
     }
 
+    /* The company's own icon (White-label License). */
+    .brand-mark-image {
+        display: block;
+        background: none;
+        object-fit: cover;
+    }
+
     .header-actions {
         display: flex;
         align-items: center;

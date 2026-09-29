@@ -34,6 +34,8 @@ class Demo
         'admin.settings.update',
         'admin.settings.mail',
         'admin.settings.mail.test',
+        'admin.settings.icon.store',
+        'admin.settings.icon.destroy',
         'admin.settings.gateways.update',
         'admin.settings.currencies.update',
         'admin.settings.taxes.settings',

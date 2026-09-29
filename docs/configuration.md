@@ -8,6 +8,11 @@ has all of them.
 **Settings → General → Your company**: company name, email address, postal address, phone and tax number (shown on
 invoices and in emails), the default language, and which of the 10 languages clients can choose.
 
+**Settings → General → Your icon**: every page shows the Nuvabill icon in the browser tab. With a White-label License
+you can upload your own square PNG (at least 512 × 512 pixels). It becomes the browser tab icon, the icon next to your
+company name in the admin area and client area, and the phone app icon. If the license ends, the Nuvabill icon comes
+back and your icon is kept until the license is valid again.
+
 ## Currencies and exchange rates
 
 **Settings → Currencies**: your main currency, and exchange rates to other currencies. With a rate set you can, for

@@ -16,6 +16,7 @@ use App\Push\StaffAlerts;
 use App\Push\WebPush;
 use App\Support\Activity;
 use App\Support\AttentionList;
+use App\Support\BrandIcon;
 use App\Support\Money;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -52,11 +53,7 @@ class PhoneAppController extends Controller
             'display' => 'standalone',
             'background_color' => '#0e2b47',
             'theme_color' => '#0e2b47',
-            'icons' => [
-                $icon('icon-192.png', '192x192', 'any'),
-                $icon('icon-512.png', '512x512', 'any'),
-                $icon('maskable-512.png', '512x512', 'maskable'),
-            ],
+            'icons' => self::icons($icon),
         ], 200, ['Content-Type' => 'application/manifest+json'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
     }
 
@@ -69,7 +66,7 @@ class PhoneAppController extends Controller
         return response()->view('admin.phone.service-worker', [
             'scope' => self::scope(),
             'start' => route('admin.today', absolute: false),
-            'icon' => asset('images/app/icon-192.png'),
+            'icon' => BrandIcon::url() ?? asset('images/app/icon-192.png'),
             'badge' => asset('images/app/badge-96.png'),
             'version' => (string) config('nuvabill.version'),
             'offline' => view('admin.phone.offline')->render(),
@@ -228,6 +225,28 @@ class PhoneAppController extends Controller
         ]])->save();
 
         return back()->with('status', __('Your alerts are saved.'));
+    }
+
+    /**
+     * The app icons: the company's own icon while it has a White-label License, else Nuvabill's.
+     *
+     * @param  \Closure(string, string, ?string): array<string, string>  $icon
+     * @return list<array<string, string>>
+     */
+    private static function icons(\Closure $icon): array
+    {
+        $own = BrandIcon::url();
+        $size = BrandIcon::size();
+
+        if ($own !== null && $size !== null) {
+            return [['src' => $own, 'sizes' => $size[0].'x'.$size[1], 'type' => 'image/png', 'purpose' => 'any']];
+        }
+
+        return [
+            $icon('icon-192.png', '192x192', 'any'),
+            $icon('icon-512.png', '512x512', 'any'),
+            $icon('maskable-512.png', '512x512', 'maskable'),
+        ];
     }
 
     /**

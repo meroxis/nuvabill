@@ -14,6 +14,7 @@
                     @endif
                 </div>
                 <p class="muted" style="margin:0">{{ __('Nuvabill is free. Its license asks you to keep a small "Powered by Nuvabill" credit in the client area, on invoices and in emails. A White-label license removes it, so clients only see your brand.') }}</p>
+                <p class="muted" style="margin:0">{{ __('It also lets you use your own icon in the browser tab, the admin area, the client area and the phone app.') }} <a href="{{ route('admin.settings.edit') }}#icon">{{ __('Your icon') }}</a></p>
 
                 @if ($hasKey)
                     <dl class="dl">

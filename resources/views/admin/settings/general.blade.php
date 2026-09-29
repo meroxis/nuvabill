@@ -78,6 +78,42 @@
             <div class="form-actions"><button class="btn btn-primary" type="submit">{{ __('Save settings') }}</button></div>
         </form>
 
+        <section class="card" id="icon" style="display:grid;gap:1.1rem">
+            <div class="card-header" style="margin:0">
+                <h2>{{ __('Your icon') }}</h2>
+                @unless ($icon['licensed'])<x-pill>{{ __('White-label License') }}</x-pill>@endunless
+            </div>
+            <div class="brand-icon-setting">
+                <img class="brand-icon-preview" src="{{ $icon['url'] ?? asset('favicon.svg') }}" width="64" height="64" alt="{{ __('Current icon') }}">
+                <div style="display:grid;gap:.8rem;min-width:0">
+                    <p class="muted" style="margin:0">{{ __('Shown in the browser tab, next to your company name in the admin area and client area, and as the phone app icon.') }}</p>
+                    @if ($icon['licensed'])
+                        <form method="POST" action="{{ route('admin.settings.icon.store') }}" enctype="multipart/form-data" style="display:grid;gap:.6rem">
+                            @csrf
+                            <div class="field">
+                                <label for="f-icon">{{ $icon['own'] ? __('Replace the icon') : __('Upload your icon') }}</label>
+                                <input id="f-icon" class="input" style="max-width:100%" type="file" name="icon" accept="image/png" required @error('icon') aria-invalid="true" aria-describedby="f-icon-error" @enderror>
+                                <p class="help">{{ __('A square PNG, at least :size × :size pixels, up to 2 MB.', ['size' => \App\Support\BrandIcon::MIN_SIZE]) }}</p>
+                                @error('icon')<p class="error" id="f-icon-error">{{ $message }}</p>@enderror
+                            </div>
+                            <div><button class="btn btn-primary btn-sm" type="submit"><x-icon name="upload" />{{ __('Upload icon') }}</button></div>
+                        </form>
+                        @if ($icon['own'])
+                            <form method="POST" action="{{ route('admin.settings.icon.destroy') }}" data-confirm="{{ __('Remove your icon and use the Nuvabill icon again?') }}">
+                                @csrf
+                                @method('DELETE')
+                                <button class="btn btn-sm btn-ghost" type="submit">{{ __('Use the Nuvabill icon') }}</button>
+                            </form>
+                        @endif
+                    @else
+                        <p style="margin:0">{{ __('Your own icon needs a White-label License.') }} <a href="{{ route('admin.settings.license.edit') }}">{{ __('About the license') }}</a></p>
+                        @if ($icon['own'])<p class="muted" style="margin:0">{{ __('Your icon is saved and comes back when the license is valid again.') }}</p>@endif
+                        @error('icon')<p class="error">{{ $message }}</p>@enderror
+                    @endif
+                </div>
+            </div>
+        </section>
+
         <form method="POST" action="{{ route('admin.settings.mail') }}" class="card" style="display:grid;gap:1.1rem" x-data="{ mailer: @js(old('mailer', $settings['mail.mailer'])) }">
             @csrf
             @method('PUT')

@@ -59,6 +59,14 @@
         flex: none;
     }
 
+    .admin-brand img {
+        width: 28px;
+        height: 28px;
+        border-radius: 7px;
+        object-fit: cover;
+        flex: none;
+    }
+
     .nav-label {
         font-size: 0.66rem;
         font-weight: 700;
@@ -1684,6 +1692,27 @@
         .phone-qr {
             display: none;
         }
+    }
+
+    /* Settings → General → Your icon. */
+    .brand-icon-setting {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+        align-items: flex-start;
+    }
+
+    .brand-icon-preview {
+        width: 64px;
+        height: 64px;
+        flex: none;
+        border-radius: 14px;
+        object-fit: cover;
+        box-shadow: 0 0 0 1px var(--nb-line);
+    }
+
+    .brand-icon-setting > div {
+        flex: 1 1 280px;
     }
 
     /* Profile → Phone app: a device in the list of phones that get alerts. */

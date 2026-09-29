@@ -3,4 +3,4 @@
 <meta name="theme-color" content="#0e2b47">
 <meta name="apple-mobile-web-app-title" content="{{ setting('company.name') ?: 'Nuvabill' }}">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="apple-touch-icon" href="{{ asset('images/app/apple-touch-icon.png') }}">
+<link rel="apple-touch-icon" href="{{ \App\Support\BrandIcon::touchIconUrl() }}">

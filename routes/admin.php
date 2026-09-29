@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\Auth\PasswordResetController;
 use App\Http\Controllers\Admin\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\Admin\AutomationController;
 use App\Http\Controllers\Admin\AutoPayController;
+use App\Http\Controllers\Admin\BrandIconController;
 use App\Http\Controllers\Admin\ChatSettingsController;
 use App\Http\Controllers\Admin\ClientController;
 use App\Http\Controllers\Admin\CouponController;
@@ -210,6 +211,8 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::put('general', [SettingsController::class, 'update'])->name('update');
         Route::put('mail', [SettingsController::class, 'updateMail'])->name('mail');
         Route::post('mail/test', [SettingsController::class, 'testMail'])->name('mail.test');
+        Route::post('icon', [BrandIconController::class, 'store'])->name('icon.store');
+        Route::delete('icon', [BrandIconController::class, 'destroy'])->name('icon.destroy');
 
         Route::get('currencies', [CurrencyController::class, 'edit'])->name('currencies.edit');
         Route::put('currencies', [CurrencyController::class, 'update'])->name('currencies.update');

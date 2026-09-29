@@ -31,7 +31,7 @@
 
     <header class="site-header">
         <div class="container">
-            <a class="brand" href="{{ $client ? route('client.dashboard') : route('store.index') }}"><span class="brand-mark"><x-icon name="server" /></span><span class="brand-name">{{ setting('company.name') }}</span></a>
+            <a class="brand" href="{{ $client ? route('client.dashboard') : route('store.index') }}">@if (\App\Support\BrandIcon::inUse())<img class="brand-mark brand-mark-image" src="{{ \App\Support\BrandIcon::url() }}" alt="" width="34" height="34">@else<span class="brand-mark"><x-icon name="server" /></span>@endif<span class="brand-name">{{ setting('company.name') }}</span></a>
 
             <div class="header-actions">
                 @if ($client)

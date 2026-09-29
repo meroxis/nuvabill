@@ -4,10 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Support\Activity;
+use App\Support\BrandIcon;
 use App\Support\Locales;
 use App\Support\Settings;
 use App\Support\SettingsMenu;
 use App\Support\Themes;
+use App\Support\WhiteLabel;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -50,6 +52,7 @@ class SettingsController extends Controller
 
                 return mb_strtolower($name) === mb_strtolower($locale['native']) ? $locale['native'] : "{$locale['native']} · {$name}";
             })->all(),
+            'icon' => ['own' => BrandIcon::name() !== null, 'url' => BrandIcon::url(), 'licensed' => app(WhiteLabel::class)->isActive()],
             'cronCommand' => '* * * * * cd '.base_path().' && '.PHP_BINARY.' artisan schedule:run >> /dev/null 2>&1',
         ]);
     }

@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.6.3](https://github.com/meroxis/nuvabill/releases/tag/v0.6.3) | 30 Sep 2026 | A browser tab icon on every page; your own icon with a White-label License |
 | [0.6.2](https://github.com/meroxis/nuvabill/releases/tag/v0.6.2) | 29 Sep 2026 | Settings opens as a home page with grouped cards |
 | [0.6.1](https://github.com/meroxis/nuvabill/releases/tag/v0.6.1) | 29 Sep 2026 | A clearer Settings menu with search; add-ons can show your company website; 10 languages |
 | [0.6.0](https://github.com/meroxis/nuvabill/releases/tag/v0.6.0) | 29 Sep 2026 | Automatic payments: clients save a card or PayPal account and renewals are charged by themselves, with retries and notices |
@@ -42,6 +43,17 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.6.3
+
+- **A browser tab icon on every page.** Until now the tab showed no icon. The store, client area, admin area and
+  sign-in pages now show the Nuvabill icon, with every theme and on add-on pages such as the Website Builder.
+- **Your own icon with a White-label License.** **Settings → General → Your icon**: upload a square PNG (at least
+  512 × 512 pixels). It becomes the browser tab icon, the icon next to your company name in the admin area and client
+  area, and the phone app icon; the admin area then shows your company name instead of Nuvabill. Without a valid
+  license the upload is locked; if the license ends, the Nuvabill icon comes back and your icon is kept for later.
+- **Phone app:** the list of devices that get alerts shows a small phone icon instead of a big one.
+- Aurora 1.3.1 shows your own icon in its menu too.
 
 ## 0.6.2
 

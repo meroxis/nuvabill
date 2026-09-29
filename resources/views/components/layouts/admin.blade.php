@@ -45,7 +45,7 @@
     <div class="side-overlay" x-show="menu" x-cloak @click="menu = false"></div>
 
     <aside class="admin-side" :class="{ 'is-open': menu }" aria-label="{{ __('Admin navigation') }}">
-        <a class="admin-brand" href="{{ route('admin.dashboard') }}"><x-logo /><span>{{ \App\Support\Branding::PRODUCT_NAME }}</span></a>
+        <a class="admin-brand" href="{{ route('admin.dashboard') }}"><x-logo /><span>{{ \App\Support\BrandIcon::inUse() ? setting('company.name') : \App\Support\Branding::PRODUCT_NAME }}</span></a>
 
         @foreach ($nav as $item)
             <a class="nav-link" href="{{ route($item['route']) }}" @if (request()->routeIs($item['match'])) aria-current="page" @endif>
