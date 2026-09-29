@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.5.6](https://github.com/meroxis/nuvabill/releases/tag/v0.5.6) | 29 Sep 2026 | The phone app's QR code fits its box |
 | [0.5.5](https://github.com/meroxis/nuvabill/releases/tag/v0.5.5) | 29 Sep 2026 | Admin phone app: install the admin area on your phone, a Today screen and push alerts for orders, payments and tickets |
 | [0.5.4](https://github.com/meroxis/nuvabill/releases/tag/v0.5.4) | 29 Sep 2026 | Ready for WhatsApp by QR code on every site: the store's Meta app address, hourly template checks |
 | [0.5.3](https://github.com/meroxis/nuvabill/releases/tag/v0.5.3) | 29 Sep 2026 | WhatsApp: clear note while connecting by QR code is not available yet |
@@ -38,6 +39,11 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.5.6
+
+- **Your profile → Phone app:** the QR code that opens the admin area on your phone now fits inside its box instead of
+  covering the text next to it, and is a little bigger to scan. On a phone it is hidden, since you are already there.
 
 ## 0.5.5
 

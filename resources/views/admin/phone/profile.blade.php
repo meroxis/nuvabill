@@ -31,8 +31,8 @@
                     <li>{{ __('iPhone and iPad: open this page in Safari, tap Share, then Add to Home Screen.') }}</li>
                     <li>{{ __('Android: open this page in Chrome, open the menu, then Install app or Add to Home screen.') }}</li>
                 </ul>
-                <div style="display:flex;gap:12px;align-items:center">
-                    <div class="qr-box" style="background:#fff;padding:8px;border-radius:8px;line-height:0;width:112px;height:112px;flex:none">{!! $appQrCode !!}</div>
+                <div class="phone-qr">
+                    <div class="qr-box" role="img" aria-label="{{ __('QR code for :app', ['app' => __('Phone app')]) }}">{!! $appQrCode !!}</div>
                     <p class="muted" style="margin:0;font-size:.85rem">{{ __('On a computer? Scan this with your phone’s camera to open the admin area there, then sign in.') }}</p>
                 </div>
             </div>
