@@ -6,6 +6,8 @@
         </div>
     </div>
 
+    @include('admin.support.nav')
+
     <div class="filters">
         @foreach (['waiting' => __('Waiting for reply'), 'answered' => __('Answered'), 'on_hold' => __('On hold'), 'closed' => __('Closed'), 'all' => __('All')] as $key => $label)
             <a class="chip" href="{{ route('admin.tickets.index', array_filter(['status' => $key, 'department' => $department])) }}" @if ($filter === $key) aria-current="true" @endif>{{ $label }}</a>

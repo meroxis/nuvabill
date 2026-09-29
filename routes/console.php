@@ -37,6 +37,10 @@ if (Installation::isInstalled()) {
 
         Schedule::command('nuvabill:marketplace-licenses')->dailyAt('04:20')->withoutOverlapping();
 
+        // Network status: can each server be reached? Staff get an email when one goes down.
+        Schedule::command('nuvabill:server-status')->everyFiveMinutes()->withoutOverlapping(10)
+            ->when(fn (): bool => (bool) setting('status.checks'));
+
         // Site health: the nightly check, then database clean-up and the weekly optimize when switched on.
         Schedule::command('nuvabill:security-check --quiet-if-healthy')->dailyAt('04:30')->withoutOverlapping(60)
             ->when(fn (): bool => (bool) setting('health.nightly'));

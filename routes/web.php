@@ -1,6 +1,7 @@
 <?php
 
 use App\Auth\Social\SocialLogin;
+use App\Http\Controllers\AnnouncementController;
 use App\Http\Controllers\Client\AccountController;
 use App\Http\Controllers\Client\AffiliateController;
 use App\Http\Controllers\Client\Auth\LoginController;
@@ -22,7 +23,9 @@ use App\Http\Controllers\Client\TicketController;
 use App\Http\Controllers\Client\TwoFactorController;
 use App\Http\Controllers\Client\WalletController;
 use App\Http\Controllers\HomePageController;
+use App\Http\Controllers\KnowledgebaseController;
 use App\Http\Controllers\LanguageController;
+use App\Http\Controllers\NetworkStatusController;
 use App\Http\Controllers\PreviewController;
 use App\Http\Controllers\Store\CartController;
 use App\Http\Controllers\Store\CheckoutController;
@@ -67,6 +70,31 @@ Route::post('order', [QuickOrderController::class, 'store'])->middleware(['throt
 
 Route::get('checkout', [CheckoutController::class, 'show'])->name('checkout.show');
 Route::post('checkout', [CheckoutController::class, 'store'])->middleware(['auth:web', 'client.active', 'client.two-factor', 'captcha:checkout'])->name('checkout.store');
+
+/*
+|--------------------------------------------------------------------------
+| Knowledge base, announcements and network status (public)
+|--------------------------------------------------------------------------
+*/
+
+Route::where(['category' => '[a-z0-9-]+', 'article' => '[a-z0-9-]+', 'announcement' => '[a-z0-9-]+'])->group(function (): void {
+    Route::get('knowledgebase', [KnowledgebaseController::class, 'index'])->middleware('throttle:60,1')->name('kb.index');
+    Route::get('knowledgebase/suggest', [KnowledgebaseController::class, 'suggest'])->middleware('throttle:60,1')->name('kb.suggest');
+    Route::get('knowledgebase/{category}', [KnowledgebaseController::class, 'category'])->name('kb.category');
+    Route::get('knowledgebase/{category}/{article}', [KnowledgebaseController::class, 'article'])->name('kb.article');
+    Route::post('knowledgebase/{category}/{article}/vote', [KnowledgebaseController::class, 'vote'])->middleware('throttle:10,1')->name('kb.vote');
+
+    Route::get('announcements', [AnnouncementController::class, 'index'])->name('announcements.index');
+    Route::get('announcements/feed', [AnnouncementController::class, 'feed'])->name('announcements.feed');
+    Route::get('announcements/{announcement}', [AnnouncementController::class, 'show'])->name('announcements.show');
+});
+
+Route::get('network-status', NetworkStatusController::class)->name('network.status');
+
+// Old WHMCS addresses, so links on other sites keep working after a move.
+Route::permanentRedirect('knowledgebase.php', '/knowledgebase');
+Route::permanentRedirect('announcements.php', '/announcements');
+Route::permanentRedirect('serverstatus.php', '/network-status');
 
 /*
 |--------------------------------------------------------------------------

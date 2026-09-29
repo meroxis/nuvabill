@@ -20,7 +20,7 @@
 <div x-data="{ open: false, account: false }" @keydown.escape.window="open = false; account = false">
     <div class="topbar">
         <div class="container">
-            <span class="topbar-help">{{ __('Need help?') }} <a href="{{ $client ? route('client.tickets.create') : route('client.login') }}">{{ __('Open a support ticket') }}</a></span>
+            <span class="topbar-help">{{ __('Need help?') }}@if (\App\Support\SiteLinks::hasKnowledgebase()) <a href="{{ route('kb.index') }}">{{ __('Knowledge base') }}</a> ·@endif <a href="{{ $client ? route('client.tickets.create') : route('client.login') }}">{{ __('Open a support ticket') }}</a></span>
             <div class="topbar-links">
                 <x-language-switcher :action="route('language.update')" :locales="\App\Support\Locales::enabled()" class="topbar-link" />
                 <button class="topbar-link" type="button" onclick="nuvabillToggleTheme()" aria-label="{{ __('Switch light or dark mode') }}"><x-icon name="moon" /></button>
@@ -95,6 +95,9 @@
                     @if ($sellsDomains)
                         <a href="{{ route('store.domains') }}" @if (request()->routeIs('store.domains')) aria-current="page" @endif>{{ __('Domains') }}</a>
                     @endif
+                    @if (\App\Support\SiteLinks::hasKnowledgebase())
+                        <a href="{{ route('kb.index') }}" @if (request()->routeIs('kb.*')) aria-current="page" @endif>{{ __('Knowledge base') }}</a>
+                    @endif
                     <a href="{{ route('client.login') }}" @if (request()->routeIs('client.login', 'client.register', 'client.password.*')) aria-current="page" @endif>{{ __('Client area') }}</a>
                 @endif
             </div>
@@ -127,6 +130,7 @@
             <span>&copy; {{ date('Y') }} {{ setting('company.name') }}</span>
             @if (filled(setting('orders.accept_terms_url')))<a href="{{ setting('orders.accept_terms_url') }}" target="_blank" rel="noopener">{{ __('Terms of service') }}</a>@endif
             @if (filled(setting('company.privacy_url')))<a href="{{ setting('company.privacy_url') }}" target="_blank" rel="noopener">{{ __('Privacy policy') }}</a>@endif
+            @foreach (\App\Support\SiteLinks::all() as $link)<a href="{{ $link['url'] }}">{{ $link['label'] }}</a>@endforeach
         </span>
         @if (\App\Support\Branding::showPoweredBy())
             <a class="powered" href="{{ \App\Support\Branding::PRODUCT_URL }}" target="_blank" rel="noopener">{{ __('Powered by') }} <b>{{ \App\Support\Branding::PRODUCT_NAME }}</b></a>

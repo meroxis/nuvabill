@@ -73,7 +73,6 @@ curl -fsSL https://nuvabill.com/install.sh | bash
 WHMCS, or wait, if you depend on:
 
 - a module or integration Nuvabill does not have yet (WHMCS has a large third-party ecosystem)
-- a knowledge base, announcements or a network status page in the client area
 - a long track record and a commercial support contract
 
 These gaps are on the [roadmap](ROADMAP.md).
@@ -395,9 +394,9 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 |---|---|
 | v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor (plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules), domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, languages with right-to-left pages, search engine tools, Site health ([changelog](CHANGELOG.md)) |
 | v0.5.0–v0.5.6 | Done: **Automations** with 9 templates, client tags and ticket assignment; **AI help** with your own Claude key; **Telegram and WhatsApp**; the **admin phone app** with push alerts |
-| v0.6.0–v0.6.5 | Done: **Automatic payments** with saved cards and PayPal accounts; a **Settings** home with grouped cards and search; your own icon with a White-label License; **upgrades and downgrades** with a fair price for the days left; emails and PDF invoices in each client's language; add-ons that show your **company website**; 10 languages |
-| **next** | 0.6.6 knowledge base and status page, 0.6.7 credit notes and exports ([ROADMAP.md](ROADMAP.md)) |
-| v1.0 | Client upgrades, knowledge base and status page, security audit, and more |
+| v0.6.0–v0.6.6 | Done: **Automatic payments** with saved cards and PayPal accounts; a **Settings** home with grouped cards and search; your own icon with a White-label License; **upgrades and downgrades** with a fair price for the days left; emails and PDF invoices in each client's language; a **knowledge base**, announcements and a **network status page** with server checks; add-ons that show your **company website**; 10 languages |
+| **next** | 0.6.7 credit notes, exports and privacy tools ([ROADMAP.md](ROADMAP.md)) |
+| v1.0 | Security audit, and more |
 
 The full plan, including what we think is still missing before 1.0, is in [ROADMAP.md](ROADMAP.md).
 

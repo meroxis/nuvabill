@@ -21,6 +21,21 @@ difference for the days left in the current period; an upgrade happens once its 
 **Settings → General → Billing** decides: change now and add the unused amount to the client's wallet, or change on
 the next renewal date. Staff can change any service's plan from its page, with or without an invoice.
 
+## Knowledge base, announcements and network status
+
+All three are under **Support** in the admin area.
+
+- **Knowledge base** (`/knowledgebase`): add categories, then articles in Markdown. Clients see matching articles
+  while they type the subject of a new ticket. Anyone can read published articles.
+- **Announcements** (`/announcements`, RSS at `/announcements/feed`): the newest one shows on the client dashboard
+  for two weeks. A date in the future publishes it on that day.
+- **Network status** (`/network-status`): tick the servers the page shows and give each a public name. Nuvabill
+  checks each switched-on server's control panel port every 5 minutes (needs the cron job) and emails the company
+  address when one goes down and when it is back. **Report an issue** or **Plan maintenance** to tell clients, then
+  post updates; clients with services on the servers you pick see it on their dashboard.
+
+Articles, categories and announcements have a tab for each other language you offer.
+
 ## Currencies and exchange rates
 
 **Settings → Currencies**: your main currency, and exchange rates to other currencies. With a rate set you can, for

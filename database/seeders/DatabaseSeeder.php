@@ -9,6 +9,7 @@ use App\Billing\QuoteManager;
 use App\Billing\Wallet;
 use App\Enums\AutoSetup;
 use App\Enums\BillingCycle;
+use App\Enums\IncidentStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\OrderStatus;
 use App\Enums\ProductType;
@@ -19,11 +20,15 @@ use App\Extensions\ExtensionManager;
 use App\Models\Admin;
 use App\Models\Affiliate;
 use App\Models\AffiliateCommission;
+use App\Models\Announcement;
 use App\Models\Automation;
 use App\Models\Client;
 use App\Models\Coupon;
 use App\Models\Domain;
 use App\Models\Invoice;
+use App\Models\KbArticle;
+use App\Models\KbCategory;
+use App\Models\NetworkIncident;
 use App\Models\Order;
 use App\Models\PaymentMethod;
 use App\Models\Product;
@@ -31,6 +36,7 @@ use App\Models\ProductAddon;
 use App\Models\ProductGroup;
 use App\Models\Role;
 use App\Models\Server;
+use App\Models\ServerCheck;
 use App\Models\Service;
 use App\Models\TaxRule;
 use App\Models\Ticket;
@@ -168,6 +174,7 @@ class DatabaseSeeder extends Seeder
         $this->activity($clients, $admin);
         $this->automations($clients);
         $this->savedPaymentMethods($clients);
+        $this->helpCenter($admin);
     }
 
     /**
@@ -358,6 +365,79 @@ class DatabaseSeeder extends Seeder
             $entry = Activity::log($action, $description, $subject, actor: $actor);
             $entry->forceFill(['created_at' => now()->subMinutes($minutesAgo)])->save();
         }
+    }
+
+    /**
+     * Knowledge base articles, announcements, and a network status page with 30 days of checks for
+     * the VPS node, a fixed issue and maintenance planned in three days.
+     */
+    private function helpCenter(Admin $admin): void
+    {
+        $articles = [
+            ['Getting started', 'First steps with your new service.', [
+                ['How do I sign in to my control panel?', "Open **Services** in the client area and pick your service.\n\nClick **Open control panel**. You are signed in without a password.\n\nIf the button is missing, your service is still being set up. It usually takes a few minutes."],
+                ['How do I point my domain to your servers?', "Change the nameservers at the company where you bought the domain to:\n\n- `ns1.yourhost.net`\n- `ns2.yourhost.net`\n\nThe change can take up to 24 hours to reach everyone. Domains you bought from us point here already."],
+            ]],
+            ['Email', 'Email accounts, phones and spam.', [
+                ['How do I set up email on my phone?', "Use these settings in the mail app on your phone:\n\n| Setting | Value |\n|---|---|\n| Incoming server | `mail.yourdomain.com`, port 993, SSL |\n| Outgoing server | `mail.yourdomain.com`, port 465, SSL |\n| User name | your full email address |\n\nThe password is the one you gave the email account in the control panel."],
+                ['Why do my emails go to spam?', "Most of the time a DNS record is missing. In the control panel, open **Email Deliverability** and fix the records it marks.\n\nAlso check that you do not send to old lists, and that each email has a way to unsubscribe."],
+            ]],
+            ['Billing', 'Invoices, payments and plan changes.', [
+                ['How do I pay an invoice?', "Open **Billing** in the client area, pick the invoice and click **Pay now**.\n\nYou can pay by card, PayPal, bank transfer, or from your wallet if it has credit."],
+                ['How do I upgrade or downgrade my plan?', "Open the service and click **Upgrade or downgrade**. Pick the new plan.\n\nYou only pay the difference for the days left until the next due date. A smaller plan gives you credit for those days."],
+                ['How do automatic payments work?', "Save a card or PayPal account under **Payment methods**. Renewal invoices are then paid on their due date.\n\nIf a payment fails, we try again and email you."],
+            ]],
+        ];
+
+        foreach ($articles as $order => [$name, $description, $items]) {
+            $category = KbCategory::query()->create(['name' => $name, 'slug' => str($name)->slug()->toString(), 'description' => $description, 'sort_order' => $order]);
+
+            foreach ($items as $index => [$title, $body]) {
+                KbArticle::query()->create([
+                    'kb_category_id' => $category->id,
+                    'title' => $title,
+                    'slug' => str($title)->slug()->toString(),
+                    'body' => $body,
+                    'sort_order' => $index,
+                ])->forceFill(['helpful_yes' => 12 + $index * 7 + $order * 3, 'helpful_no' => $index + 1])->save();
+            }
+        }
+
+        KbArticle::query()->where('slug', 'how-do-i-pay-an-invoice')->first()?->saveTranslation('de', 'Wie bezahle ich eine Rechnung?',
+            "Öffnen Sie **Rechnungen** im Kundenbereich, wählen Sie die Rechnung und klicken Sie auf **Jetzt bezahlen**.\n\nSie können per Karte, PayPal, Überweisung oder mit Guthaben aus Ihrer Geldbörse bezahlen.");
+        KbArticle::query()->where('slug', 'how-do-i-pay-an-invoice')->first()?->saveTranslation('ar', 'كيف أدفع فاتورة؟',
+            "افتح **الفواتير** في منطقة العميل، واختر الفاتورة ثم انقر **ادفع الآن**.\n\nيمكنك الدفع بالبطاقة أو PayPal أو التحويل البنكي أو من رصيد محفظتك.");
+
+        foreach ([
+            [3, 'New Cloud VPS plans with NVMe disks', "Our new **Cloud VPS** plans run on NVMe disks, up to five times faster than before.\n\n- VPS 2: 2 vCPU, 4 GB RAM\n- VPS 4: 4 vCPU, 8 GB RAM\n- VPS 8: 8 vCPU, 16 GB RAM\n\nYou can move to a new plan from your service page. You only pay the difference."],
+            [1, 'Support now answers around the clock', "Our support team now answers tickets **24 hours a day, 7 days a week**.\n\nMany answers are also in our knowledge base."],
+            [10, 'Emails now arrive in your language', 'Invoices, reminders and ticket replies now come in the language you picked in the client area.'],
+        ] as [$daysAgo, $title, $body]) {
+            Announcement::query()->create(['title' => $title, 'slug' => str($title)->slug()->toString(), 'body' => $body, 'published_at' => now()->subDays($daysAgo)->setTime(9, 30)]);
+        }
+
+        $server = Server::query()->where('hostname', Demo::VPS_HOST)->firstOrFail();
+        $server->forceFill(['status_public' => true, 'status_name' => 'Cloud VPS', 'status_up' => true, 'status_checked_at' => now(), 'status_changed_at' => now()->subDays(5)])->save();
+        $rows = [];
+
+        // One check an hour for 30 days, with a short outage five days ago.
+        for ($hour = 30 * 24; $hour >= 0; $hour--) {
+            $rows[] = ['server_id' => $server->id, 'is_up' => ! in_array($hour, [5 * 24 + 3, 5 * 24 + 4], true), 'response_ms' => 20 + ($hour * 7) % 30, 'checked_at' => now()->subHours($hour)];
+        }
+
+        foreach (array_chunk($rows, 250) as $chunk) {
+            ServerCheck::query()->insert($chunk);
+        }
+
+        $issue = NetworkIncident::query()->create(['title' => 'Slow email delivery', 'kind' => NetworkIncident::KIND_ISSUE, 'status' => IncidentStatus::Resolved, 'impact' => NetworkIncident::IMPACT_MINOR, 'starts_at' => now()->subDays(3)->setTime(14, 10), 'resolved_at' => now()->subDays(3)->setTime(15, 40)]);
+
+        foreach ([[IncidentStatus::Investigating, 'Some emails arrive late. We are looking into it.', 0], [IncidentStatus::Identified, 'A mail queue was full. We are clearing it now.', 35], [IncidentStatus::Resolved, 'All late emails are delivered. Sorry for the wait.', 90]] as [$status, $message, $minutes]) {
+            $issue->updates()->create(['admin_id' => $admin->id, 'status' => $status, 'message' => $message])
+                ->forceFill(['created_at' => $issue->starts_at->copy()->addMinutes($minutes)])->save();
+        }
+
+        $work = NetworkIncident::query()->create(['title' => 'Network upgrade for VPS node 1', 'kind' => NetworkIncident::KIND_MAINTENANCE, 'status' => IncidentStatus::Scheduled, 'impact' => NetworkIncident::IMPACT_MINOR, 'server_ids' => [$server->id], 'starts_at' => now()->addDays(3)->setTime(2, 0), 'ends_at' => now()->addDays(3)->setTime(3, 0)]);
+        $work->updates()->create(['admin_id' => $admin->id, 'status' => IncidentStatus::Scheduled, 'message' => 'We connect the node to a faster network. Servers may be offline for up to 10 minutes.']);
     }
 
     /**

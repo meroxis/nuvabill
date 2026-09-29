@@ -3,6 +3,8 @@
 namespace App\Seo;
 
 use App\Extensions\ExtensionManager;
+use App\Models\Announcement;
+use App\Models\KbArticle;
 use App\Models\MarketplaceItem;
 use App\Models\Product;
 use App\Models\ProductGroup;
@@ -67,7 +69,51 @@ class Sitemap
             $pages[] = ['path' => 'white-label', 'updated' => null];
         }
 
-        return [...$pages, ...app(ExtensionManager::class)->sitemapPages()];
+        return [...$pages, ...$this->helpPages(), ...app(ExtensionManager::class)->sitemapPages()];
+    }
+
+    /**
+     * The knowledge base, announcements and the network status page, when switched on.
+     *
+     * @return list<array{path: string, updated: Carbon|null}>
+     */
+    private function helpPages(): array
+    {
+        $pages = [];
+
+        if (setting('knowledgebase.enabled')) {
+            $articles = KbArticle::query()->public()->with('category')->orderBy('kb_category_id')->orderBy('sort_order')->orderBy('id')->limit(5000)->get();
+
+            if ($articles->isNotEmpty()) {
+                $pages[] = ['path' => 'knowledgebase', 'updated' => $articles->max('updated_at')];
+
+                foreach ($articles->groupBy('kb_category_id') as $inCategory) {
+                    $pages[] = ['path' => 'knowledgebase/'.$inCategory->first()->category->slug, 'updated' => $inCategory->max('updated_at')];
+                }
+
+                foreach ($articles as $article) {
+                    $pages[] = ['path' => 'knowledgebase/'.$article->category->slug.'/'.$article->slug, 'updated' => $article->updated_at];
+                }
+            }
+        }
+
+        if (setting('announcements.enabled')) {
+            $news = Announcement::query()->public()->newestFirst()->limit(1000)->get(['slug', 'published_at', 'updated_at']);
+
+            if ($news->isNotEmpty()) {
+                $pages[] = ['path' => 'announcements', 'updated' => $news->first()->published_at];
+
+                foreach ($news as $item) {
+                    $pages[] = ['path' => 'announcements/'.$item->slug, 'updated' => $item->updated_at];
+                }
+            }
+        }
+
+        if (setting('status.enabled')) {
+            $pages[] = ['path' => 'network-status', 'updated' => null];
+        }
+
+        return $pages;
     }
 
     public function xml(): string

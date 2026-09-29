@@ -5,7 +5,7 @@
 @section('content')
     <div class="page-title"><div><h1>{{ __('Open a ticket') }}</h1><p>{{ __('Tell us what you need. The more detail, the faster we can help.') }}</p></div></div>
 
-    <form method="POST" action="{{ route('client.tickets.store') }}" class="card" style="display:grid;gap:1.1rem;max-width:820px">
+    <form method="POST" action="{{ route('client.tickets.store') }}" class="card" style="display:grid;gap:1.1rem;max-width:820px" x-data="kbSuggest(@js(['url' => route('kb.suggest')]))">
         @csrf
         <div class="form-grid">
             <x-select name="department_id" :label="__('Department')" :options="$departments->pluck('name', 'id')->all()" :value="$departments->first()?->id" required />
@@ -13,7 +13,17 @@
             @if ($services->isNotEmpty())
                 <x-select name="service_id" :label="__('Which service is it about?')" :options="$services->mapWithKeys(fn ($s) => [$s->id => $s->label()])->all()" :value="request('service')" :placeholder="__('Not about a service')" class="span-2" />
             @endif
-            <x-input name="subject" :label="__('Subject')" required class="span-2" />
+            <x-input name="subject" :label="__('Subject')" required class="span-2" maxlength="190" x-on:input="lookup($event.target.value)" />
+            @if (\App\Support\SiteLinks::hasKnowledgebase())
+                <div class="help-suggestions span-2" x-show="articles.length" x-cloak role="status">
+                    <strong>{{ __('These articles may answer your question:') }}</strong>
+                    <ul>
+                        <template x-for="article in articles" :key="article.url">
+                            <li><a :href="article.url" target="_blank" rel="noopener" x-text="article.title"></a></li>
+                        </template>
+                    </ul>
+                </div>
+            @endif
             <x-textarea name="message" :label="__('Message')" rows="8" required class="span-2" />
         </div>
         <x-captcha form="tickets" />

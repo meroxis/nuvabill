@@ -10,6 +10,8 @@
         </div>
     </div>
 
+    @include('theme::partials.client-notices')
+
     <div class="dash-grid">
         <div class="dash-main">
             <div class="stat-tiles">

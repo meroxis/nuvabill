@@ -18,10 +18,13 @@ use App\Extensions\ExtensionManager;
 use App\Jobs\TranslateTicketReply;
 use App\Models\ActivityLog;
 use App\Models\Admin;
+use App\Models\Announcement;
 use App\Models\Automation;
 use App\Models\Client;
 use App\Models\Domain;
 use App\Models\Invoice;
+use App\Models\KbArticle;
+use App\Models\KbCategory;
 use App\Models\Order;
 use App\Models\PaymentMethod;
 use App\Models\Product;
@@ -95,6 +98,9 @@ class AppServiceProvider extends ServiceProvider
             'ticket' => Ticket::class,
             'transaction' => Transaction::class,
             'activity' => ActivityLog::class,
+            'kb_category' => KbCategory::class,
+            'kb_article' => KbArticle::class,
+            'announcement' => Announcement::class,
         ]);
 
         Paginator::defaultView('components.pagination');

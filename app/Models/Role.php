@@ -34,6 +34,8 @@ class Role extends Model
         'Support' => [
             'support.manage' => 'Answer tickets',
             'ai.use' => 'Use AI help for ticket replies and product texts',
+            'content.manage' => 'Write knowledge base articles and announcements',
+            'status.manage' => 'Post network issues and planned maintenance',
         ],
         'Setup' => [
             'products.manage' => 'Manage products and servers',

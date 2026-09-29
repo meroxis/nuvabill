@@ -2,6 +2,7 @@
 @import '../../../resources/css/tokens.css';
 @import '../../../resources/css/components.css';
 @import './marketplace.css';
+@import './help.css';
 
 @source '../views';
 @source '../../../resources/views/components';

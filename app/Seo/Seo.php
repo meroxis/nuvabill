@@ -26,6 +26,12 @@ class Seo
         'marketplace.show',
         'marketplace.developers',
         'marketplace.white-label',
+        'kb.index',
+        'kb.category',
+        'kb.article',
+        'announcements.index',
+        'announcements.show',
+        'network.status',
     ];
 
     public const TITLE_LIMIT = 60;

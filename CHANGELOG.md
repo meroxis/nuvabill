@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.6.6](https://github.com/meroxis/nuvabill/releases/tag/v0.6.6) | 30 Sep 2026 | Knowledge base, announcements and a network status page |
 | [0.6.5](https://github.com/meroxis/nuvabill/releases/tag/v0.6.5) | 30 Sep 2026 | Emails and PDF invoices in each client's language |
 | [0.6.4](https://github.com/meroxis/nuvabill/releases/tag/v0.6.4) | 30 Sep 2026 | Upgrades and downgrades with a fair price for the days left |
 | [0.6.3](https://github.com/meroxis/nuvabill/releases/tag/v0.6.3) | 30 Sep 2026 | A browser tab icon on every page; your own icon with a White-label License |
@@ -45,6 +46,26 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.6.6
+
+- **Knowledge base** at `/knowledgebase`: help articles in categories, written in Markdown, with search and
+  "Was this article helpful?". Anyone can read them, and search engines find them (they are in the sitemap). While a
+  client types the subject of a new ticket, matching articles show up, so many questions get answered right away.
+- **Announcements** at `/announcements`, with an RSS feed. The newest one shows on the client area dashboard for two
+  weeks. Give an announcement a date in the future and it appears on that day.
+- **Network status page** at `/network-status`. Nuvabill checks every server every 5 minutes and emails you when one
+  stops answering, and again when it is back. Choose which servers the page shows, under a name you pick; the host
+  name and IP address are never shown. The page shows 30 days of uptime per server.
+- **Network issues and planned maintenance.** Post a note, pick the servers it touches, and add updates as work goes
+  on. Clients with services on those servers see it on their dashboard; planned maintenance shows there a week ahead.
+- Articles, categories and announcements can be **translated into each language**. Visitors see their language where
+  it is filled in and your main text everywhere else.
+- All three are under **Support** in the admin area, each with a switch to hide it. New staff rights: "Write knowledge
+  base articles and announcements" and "Post network issues and planned maintenance". Roles that answer tickets get
+  both.
+- Old WHMCS links (`knowledgebase.php`, `announcements.php`, `serverstatus.php`) forward to the new pages.
+- The Aurora theme 1.4.0 shows the new pages in its menu and the notices on its dashboard.
 
 ## 0.6.5
 

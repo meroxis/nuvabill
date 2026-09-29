@@ -1,0 +1,446 @@
+/*
+ * Knowledge base, announcements and the network status page. Every theme loads this with Nova's
+ * styles, so these pages look right in themes built on Nova.
+ */
+@layer components {
+    .help-search {
+        display: flex;
+        gap: 8px;
+        max-width: 640px;
+    }
+
+    .help-search .input {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .help-hero {
+        display: grid;
+        gap: 12px;
+        padding: 26px;
+        margin-bottom: 18px;
+        background: linear-gradient(135deg, var(--nb-accent-soft), var(--nb-surface));
+        border: 1px solid var(--nb-line);
+        border-radius: var(--nb-radius);
+    }
+
+    .help-hero h1 {
+        margin: 0;
+        font-size: clamp(1.4rem, 2.6vw, 1.9rem);
+        line-height: 1.2;
+    }
+
+    .help-hero p {
+        margin: 0;
+        color: var(--nb-muted);
+    }
+
+    .help-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+        gap: 14px;
+    }
+
+    .help-category {
+        display: grid;
+        gap: 6px;
+        align-content: start;
+        padding: 18px;
+        background: var(--nb-surface);
+        border: 1px solid var(--nb-line);
+        border-radius: var(--nb-radius);
+        color: inherit;
+        text-decoration: none;
+        transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .help-category:hover {
+        border-color: var(--nb-accent);
+        box-shadow: var(--nb-shadow);
+    }
+
+    .help-category strong {
+        font-size: 1.02rem;
+    }
+
+    .help-category span {
+        color: var(--nb-muted);
+        font-size: 0.88rem;
+    }
+
+    .help-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+
+    .help-list li + li {
+        border-top: 1px solid var(--nb-line);
+    }
+
+    .help-list a {
+        display: grid;
+        gap: 3px;
+        padding: 14px 18px;
+        color: inherit;
+        text-decoration: none;
+    }
+
+    .help-list a:hover strong {
+        color: var(--nb-accent);
+    }
+
+    .help-list span {
+        color: var(--nb-muted);
+        font-size: 0.87rem;
+    }
+
+    .help-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 280px;
+        gap: 18px;
+        align-items: start;
+    }
+
+    @media (max-width: 900px) {
+        .help-layout {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+
+    /* Articles and announcements written in Markdown. */
+    .prose {
+        line-height: 1.7;
+        overflow-wrap: anywhere;
+    }
+
+    .prose > :first-child {
+        margin-top: 0;
+    }
+
+    .prose > :last-child {
+        margin-bottom: 0;
+    }
+
+    .prose h1,
+    .prose h2,
+    .prose h3,
+    .prose h4 {
+        margin: 1.6em 0 0.5em;
+        line-height: 1.3;
+    }
+
+    .prose h1 {
+        font-size: 1.5rem;
+    }
+
+    .prose h2 {
+        font-size: 1.3rem;
+    }
+
+    .prose h3 {
+        font-size: 1.1rem;
+    }
+
+    .prose p,
+    .prose ul,
+    .prose ol,
+    .prose pre,
+    .prose blockquote,
+    .prose table {
+        margin: 0 0 1em;
+    }
+
+    .prose ul,
+    .prose ol {
+        padding-inline-start: 1.4em;
+    }
+
+    .prose li + li {
+        margin-top: 0.3em;
+    }
+
+    .prose a {
+        color: var(--nb-accent);
+        text-decoration: underline;
+    }
+
+    .prose img {
+        max-width: 100%;
+        height: auto;
+        border-radius: var(--nb-radius-sm);
+    }
+
+    .prose code {
+        font-family: var(--nb-font-mono);
+        font-size: 0.88em;
+        padding: 0.1em 0.35em;
+        background: var(--nb-surface-2);
+        border-radius: 5px;
+    }
+
+    .prose pre {
+        padding: 12px 14px;
+        overflow-x: auto;
+        background: var(--nb-surface-2);
+        border: 1px solid var(--nb-line);
+        border-radius: var(--nb-radius-sm);
+        direction: ltr;
+        text-align: left;
+    }
+
+    .prose pre code {
+        padding: 0;
+        background: none;
+    }
+
+    .prose blockquote {
+        padding: 2px 0 2px 14px;
+        padding-inline: 14px 0;
+        border-inline-start: 3px solid var(--nb-accent);
+        color: var(--nb-muted);
+    }
+
+    .prose table {
+        width: 100%;
+        border-collapse: collapse;
+        display: block;
+        overflow-x: auto;
+    }
+
+    .prose th,
+    .prose td {
+        padding: 8px 10px;
+        border: 1px solid var(--nb-line);
+        text-align: start;
+    }
+
+    .helpful {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        margin-top: 18px;
+        padding-top: 16px;
+        border-top: 1px solid var(--nb-line);
+    }
+
+    .helpful form {
+        display: flex;
+        gap: 8px;
+    }
+
+    .help-suggestions {
+        display: grid;
+        gap: 6px;
+        padding: 12px 14px;
+        background: var(--nb-info-soft);
+        border: 1px solid color-mix(in srgb, var(--nb-info) 30%, transparent);
+        border-radius: var(--nb-radius);
+        font-size: 0.9rem;
+    }
+
+    .help-suggestions ul {
+        margin: 0;
+        padding-inline-start: 1.2em;
+    }
+
+    .news-date {
+        color: var(--nb-muted);
+        font-size: 0.85rem;
+    }
+
+    /* Network status. */
+    .status-summary {
+        --tone: var(--nb-good);
+        --tone-soft: var(--nb-good-soft);
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 18px 20px;
+        margin-bottom: 18px;
+        background: var(--tone-soft);
+        border: 1px solid color-mix(in srgb, var(--tone) 35%, transparent);
+        border-radius: var(--nb-radius);
+        font-size: 1.08rem;
+        font-weight: 600;
+    }
+
+    .status-summary[data-tone='warn'] {
+        --tone: var(--nb-warn);
+        --tone-soft: var(--nb-warn-soft);
+    }
+
+    .status-summary[data-tone='crit'] {
+        --tone: var(--nb-crit);
+        --tone-soft: var(--nb-crit-soft);
+    }
+
+    .status-summary[data-tone='info'] {
+        --tone: var(--nb-info);
+        --tone-soft: var(--nb-info-soft);
+    }
+
+    .status-summary .status-dot {
+        width: 12px;
+        height: 12px;
+    }
+
+    .status-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        flex: none;
+        border-radius: 50%;
+        background: var(--tone, var(--nb-good));
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--tone, var(--nb-good)) 20%, transparent);
+    }
+
+    .status-dot[data-tone='crit'] {
+        --tone: var(--nb-crit);
+    }
+
+    .status-dot[data-tone='muted'] {
+        --tone: var(--nb-faint);
+    }
+
+    .status-server {
+        display: grid;
+        gap: 8px;
+        padding: 14px 18px;
+    }
+
+    .status-server + .status-server {
+        border-top: 1px solid var(--nb-line);
+    }
+
+    .status-server-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .status-server-head .uptime {
+        margin-inline-start: auto;
+        color: var(--nb-muted);
+        font-size: 0.87rem;
+    }
+
+    .uptime-bars {
+        display: grid;
+        grid-template-columns: repeat(30, minmax(0, 1fr));
+        gap: 2px;
+        height: 26px;
+    }
+
+    .uptime-bars span {
+        border-radius: 2px;
+        background: var(--nb-good);
+    }
+
+    .uptime-bars span[data-level='some'] {
+        background: var(--nb-warn);
+    }
+
+    .uptime-bars span[data-level='down'] {
+        background: var(--nb-crit);
+    }
+
+    .uptime-bars span[data-level='none'] {
+        background: var(--nb-line);
+    }
+
+    .uptime-scale {
+        display: flex;
+        justify-content: space-between;
+        color: var(--nb-faint);
+        font-size: 0.76rem;
+    }
+
+    .incident {
+        display: grid;
+        gap: 10px;
+        padding: 16px 18px;
+    }
+
+    .incident + .incident {
+        border-top: 1px solid var(--nb-line);
+    }
+
+    .incident-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .incident-head strong {
+        font-size: 1rem;
+    }
+
+    .incident-meta {
+        color: var(--nb-muted);
+        font-size: 0.85rem;
+    }
+
+    .incident-updates {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 10px;
+    }
+
+    .incident-updates li {
+        padding-inline-start: 12px;
+        border-inline-start: 3px solid var(--nb-line);
+        font-size: 0.92rem;
+    }
+
+    .incident-updates p {
+        margin: 3px 0 0;
+        white-space: pre-line;
+    }
+
+    .client-notice {
+        --tone: var(--nb-warn);
+        --tone-soft: var(--nb-warn-soft);
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 14px 18px;
+        background: var(--tone-soft);
+        border: 1px solid color-mix(in srgb, var(--tone) 30%, transparent);
+        border-radius: var(--nb-radius);
+        font-size: 0.9rem;
+    }
+
+    .client-notice[data-tone='info'] {
+        --tone: var(--nb-info);
+        --tone-soft: var(--nb-info-soft);
+    }
+
+    .client-notice[data-tone='crit'] {
+        --tone: var(--nb-crit);
+        --tone-soft: var(--nb-crit-soft);
+    }
+
+    .client-notice > svg {
+        width: 20px;
+        height: 20px;
+        flex: none;
+        color: var(--tone);
+        margin-top: 1px;
+    }
+
+    .client-notice > div {
+        display: grid;
+        gap: 3px;
+        min-width: 0;
+    }
+
+    .client-notice a {
+        font-weight: 600;
+    }
+}

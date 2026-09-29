@@ -2,6 +2,7 @@ import Alpine from 'alpinejs';
 import automationEditor from './automation-editor';
 import { aiMessage, productAi, ticketAi } from './ai-help';
 import { whatsappConnect } from './chat-apps';
+import { kbSuggest } from './kb-suggest';
 import { phoneApp, registerAdminApp } from './phone-app';
 
 /**
@@ -214,6 +215,7 @@ Alpine.data('aiMessage', aiMessage);
 Alpine.data('productAi', productAi);
 Alpine.data('whatsappConnect', whatsappConnect);
 Alpine.data('phoneApp', phoneApp);
+Alpine.data('kbSuggest', kbSuggest);
 
 // Admin pages: the service worker that shows phone alerts, and the install button.
 if (document.body) {

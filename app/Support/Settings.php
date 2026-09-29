@@ -30,6 +30,12 @@ class Settings
         'billing.renewal_days_before' => 7,
         'billing.payment_terms_days' => 7,
         'billing.plan_changes' => true,
+        // Knowledge base, announcements and the network status page. Servers are checked every 5 minutes.
+        'knowledgebase.enabled' => true,
+        'announcements.enabled' => true,
+        'status.enabled' => true,
+        'status.checks' => true,
+        'status.alerts' => true,
         'billing.downgrade' => 'credit',
         // Automatic payments: renewals charged to cards and PayPal accounts clients saved.
         'billing.autopay' => true,

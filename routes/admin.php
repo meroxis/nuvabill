@@ -4,6 +4,7 @@ use App\Extensions\ExtensionManager;
 use App\Http\Controllers\Admin\ActivityController;
 use App\Http\Controllers\Admin\AffiliateController;
 use App\Http\Controllers\Admin\AiSettingsController;
+use App\Http\Controllers\Admin\AnnouncementController;
 use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\Auth\LoginController;
 use App\Http\Controllers\Admin\Auth\PasskeyLoginController;
@@ -25,7 +26,9 @@ use App\Http\Controllers\Admin\GatewayController;
 use App\Http\Controllers\Admin\HealthController;
 use App\Http\Controllers\Admin\ImportController;
 use App\Http\Controllers\Admin\InvoiceController;
+use App\Http\Controllers\Admin\KnowledgebaseController;
 use App\Http\Controllers\Admin\MarketplaceController;
+use App\Http\Controllers\Admin\NetworkStatusController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\PasskeyController;
 use App\Http\Controllers\Admin\PhoneAppController;
@@ -195,6 +198,37 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
             Route::post('translate', [TicketAiController::class, 'translate'])->name('translate');
             Route::post('messages/{reply}/translate', [TicketAiController::class, 'translateMessage'])->scopeBindings()->name('message');
         });
+    });
+
+    Route::middleware('admin.can:content.manage')->group(function (): void {
+        Route::get('knowledgebase', [KnowledgebaseController::class, 'index'])->name('kb.index');
+        Route::put('knowledgebase/settings', [KnowledgebaseController::class, 'settings'])->name('kb.settings');
+        Route::get('knowledgebase/categories/create', [KnowledgebaseController::class, 'createCategory'])->name('kb.categories.create');
+        Route::post('knowledgebase/categories', [KnowledgebaseController::class, 'storeCategory'])->name('kb.categories.store');
+        Route::get('knowledgebase/categories/{category}/edit', [KnowledgebaseController::class, 'editCategory'])->name('kb.categories.edit');
+        Route::put('knowledgebase/categories/{category}', [KnowledgebaseController::class, 'updateCategory'])->name('kb.categories.update');
+        Route::delete('knowledgebase/categories/{category}', [KnowledgebaseController::class, 'destroyCategory'])->name('kb.categories.destroy');
+        Route::get('knowledgebase/articles/create', [KnowledgebaseController::class, 'createArticle'])->name('kb.articles.create');
+        Route::post('knowledgebase/articles', [KnowledgebaseController::class, 'storeArticle'])->name('kb.articles.store');
+        Route::get('knowledgebase/articles/{article}/edit', [KnowledgebaseController::class, 'editArticle'])->name('kb.articles.edit');
+        Route::put('knowledgebase/articles/{article}', [KnowledgebaseController::class, 'updateArticle'])->name('kb.articles.update');
+        Route::delete('knowledgebase/articles/{article}', [KnowledgebaseController::class, 'destroyArticle'])->name('kb.articles.destroy');
+
+        Route::put('announcements/settings', [AnnouncementController::class, 'settings'])->name('announcements.settings');
+        Route::resource('announcements', AnnouncementController::class)->except('show');
+    });
+
+    Route::middleware('admin.can:status.manage')->group(function (): void {
+        Route::get('network-status', [NetworkStatusController::class, 'index'])->name('network.index');
+        Route::put('network-status/settings', [NetworkStatusController::class, 'settings'])->name('network.settings');
+        Route::put('network-status/servers', [NetworkStatusController::class, 'servers'])->name('network.servers');
+        Route::post('network-status/check', [NetworkStatusController::class, 'check'])->middleware('throttle:6,1')->name('network.check');
+        Route::get('network-status/notes/create', [NetworkStatusController::class, 'create'])->name('network.incidents.create');
+        Route::post('network-status/notes', [NetworkStatusController::class, 'store'])->name('network.incidents.store');
+        Route::get('network-status/notes/{incident}', [NetworkStatusController::class, 'show'])->name('network.incidents.show');
+        Route::put('network-status/notes/{incident}', [NetworkStatusController::class, 'update'])->name('network.incidents.update');
+        Route::post('network-status/notes/{incident}/updates', [NetworkStatusController::class, 'addUpdate'])->name('network.incidents.updates.store');
+        Route::delete('network-status/notes/{incident}', [NetworkStatusController::class, 'destroy'])->name('network.incidents.destroy');
     });
 
     Route::middleware('admin.can:products.manage')->group(function (): void {

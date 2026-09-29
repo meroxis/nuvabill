@@ -10,7 +10,7 @@
         ['route' => 'admin.domains.index', 'match' => 'admin.domains.*', 'icon' => 'globe', 'label' => __('Domains'), 'show' => $can('domains.manage')],
         ['route' => 'admin.invoices.index', 'match' => 'admin.invoices.*', 'icon' => 'receipt', 'label' => __('Invoices'), 'show' => $can('billing.view')],
         ['route' => 'admin.quotes.index', 'match' => 'admin.quotes.*', 'icon' => 'layers', 'label' => __('Quotes'), 'show' => $can('billing.view')],
-        ['route' => 'admin.tickets.index', 'match' => 'admin.tickets.*', 'icon' => 'ticket', 'label' => __('Support'), 'show' => $can('support.manage'), 'count' => $ticketsAwaitingReply],
+        ['route' => $can('support.manage') ? 'admin.tickets.index' : ($can('content.manage') ? 'admin.kb.index' : 'admin.network.index'), 'match' => ['admin.tickets.*', 'admin.kb.*', 'admin.announcements.*', 'admin.network.*'], 'icon' => 'ticket', 'label' => __('Support'), 'show' => $can('support.manage') || $can('content.manage') || $can('status.manage'), 'count' => $can('support.manage') ? $ticketsAwaitingReply : null],
     ], fn (array $item): bool => $item['show']);
     $setup = array_filter([
         ['route' => 'admin.products.index', 'match' => ['admin.products.*', 'admin.product-groups.*', 'admin.product-addons.*'], 'icon' => 'store', 'label' => __('Products'), 'show' => $can('products.manage')],
@@ -140,7 +140,7 @@
         // The phone app's tab bar: the four places staff use most, then everything else under More.
         $tabs = array_slice(array_values(array_filter([
             ['route' => 'admin.today', 'match' => 'admin.today', 'icon' => 'home', 'label' => __('Today'), 'show' => true],
-            ['route' => 'admin.tickets.index', 'match' => 'admin.tickets.*', 'icon' => 'ticket', 'label' => __('Support'), 'show' => $can('support.manage'), 'count' => $ticketsAwaitingReply],
+            ['route' => $can('support.manage') ? 'admin.tickets.index' : ($can('content.manage') ? 'admin.kb.index' : 'admin.network.index'), 'match' => ['admin.tickets.*', 'admin.kb.*', 'admin.announcements.*', 'admin.network.*'], 'icon' => 'ticket', 'label' => __('Support'), 'show' => $can('support.manage') || $can('content.manage') || $can('status.manage'), 'count' => $can('support.manage') ? $ticketsAwaitingReply : null],
             ['route' => 'admin.orders.index', 'match' => 'admin.orders.*', 'icon' => 'cart', 'label' => __('Orders'), 'show' => $can('orders.manage'), 'count' => $pendingOrders],
             ['route' => 'admin.clients.index', 'match' => 'admin.clients.*', 'icon' => 'users', 'label' => __('Clients'), 'show' => $can('clients.view')],
             ['route' => 'admin.invoices.index', 'match' => 'admin.invoices.*', 'icon' => 'receipt', 'label' => __('Invoices'), 'show' => $can('billing.view')],
