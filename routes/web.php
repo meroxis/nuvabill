@@ -51,6 +51,7 @@ Route::post('language', [LanguageController::class, 'client'])->middleware('thro
 
 // WhatsApp connect page. It only works on the Nuvabill store, where Meta's app keys are set.
 Route::get('connect/whatsapp', [WhatsAppConnectController::class, 'show'])->name('connect.whatsapp');
+Route::get('connect/whatsapp/status', [WhatsAppConnectController::class, 'status'])->middleware('throttle:60,1')->name('connect.whatsapp.status');
 Route::post('connect/whatsapp/exchange', [WhatsAppConnectController::class, 'exchange'])->middleware('throttle:10,1')->name('connect.whatsapp.exchange');
 
 Route::get('preview/stop', [PreviewController::class, 'stop'])->name('preview.stop');

@@ -390,8 +390,8 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 | Version | Focus |
 |---|---|
 | v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor (plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules), domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, search engine tools, Site health ([changelog](CHANGELOG.md)) |
-| v0.5.0–v0.5.2 | Done: **Automations** with 9 templates, client tags and ticket assignment; **AI help** with your own Claude key; **Telegram and WhatsApp** |
-| **next** | **v0.5.3 admin phone app**: the admin area on your phone, with notifications |
+| v0.5.0–v0.5.3 | Done: **Automations** with 9 templates, client tags and ticket assignment; **AI help** with your own Claude key; **Telegram and WhatsApp** |
+| **next** | **v0.5.4 admin phone app**: the admin area on your phone, with notifications |
 | later | A ClientExec importer |
 | v1.0 | Automatic card payments, client upgrades, knowledge base and status page, security audit, and more |
 

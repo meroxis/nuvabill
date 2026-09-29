@@ -3,7 +3,7 @@
  * in a window. When the owner is done, that window sends this page the owner's WhatsApp access
  * token with a postMessage, and this page hands it to Nuvabill to finish the setup.
  *
- * Usage: x-data="whatsappConnect(@js($config))" with {url, origin, state, endpoint, failed, blocked}.
+ * Usage: x-data="whatsappConnect(@js($config))" with {url, origin, state, endpoint, failed, blocked, closed}.
  */
 export function whatsappConnect(config) {
     return {
@@ -21,7 +21,22 @@ export function whatsappConnect(config) {
 
             if (!this.popup) {
                 this.error = config.blocked;
+
+                return;
             }
+
+            // Without this, closing the window early would leave the page waiting with no word.
+            const watch = setInterval(() => {
+                if (this.popup && !this.popup.closed) {
+                    return;
+                }
+
+                clearInterval(watch);
+
+                if (!this.busy && !this.error) {
+                    this.error = config.closed;
+                }
+            }, 800);
         },
 
         async receive(event) {

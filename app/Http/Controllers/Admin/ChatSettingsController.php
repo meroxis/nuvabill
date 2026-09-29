@@ -25,7 +25,7 @@ use Illuminate\View\View;
  */
 class ChatSettingsController extends Controller
 {
-    public function edit(Request $request, Telegram $telegram, WhatsApp $whatsApp, Settings $settings): View
+    public function edit(Request $request, Telegram $telegram, WhatsApp $whatsApp, WhatsAppSetup $setup, Settings $settings): View
     {
         // Proves that the QR connect popup answering this page was opened by this page.
         $state = Str::random(32);
@@ -49,6 +49,7 @@ class ChatSettingsController extends Controller
             'matrix' => (array) setting('chat.events'),
             'departments' => TicketDepartment::query()->orderBy('sort_order')->pluck('name', 'id')->all(),
             'links' => ChatLink::query()->selectRaw('channel, count(*) as total')->groupBy('channel')->pluck('total', 'channel')->all(),
+            'qrReady' => ! $whatsApp->isConnected() && $setup->canConnectByQr(),
             'connectUrl' => config('nuvabill.whatsapp_connect.url').'?'.http_build_query(['origin' => url('/'), 'state' => $state]),
             'connectOrigin' => (string) parse_url((string) config('nuvabill.whatsapp_connect.url'), PHP_URL_SCHEME).'://'.parse_url((string) config('nuvabill.whatsapp_connect.url'), PHP_URL_HOST),
             'state' => $state,

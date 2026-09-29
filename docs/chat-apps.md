@@ -41,7 +41,8 @@ Keep it somewhere safe.
 The signup window runs on `my.nuvabill.com`, because Meta only allows it on the domains of an approved Meta app. It
 hands the access key back to your own site and keeps nothing. Your site talks to Meta directly after that.
 
-Until Meta has approved Nuvabill for this, the signup window says so. Use your own Meta app in the meantime.
+Until Meta has approved Nuvabill for this, Settings → Chat apps says so and shows the form for your own Meta app
+instead. It asks the Nuvabill store again every 10 minutes.
 
 ### Use your own Meta app
 

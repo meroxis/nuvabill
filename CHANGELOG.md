@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.5.3](https://github.com/meroxis/nuvabill/releases/tag/v0.5.3) | 29 Sep 2026 | WhatsApp: clear note while connecting by QR code is not available yet |
 | [0.5.2](https://github.com/meroxis/nuvabill/releases/tag/v0.5.2) | 29 Sep 2026 | Telegram and WhatsApp: invoices, reminders and ticket replies in chat apps; clients link by QR code; tickets from chats |
 | [0.5.1](https://github.com/meroxis/nuvabill/releases/tag/v0.5.1) | 29 Sep 2026 | AI help with your own Claude key: reply drafts, two-way ticket translation, summaries, product texts |
 | [0.5.0](https://github.com/meroxis/nuvabill/releases/tag/v0.5.0) | 29 Sep 2026 | Automations: "when this happens, do that", with 9 ready-made templates; client tags; ticket assignment |
@@ -35,6 +36,13 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.5.3
+
+- **Settings → Chat apps now tells you when connecting WhatsApp by QR code is not available yet.** Before, the
+  button opened a window that did nothing. The page now asks the Nuvabill store first; until Meta has approved
+  Nuvabill for QR signup, it shows a note and opens the form for your own Meta app instead.
+- If the signup window is closed before WhatsApp is connected, the page says so, so you are not left waiting.
 
 ## 0.5.2
 

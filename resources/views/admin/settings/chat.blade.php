@@ -88,6 +88,9 @@
                         </form>
                     </div>
                 @else
+                    @if (! $qrReady)
+                    <p class="flash" data-tone="warn" style="margin:0">{{ __('Connecting by QR code is not available yet. It opens as soon as Meta has approved Nuvabill. Until then, use your own Meta app below.') }}</p>
+                    @else
                     <div x-data="whatsappConnect(@js([
                         'url' => $connectUrl,
                         'origin' => $connectOrigin,
@@ -95,6 +98,7 @@
                         'endpoint' => route('admin.settings.chat.whatsapp.connect'),
                         'failed' => __('WhatsApp could not be connected. Please try again.'),
                         'blocked' => __('Your browser blocked the window. Allow pop-ups for this site and try again.'),
+                        'closed' => __('The window closed before WhatsApp was connected. Press the button to try again.'),
                     ]))" style="display:grid;gap:.6rem">
                         <ol class="muted" style="margin:0;padding-inline-start:1.2rem;list-style:decimal;font-size:.9rem;display:grid;gap:.3rem">
                             <li>{{ __('Press the button. Meta’s WhatsApp signup opens in a new window.') }}</li>
@@ -104,8 +108,9 @@
                         <div><button class="btn btn-primary btn-sm" type="button" @click="open" :disabled="busy"><x-icon name="plug" /><span x-text="busy ? @js(__('Connecting…')) : @js(__('Connect with a QR code'))"></span></button></div>
                         <p class="flash" data-tone="crit" x-show="error" x-text="error" x-cloak role="alert" style="margin:0"></p>
                     </div>
+                    @endif
 
-                    <details>
+                    <details @if (! $qrReady) open @endif>
                         <summary style="cursor:pointer;font-weight:600">{{ __('Use your own Meta app instead') }}</summary>
                         <form method="POST" action="{{ route('admin.settings.chat.whatsapp.manual') }}" style="display:grid;gap:.8rem;margin-top:.8rem">
                             @csrf

@@ -46,6 +46,14 @@ class WhatsAppConnectController extends Controller
         ]);
     }
 
+    /**
+     * Lets a Nuvabill site check that this page can run Meta's signup before it sends the owner here.
+     */
+    public function status(): JsonResponse
+    {
+        return response()->json(['ready' => self::isReady()]);
+    }
+
     public function exchange(Request $request): JsonResponse
     {
         abort_unless(self::isReady(), 404);

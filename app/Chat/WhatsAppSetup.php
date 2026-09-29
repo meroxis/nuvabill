@@ -2,8 +2,13 @@
 
 namespace App\Chat;
 
+use App\Http\Controllers\WhatsAppConnectController;
 use App\Support\Activity;
+use App\Support\Demo;
 use App\Support\Settings;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
 /**
@@ -93,6 +98,32 @@ class WhatsAppSetup
         $this->whatsApp->disconnect();
         $this->forget();
         Activity::log('chat.whatsapp', 'WhatsApp disconnected');
+    }
+
+    /**
+     * Whether the Nuvabill store's QR connect page runs Meta's signup yet. It only does once Meta
+     * has approved the store's Meta app, so until then the owner is told so before opening it.
+     */
+    public function canConnectByQr(): bool
+    {
+        $page = (string) config('nuvabill.whatsapp_connect.url');
+
+        // The demo shows the button; connecting is locked there, and it never calls other servers.
+        if (Demo::isEnabled()) {
+            return true;
+        }
+
+        if (parse_url($page, PHP_URL_HOST) === parse_url(url('/'), PHP_URL_HOST)) {
+            return WhatsAppConnectController::isReady();
+        }
+
+        return Cache::remember('chat.whatsapp_qr_ready', now()->addMinutes(10), function () use ($page): bool {
+            try {
+                return Http::timeout(5)->acceptJson()->get($page.'/status')->json('ready') === true;
+            } catch (ConnectionException) {
+                return false;
+            }
+        });
     }
 
     /**

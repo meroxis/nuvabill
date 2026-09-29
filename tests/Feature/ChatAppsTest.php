@@ -14,6 +14,7 @@ use App\Models\TicketDepartment;
 use App\Support\TicketDesk;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
@@ -33,9 +34,12 @@ class ChatAppsTest extends TestCase
     public function test_the_owner_connects_a_telegram_bot_and_its_webhook_points_here(): void
     {
         $this->signInAdmin();
-        Http::fake(['api.telegram.org/*' => fn (Request $request) => Http::response(str_ends_with($request->url(), '/getMe')
-            ? ['ok' => true, 'result' => ['username' => 'YourHostBot']]
-            : ['ok' => true, 'result' => true])]);
+        Http::fake([
+            'api.telegram.org/*' => fn (Request $request) => Http::response(str_ends_with($request->url(), '/getMe')
+                ? ['ok' => true, 'result' => ['username' => 'YourHostBot']]
+                : ['ok' => true, 'result' => true]),
+            'my.nuvabill.com/*' => Http::response(['ready' => true]),
+        ]);
 
         $this->put(route('admin.settings.chat.telegram'), ['token' => 'nope'])->assertSessionHasErrors('token');
         $this->put(route('admin.settings.chat.telegram'), ['token' => self::BOT])->assertSessionHas('status', 'Telegram is connected as @YourHostBot.');
@@ -214,6 +218,7 @@ class ChatAppsTest extends TestCase
         URL::forceRootUrl('https://billing.example.com');
         URL::forceScheme('https');
         $this->signInAdmin();
+        Http::fake(['my.nuvabill.com/connect/whatsapp/status' => Http::response(['ready' => true])]);
         $this->get(route('admin.settings.chat.edit'))->assertOk()->assertSee('Connect with a QR code');
         $state = session('chat.whatsapp_state');
         Http::fake(['graph.facebook.com/*' => fn (Request $request) => Http::response(match (true) {
@@ -261,8 +266,10 @@ class ChatAppsTest extends TestCase
         $query = '?origin='.urlencode('https://billing.example.com/').'&state='.str_repeat('a', 32);
 
         $this->get(route('connect.whatsapp').$query)->assertOk()->assertSee('not available yet')->assertDontSee('connect.facebook.net');
+        $this->getJson(route('connect.whatsapp.status'))->assertOk()->assertExactJson(['ready' => false]);
 
         config(['nuvabill.whatsapp_connect.app_id' => '111', 'nuvabill.whatsapp_connect.app_secret' => 'shh', 'nuvabill.whatsapp_connect.config_id' => '222']);
+        $this->getJson(route('connect.whatsapp.status'))->assertExactJson(['ready' => true]);
 
         $page = $this->get(route('connect.whatsapp').$query)->assertOk()->assertSee('connect.facebook.net')->assertSee('billing.example.com');
         $this->assertStringContainsString('https://connect.facebook.net', (string) $page->headers->get('Content-Security-Policy'));
@@ -272,6 +279,21 @@ class ChatAppsTest extends TestCase
         Http::fake(['graph.facebook.com/*' => Http::response(['access_token' => 'EAABbusiness'])]);
         $this->postJson(route('connect.whatsapp.exchange'), ['code' => 'abc'])->assertOk()->assertJson(['token' => 'EAABbusiness']);
         Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'oauth/access_token') && $request['client_secret'] === 'shh' && $request['code'] === 'abc');
+    }
+
+    public function test_until_the_store_can_run_meta_signup_the_owner_is_sent_to_their_own_meta_app(): void
+    {
+        $this->signInAdmin();
+        Http::fake(['my.nuvabill.com/*' => Http::sequence()->push(['ready' => false])->push('Not found', 404)]);
+
+        $this->get(route('admin.settings.chat.edit'))->assertOk()
+            ->assertSee('Connecting by QR code is not available yet')
+            ->assertDontSee('Connect with a QR code')
+            ->assertSee('Permanent access token');
+
+        // A store that is down or has no connect page counts as not ready.
+        Cache::flush();
+        $this->get(route('admin.settings.chat.edit'))->assertSee('Connecting by QR code is not available yet');
     }
 
     public function test_staff_alerts_go_to_the_team_group(): void
