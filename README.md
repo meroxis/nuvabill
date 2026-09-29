@@ -35,6 +35,7 @@ takes one import.
 - **Automations**: "when this happens, do that", like late fees, welcome emails, quote follow-ups and VIP tickets first, with 9 templates and a log of every run
 - **AI help** with your own Claude key: ticket reply drafts, two-way ticket translation, summaries and product texts; staff always send, and private details never reach the AI
 - **Telegram and WhatsApp**: invoices, reminders and ticket replies in the chat apps clients already use; clients link by QR code, and chats become tickets
+- **Admin phone app**: install the admin area on your phone from the browser, with a Today screen and push alerts for orders, payments and tickets
 - **Billing**: invoices with PDFs, renewals, reminders, taxes (VAT, GST, sales tax), coupons, product add-ons, quotes, a client wallet and affiliates
 - **Payments**: Stripe, PayPal, bank transfer and Iraqi payments (FIB, FastPay and Wayl), with refunds and exchange rates
 - **Domains**: search, register, transfer and renew at ResellerClub, Namecheap, Enom or OpenSRS
@@ -51,7 +52,7 @@ takes one import.
 curl -fsSL https://nuvabill.com/install.sh | bash
 ```
 
-> **Status: v0.5.** New: **Telegram and WhatsApp** (invoices, reminders and tickets in chat apps, linked by QR code), **AI help** with your own Claude key (reply drafts, tickets in two languages, summaries) and **Automations**, "when this happens, do that", with 9 ready-made templates. Also taxes, a client wallet, quotes, affiliates, a REST API, passkeys, and 26 languages with right-to-left pages for Arabic, Hebrew and Kurdish. See the [roadmap](#roadmap).
+> **Status: v0.5.** New: the **admin phone app** with push alerts, **Telegram and WhatsApp** (invoices, reminders and tickets in chat apps, linked by QR code), **AI help** with your own Claude key (reply drafts, tickets in two languages, summaries) and **Automations**, "when this happens, do that", with 9 ready-made templates. Also taxes, a client wallet, quotes, affiliates, a REST API, passkeys, and 26 languages with right-to-left pages for Arabic, Hebrew and Kurdish. See the [roadmap](#roadmap).
 >
 > **Try it:** the [live demo](https://demo.nuvabill.com/admin/login) has sample clients, invoices and tickets. One click signs you in, and the data resets every hour.
 
@@ -198,6 +199,10 @@ with shortcuts and their account details on the side. The menu bar and colours f
 ### Built for phones first
 
 The whole client area works on a phone: services, invoices, payments, tickets and account details. Light and dark mode follow the device.
+
+Staff can install the **admin area as an app** on their phone from the browser, no app store needed. It opens on a
+**Today** screen with the day's orders, payments and tickets, and sends **push alerts** for new orders, payments and
+tickets. See the [phone app guide](docs/phone-app.md).
 
 ![Client area on phones](.github/screenshots/mobile.png)
 
@@ -390,9 +395,8 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 | Version | Focus |
 |---|---|
 | v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor (plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules), domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, search engine tools, Site health ([changelog](CHANGELOG.md)) |
-| v0.5.0–v0.5.4 | Done: **Automations** with 9 templates, client tags and ticket assignment; **AI help** with your own Claude key; **Telegram and WhatsApp** |
-| **next** | **v0.5.5 admin phone app**: the admin area on your phone, with notifications |
-| later | A ClientExec importer |
+| v0.5.0–v0.5.5 | Done: **Automations** with 9 templates, client tags and ticket assignment; **AI help** with your own Claude key; **Telegram and WhatsApp**; the **admin phone app** with push alerts |
+| **next** | The path to 1.0 ([ROADMAP.md](ROADMAP.md)), and a ClientExec importer |
 | v1.0 | Automatic card payments, client upgrades, knowledge base and status page, security audit, and more |
 
 The full plan, including what we think is still missing before 1.0, is in [ROADMAP.md](ROADMAP.md).

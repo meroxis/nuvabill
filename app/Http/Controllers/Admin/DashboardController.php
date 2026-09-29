@@ -2,22 +2,18 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Enums\DomainStatus;
 use App\Enums\InvoiceStatus;
-use App\Enums\OrderStatus;
 use App\Enums\ServiceStatus;
 use App\Enums\TicketStatus;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
-use App\Models\Domain;
-use App\Models\HealthRun;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Service;
 use App\Models\Ticket;
 use App\Models\Transaction;
+use App\Support\AttentionList;
 use Carbon\CarbonImmutable;
-use Illuminate\Support\Carbon;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
@@ -48,7 +44,7 @@ class DashboardController extends Controller
             'overdueCount' => (clone $unpaid)->whereDate('due_at', '<', today())->count(),
             'openTickets' => Ticket::query()->whereIn('status', [TicketStatus::Open, TicketStatus::CustomerReply])->count(),
             'chart' => $this->revenueChart($currency),
-            'attention' => $this->attentionItems(),
+            'attention' => AttentionList::items(),
             'activity' => ActivityLog::query()->with('actor')->latest('id')->limit(8)->get(),
             'recentOrders' => Order::query()->with('client')->latest('id')->limit(5)->get(),
             'recentTickets' => Ticket::query()
@@ -109,100 +105,5 @@ class DashboardController extends Controller
         }
 
         return 10 * $magnitude;
-    }
-
-    /**
-     * Things staff should act on today.
-     *
-     * @return list<array{tone: string, text: string, url: string|null, action: string|null}>
-     */
-    private function attentionItems(): array
-    {
-        $items = [];
-
-        $lastRun = setting('automation.last_run_at');
-
-        if (setting('automation.enabled') && ($lastRun === null || Carbon::parse($lastRun)->lt(now()->subHours(26)))) {
-            $items[] = [
-                'tone' => 'crit',
-                'text' => __('The daily automation has not run in the last 24 hours. Renewal invoices and suspensions need the cron job.'),
-                'url' => route('admin.settings.edit').'#automation',
-                'action' => __('How to set it up'),
-            ];
-        }
-
-        $health = rescue(fn () => HealthRun::query()->latest('id')->first(['id', 'urgent_count']), null, report: false);
-
-        if ($health !== null && $health->urgent_count > 0 && auth('admin')->user()?->hasPermission('security.manage')) {
-            $items[] = [
-                'tone' => 'crit',
-                'text' => trans_choice('Site health found :count urgent security issue.|Site health found :count urgent security issues.', $health->urgent_count, ['count' => $health->urgent_count]),
-                'url' => route('admin.health.index'),
-                'action' => __('Open site health'),
-            ];
-        }
-
-        $stuck = Service::query()
-            ->where('status', ServiceStatus::Pending)
-            ->whereHas('invoiceItems.invoice', fn ($query) => $query->where('status', InvoiceStatus::Paid))
-            ->count();
-
-        if ($stuck > 0) {
-            $items[] = [
-                'tone' => 'crit',
-                'text' => trans_choice(':count paid service is still waiting to be set up.|:count paid services are still waiting to be set up.', $stuck, ['count' => $stuck]),
-                'url' => route('admin.services.index', ['status' => 'pending']),
-                'action' => __('Review'),
-            ];
-        }
-
-        $waitingDomains = Domain::query()
-            ->where('status', DomainStatus::Pending)
-            ->whereHas('invoiceItems.invoice', fn ($query) => $query->where('status', InvoiceStatus::Paid))
-            ->count();
-
-        if ($waitingDomains > 0) {
-            $items[] = [
-                'tone' => 'crit',
-                'text' => trans_choice(':count paid domain is still waiting to be registered.|:count paid domains are still waiting to be registered.', $waitingDomains, ['count' => $waitingDomains]),
-                'url' => route('admin.domains.index', ['status' => 'pending']),
-                'action' => __('Review'),
-            ];
-        }
-
-        $toReview = Order::query()->where('status', OrderStatus::Pending)->where('needs_review', true)->count();
-
-        if ($toReview > 0) {
-            $items[] = [
-                'tone' => 'warn',
-                'text' => trans_choice(':count order looks risky and needs your review.|:count orders look risky and need your review.', $toReview, ['count' => $toReview]),
-                'url' => route('admin.orders.index', ['status' => 'pending']),
-                'action' => __('Review'),
-            ];
-        }
-
-        $pendingOrders = Order::query()->where('status', OrderStatus::Pending)->count();
-
-        if ($pendingOrders > 0) {
-            $items[] = [
-                'tone' => 'warn',
-                'text' => trans_choice(':count order is waiting for payment or review.|:count orders are waiting for payment or review.', $pendingOrders, ['count' => $pendingOrders]),
-                'url' => route('admin.orders.index', ['status' => 'pending']),
-                'action' => __('Open orders'),
-            ];
-        }
-
-        $overdue = Invoice::query()->where('status', InvoiceStatus::Unpaid)->whereDate('due_at', '<', today()->subDays(7))->count();
-
-        if ($overdue > 0) {
-            $items[] = [
-                'tone' => 'warn',
-                'text' => trans_choice(':count invoice is more than 7 days overdue.|:count invoices are more than 7 days overdue.', $overdue, ['count' => $overdue]),
-                'url' => route('admin.invoices.index', ['status' => 'overdue']),
-                'action' => __('View'),
-            ];
-        }
-
-        return $items;
     }
 }

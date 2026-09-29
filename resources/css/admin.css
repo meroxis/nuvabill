@@ -1378,3 +1378,121 @@
         }
     }
 }
+
+/*
+ * Admin phone app: the Today screen, the alerts card and the tab bar's counts.
+ */
+@layer components {
+    a.kpi {
+        color: inherit;
+        text-decoration: none;
+    }
+
+    a.kpi:hover {
+        border-color: var(--nb-accent);
+    }
+
+    .kpi span[data-tone='warn'] {
+        color: var(--nb-warn);
+        font-weight: 700;
+    }
+
+    .today-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 44px;
+        padding: 12px 1.1rem;
+        border-top: 1px solid var(--nb-line);
+        color: inherit;
+        text-decoration: none;
+    }
+
+    .card-header + .today-item {
+        border-top: 0;
+    }
+
+    a.today-item:hover {
+        background: var(--nb-surface-2, var(--nb-bg));
+    }
+
+    .today-item-text {
+        display: grid;
+        gap: 2px;
+        min-width: 0;
+        flex: 1;
+        font-size: 0.92rem;
+    }
+
+    .today-item-text b {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .today-item-text small {
+        color: var(--nb-muted);
+        font-size: 0.8rem;
+    }
+
+    .today-item > .pill {
+        flex: none;
+    }
+
+    .phone-alerts {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+    }
+
+    .phone-alerts > svg {
+        margin-top: 2px;
+        color: var(--nb-accent);
+    }
+
+    /* Phones: the top bar keeps its buttons as icons so it fits the screen. */
+    @media (max-width: 560px) {
+        .admin-topbar {
+            gap: 8px;
+        }
+
+        .admin-topbar .topbar-label,
+        .admin-topbar .lang-menu-current,
+        .admin-topbar .lang-menu-chevron {
+            display: none;
+        }
+    }
+
+    .today-item > svg,
+    .phone-alerts > svg {
+        width: 18px;
+        height: 18px;
+        flex: none;
+    }
+
+    .today-item > svg {
+        color: var(--nb-muted);
+    }
+
+    .tab-icon {
+        position: relative;
+        display: inline-flex;
+    }
+
+    .tab-count {
+        position: absolute;
+        top: -4px;
+        inset-inline-start: 14px;
+        min-width: 17px;
+        height: 17px;
+        padding: 0 4px;
+        border-radius: 999px;
+        background: var(--nb-crit);
+        color: #fff;
+        font-size: 0.64rem;
+        font-weight: 700;
+        line-height: 17px;
+        text-align: center;
+        box-sizing: border-box;
+    }
+}

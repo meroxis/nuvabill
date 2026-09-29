@@ -30,6 +30,7 @@ use App\Models\Service;
 use App\Models\Ticket;
 use App\Models\TicketReply;
 use App\Models\Transaction;
+use App\Push\StaffAlerts;
 use App\Seo\Seo;
 use App\Support\Demo;
 use App\Support\Installation;
@@ -37,6 +38,7 @@ use App\Support\ServicePanels;
 use App\Support\Settings;
 use App\Support\Themes;
 use App\View\Composers\AdminLayoutComposer;
+use Closure;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Model;
@@ -113,6 +115,7 @@ class AppServiceProvider extends ServiceProvider
             // A problem with an affiliate commission must never stop a payment.
             Event::listen(InvoicePaid::class, fn (InvoicePaid $event) => rescue(fn () => $this->app->make(Affiliates::class)->onInvoicePaid($event->invoice)));
             $this->listenForAutomations();
+            $this->listenForStaffAlerts();
         }
 
         if (Demo::isEnabled()) {
@@ -152,6 +155,22 @@ class AppServiceProvider extends ServiceProvider
         });
         Event::listen(TicketOpened::class, fn (TicketOpened $event) => $translate($event->message));
         Event::listen(TicketReplied::class, fn (TicketReplied $event) => $translate($event->reply));
+    }
+
+    /**
+     * Admin phone app: push alerts on staff phones. A problem with an alert never stops an order,
+     * a payment or a ticket.
+     */
+    private function listenForStaffAlerts(): void
+    {
+        $alerts = fn (Closure $send) => rescue(fn () => $send($this->app->make(StaffAlerts::class)), report: false);
+
+        Event::listen(OrderPlaced::class, fn (OrderPlaced $event) => $alerts(fn (StaffAlerts $staff) => $staff->orderPlaced($event->order)));
+        Event::listen(InvoicePaid::class, fn (InvoicePaid $event) => $alerts(fn (StaffAlerts $staff) => $staff->invoicePaid($event->invoice)));
+        Event::listen(TicketOpened::class, fn (TicketOpened $event) => $alerts(fn (StaffAlerts $staff) => $staff->ticketOpened($event->ticket)));
+        Event::listen(TicketReplied::class, fn (TicketReplied $event) => $event->reply->author_type === 'client'
+            ? $alerts(fn (StaffAlerts $staff) => $staff->clientReplied($event->ticket, $event->reply))
+            : null);
     }
 
     /**

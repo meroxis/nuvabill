@@ -86,6 +86,12 @@ own Meta app. Clients scan a QR code in the client area to link their chat app, 
 replies there next to the email, and can write to support from the chat. Telegram is free; Meta charges a small fee for
 WhatsApp messages you send first. See the [Telegram and WhatsApp guide](chat-apps.md).
 
+## Is there a phone app for staff?
+
+Yes. The admin area installs on iPhone and Android from the browser, with no app store. It opens on a Today screen with
+the day's orders, payments and tickets, and can send push alerts for new orders, payments and tickets. See the
+[phone app guide](phone-app.md).
+
 ## Can the nightly job bill a client twice?
 
 No. Only one automation run works at a time, and each renewal period can only be invoiced once: the database itself

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Push\WebPush;
 use App\Security\Totp;
 use App\Support\Activity;
 use Illuminate\Http\RedirectResponse;
@@ -11,7 +12,7 @@ use Illuminate\Validation\Rules\Password;
 use Illuminate\View\View;
 
 /**
- * A staff member's own account: password and two-factor login.
+ * A staff member's own account: password, two-factor login, passkeys, API keys and the phone app.
  */
 class ProfileController extends Controller
 {
@@ -30,6 +31,10 @@ class ProfileController extends Controller
             'passkeys' => $admin->passkeys()->latest('id')->get(),
             'apiTokens' => $admin->apiTokens()->latest('id')->get(),
             'newApiKey' => session('new_api_key'),
+            'pushDevices' => $admin->pushSubscriptions()->latest('id')->get(),
+            'pushAlerts' => $admin->pushAlerts(),
+            'pushKey' => rescue(fn (): string => app(WebPush::class)->publicKey(), '', report: false),
+            'appQrCode' => Totp::qrCodeSvg(route('admin.today')),
         ]);
     }
 

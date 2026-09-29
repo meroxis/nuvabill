@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.5.5](https://github.com/meroxis/nuvabill/releases/tag/v0.5.5) | 29 Sep 2026 | Admin phone app: install the admin area on your phone, a Today screen and push alerts for orders, payments and tickets |
 | [0.5.4](https://github.com/meroxis/nuvabill/releases/tag/v0.5.4) | 29 Sep 2026 | Ready for WhatsApp by QR code on every site: the store's Meta app address, hourly template checks |
 | [0.5.3](https://github.com/meroxis/nuvabill/releases/tag/v0.5.3) | 29 Sep 2026 | WhatsApp: clear note while connecting by QR code is not available yet |
 | [0.5.2](https://github.com/meroxis/nuvabill/releases/tag/v0.5.2) | 29 Sep 2026 | Telegram and WhatsApp: invoices, reminders and ticket replies in chat apps; clients link by QR code; tickets from chats |
@@ -37,6 +38,19 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.5.5
+
+- **The admin area as an app on your phone.** Add it to the home screen from Safari or Chrome, no app store needed,
+  on iPhone and Android. **Your profile → Phone app** shows how, with a QR code to open it on your phone.
+- **A Today screen** the app opens on: today's new orders, payments, open tickets and overdue invoices, and a
+  **Needs you** list with the tickets that waited longest, risky orders you can **Approve** right there, and the
+  dashboard's warnings. Each staff member sees only what their role allows.
+- **Push alerts** for new orders, payments (optionally only from an amount you choose), new tickets and client replies.
+  Each staff member picks their own alerts and gets them in their own language; a reply on an assigned ticket only
+  alerts the person it is assigned to. Alerts are encrypted for each phone, so the push service cannot read them.
+- A new tab bar on phones: Today, Support, Orders, Clients and More, with counts. The top bar now fits small screens.
+- Site health no longer says the database user has no password when the site connects with a `DB_URL` address.
 
 ## 0.5.4
 

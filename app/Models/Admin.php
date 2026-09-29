@@ -42,6 +42,33 @@ class Admin extends Authenticatable
             'two_factor_recovery_codes' => 'encrypted:array',
             'two_factor_confirmed_at' => 'datetime',
             'last_login_at' => 'datetime',
+            'push_alerts' => 'array',
+        ];
+    }
+
+    /**
+     * @return HasMany<PushSubscription, $this>
+     */
+    public function pushSubscriptions(): HasMany
+    {
+        return $this->hasMany(PushSubscription::class);
+    }
+
+    /**
+     * The phone alerts this staff member wants, limited to what their role may see.
+     *
+     * @return array{orders: bool, payments: bool, payments_over: int, tickets: bool, replies: bool}
+     */
+    public function pushAlerts(): array
+    {
+        $saved = (array) $this->push_alerts;
+
+        return [
+            'orders' => (bool) ($saved['orders'] ?? true) && $this->hasPermission('orders.manage'),
+            'payments' => (bool) ($saved['payments'] ?? true) && $this->hasPermission('billing.view'),
+            'payments_over' => max(0, (int) ($saved['payments_over'] ?? 0)),
+            'tickets' => (bool) ($saved['tickets'] ?? true) && $this->hasPermission('support.manage'),
+            'replies' => (bool) ($saved['replies'] ?? true) && $this->hasPermission('support.manage'),
         ];
     }
 

@@ -38,9 +38,10 @@
 <head>
     <title>{{ $title }} · {{ setting('company.name') }}</title>
     @include('partials.head', ['assets' => ['resources/css/admin.css', 'resources/js/app.js']])
+    @include('admin.phone.head')
     <x-extension-head area="admin" />
 </head>
-<body>
+<body data-admin-app="{{ route('admin.service-worker') }}" data-admin-scope="{{ \App\Http\Controllers\Admin\PhoneAppController::scope() }}">
 <div class="admin-shell" x-data="{ menu: false }" @keydown.escape.window="menu = false">
     <div class="side-overlay" x-show="menu" x-cloak @click="menu = false"></div>
 
@@ -119,7 +120,7 @@
                     </div>
                 </div>
             @endif
-            <a class="btn btn-sm" href="{{ route('store.index') }}" target="_blank" rel="noopener"><x-icon name="external" />{{ __('View store') }}</a>
+            <a class="btn btn-sm" href="{{ route('store.index') }}" target="_blank" rel="noopener" aria-label="{{ __('View store') }}"><x-icon name="external" /><span class="topbar-label">{{ __('View store') }}</span></a>
             <x-language-switcher :action="route('admin.language')" :locales="collect(\App\Support\Locales::ALL)->map(fn (array $locale): string => $locale['native'])->all()" class="btn btn-sm" />
             <button class="icon-btn" type="button" onclick="nuvabillToggleTheme()" aria-label="{{ __('Switch light or dark mode') }}"><x-icon name="moon" /></button>
         </header>
@@ -136,18 +137,21 @@
         </main>
     </div>
 
+    @php
+        // The phone app's tab bar: the four places staff use most, then everything else under More.
+        $tabs = array_slice(array_values(array_filter([
+            ['route' => 'admin.today', 'match' => 'admin.today', 'icon' => 'home', 'label' => __('Today'), 'show' => true],
+            ['route' => 'admin.tickets.index', 'match' => 'admin.tickets.*', 'icon' => 'ticket', 'label' => __('Support'), 'show' => $can('support.manage'), 'count' => $ticketsAwaitingReply],
+            ['route' => 'admin.orders.index', 'match' => 'admin.orders.*', 'icon' => 'cart', 'label' => __('Orders'), 'show' => $can('orders.manage'), 'count' => $pendingOrders],
+            ['route' => 'admin.clients.index', 'match' => 'admin.clients.*', 'icon' => 'users', 'label' => __('Clients'), 'show' => $can('clients.view')],
+            ['route' => 'admin.invoices.index', 'match' => 'admin.invoices.*', 'icon' => 'receipt', 'label' => __('Invoices'), 'show' => $can('billing.view')],
+        ], fn (array $tab): bool => $tab['show'])), 0, 4);
+    @endphp
     <nav class="tabbar" aria-label="{{ __('Quick navigation') }}">
-        <a href="{{ route('admin.dashboard') }}" @if (request()->routeIs('admin.dashboard')) aria-current="page" @endif><x-icon name="home" />{{ __('Home') }}</a>
-        @if ($can('clients.view'))
-            <a href="{{ route('admin.clients.index') }}" @if (request()->routeIs('admin.clients.*')) aria-current="page" @endif><x-icon name="users" />{{ __('Clients') }}</a>
-        @endif
-        @if ($can('billing.view'))
-            <a href="{{ route('admin.invoices.index') }}" @if (request()->routeIs('admin.invoices.*')) aria-current="page" @endif><x-icon name="receipt" />{{ __('Invoices') }}</a>
-        @endif
-        @if ($can('support.manage'))
-            <a href="{{ route('admin.tickets.index') }}" @if (request()->routeIs('admin.tickets.*')) aria-current="page" @endif><x-icon name="ticket" />{{ __('Support') }}</a>
-        @endif
-        <a href="#" @click.prevent="menu = true"><x-icon name="menu" />{{ __('More') }}</a>
+        @foreach ($tabs as $tab)
+            <a href="{{ route($tab['route']) }}" @if (request()->routeIs($tab['match'])) aria-current="page" @endif><span class="tab-icon"><x-icon :name="$tab['icon']" />@if (! empty($tab['count']))<span class="tab-count">{{ $tab['count'] }}</span>@endif</span>{{ $tab['label'] }}</a>
+        @endforeach
+        <a href="#" @click.prevent="menu = true"><span class="tab-icon"><x-icon name="menu" /></span>{{ __('More') }}</a>
     </nav>
 </div>
 </body>

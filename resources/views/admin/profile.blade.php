@@ -107,6 +107,8 @@
         <p class="muted" data-passkey-unsupported hidden style="margin:0">{{ __('This browser cannot use passkeys. Try an up-to-date Chrome, Edge, Safari or Firefox.') }}</p>
     </section>
 
+    @include('admin.phone.profile')
+
     <section class="card" style="display:grid;gap:1rem;margin-top:14px">
         <div class="card-header" style="margin:0">
             <h2>{{ __('API keys') }}</h2>

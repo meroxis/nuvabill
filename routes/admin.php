@@ -26,6 +26,7 @@ use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\MarketplaceController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\PasskeyController;
+use App\Http\Controllers\Admin\PhoneAppController;
 use App\Http\Controllers\Admin\ProductAddonController;
 use App\Http\Controllers\Admin\ProductAiController;
 use App\Http\Controllers\Admin\ProductController;
@@ -59,6 +60,10 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
+// Admin phone app: browsers fetch these without the sign-in cookie.
+Route::get('app.webmanifest', [PhoneAppController::class, 'manifest'])->name('manifest');
+Route::get('sw.js', [PhoneAppController::class, 'serviceWorker'])->name('service-worker');
+
 Route::middleware('guest:admin')->group(function (): void {
     Route::get('login', [LoginController::class, 'create'])->name('login');
     Route::post('login', [LoginController::class, 'store'])->middleware(['throttle:6,1', 'captcha:admin_login']);
@@ -76,6 +81,7 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
     Route::post('logout', [LoginController::class, 'destroy'])->name('logout');
 
     Route::get('/', DashboardController::class)->name('dashboard');
+    Route::get('today', [PhoneAppController::class, 'today'])->name('today');
 
     Route::get('profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::put('profile/password', [ProfileController::class, 'password'])->name('profile.password');
@@ -88,6 +94,11 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
     Route::post('profile/passkeys/options', [PasskeyController::class, 'options'])->middleware('throttle:6,1')->name('profile.passkeys.options');
     Route::post('profile/passkeys', [PasskeyController::class, 'store'])->middleware('throttle:10,1')->name('profile.passkeys.store');
     Route::delete('profile/passkeys/{passkey}', [PasskeyController::class, 'destroy'])->name('profile.passkeys.destroy');
+    Route::post('profile/push', [PhoneAppController::class, 'subscribe'])->middleware('throttle:20,1')->name('profile.push.store');
+    Route::delete('profile/push', [PhoneAppController::class, 'forget'])->name('profile.push.forget');
+    Route::delete('profile/push/{pushSubscription}', [PhoneAppController::class, 'destroy'])->name('profile.push.destroy');
+    Route::post('profile/push/test', [PhoneAppController::class, 'test'])->middleware('throttle:6,1')->name('profile.push.test');
+    Route::put('profile/push-alerts', [PhoneAppController::class, 'alerts'])->name('profile.push.alerts');
 
     Route::middleware('admin.can:clients.view')->group(function (): void {
         Route::get('clients', [ClientController::class, 'index'])->name('clients.index');

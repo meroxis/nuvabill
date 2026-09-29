@@ -6,8 +6,11 @@
     <title>{{ $title }} · {{ \App\Support\Branding::PRODUCT_NAME }}</title>
     <meta name="robots" content="noindex">
     @include('partials.head', ['assets' => ['resources/css/admin.css', 'resources/js/app.js']])
+    @if (request()->routeIs('admin.*'))
+        @include('admin.phone.head')
+    @endif
 </head>
-<body>
+<body @if (request()->routeIs('admin.*')) data-admin-app="{{ route('admin.service-worker') }}" data-admin-scope="{{ \App\Http\Controllers\Admin\PhoneAppController::scope() }}" @endif>
 <x-demo-banner />
 <main class="auth-page">
     <div class="auth-card" @if ($wide) style="width:min(640px,100%)" @endif>

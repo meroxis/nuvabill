@@ -1,0 +1,6 @@
+# Nuvabill passes this file to OpenSSL only where PHP cannot find OpenSSL's own settings
+# file (common on Windows), so it can make keys, such as the key pair for phone app alerts.
+[ req ]
+distinguished_name = req_distinguished_name
+
+[ req_distinguished_name ]

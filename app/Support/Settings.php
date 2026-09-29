@@ -192,6 +192,10 @@ class Settings
         'backups.last_at' => null,
         'backups.last_type' => null,
         'backups.last_encrypted' => false,
+
+        // Admin phone app: this site's key pair for push alerts, made on first use.
+        'push.vapid_public' => '',
+        'push.vapid_private' => '',
     ];
 
     /**
@@ -199,7 +203,7 @@ class Settings
      *
      * @var list<string>
      */
-    public const SECRET_KEYS = ['license.white_label_key', 'mail.password', 'import.whmcs', 'import.connection', 'import.password_keys', 'social.google', 'social.github', 'social.facebook', 'security.captcha_secret', 'ai.key', 'chat.telegram_token', 'chat.telegram_secret', 'chat.whatsapp_token', 'chat.whatsapp_app_secret', 'chat.whatsapp_webhook_key'];
+    public const SECRET_KEYS = ['license.white_label_key', 'mail.password', 'import.whmcs', 'import.connection', 'import.password_keys', 'social.google', 'social.github', 'social.facebook', 'security.captcha_secret', 'ai.key', 'chat.telegram_token', 'chat.telegram_secret', 'chat.whatsapp_token', 'chat.whatsapp_app_secret', 'chat.whatsapp_webhook_key', 'push.vapid_private'];
 
     /**
      * @var array<string, mixed>|null
