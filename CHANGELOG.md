@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.6.7](https://github.com/meroxis/nuvabill/releases/tag/v0.6.7) | 30 Sep 2026 | Credit notes, CSV exports for accountants, and privacy tools |
 | [0.6.6](https://github.com/meroxis/nuvabill/releases/tag/v0.6.6) | 30 Sep 2026 | Knowledge base, announcements and a network status page |
 | [0.6.5](https://github.com/meroxis/nuvabill/releases/tag/v0.6.5) | 30 Sep 2026 | Emails and PDF invoices in each client's language |
 | [0.6.4](https://github.com/meroxis/nuvabill/releases/tag/v0.6.4) | 30 Sep 2026 | Upgrades and downgrades with a fair price for the days left |
@@ -46,6 +47,28 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.6.7
+
+- **Credit notes.** A paid invoice never changes; to take back all or part of it, issue a numbered credit note
+  (`CN-0001`, the prefix is in Settings → General). Choose what happens to the money: send it back (through Stripe or
+  PayPal where they can), add it to the client's wallet, or nothing because you settle it yourself. The tax is split
+  in the same share as on the invoice. Once the whole invoice is credited, it is marked Refunded.
+- **Refunds make a credit note too**, so every refund has a document for your books. The client gets an email with
+  it, and can download the credit note PDF from the invoice page.
+- **Invoices → Credit notes** lists them all, with PDFs.
+- **Invoices → Exports**: CSV files for your accountant — invoices, payments and refunds, credit notes, and clients —
+  for a date range. They open in Excel, LibreOffice and Google Sheets. A cell that would start a formula is kept as
+  text, so a client name cannot run code in a spreadsheet. Client lists need the "Create and edit clients" right, and
+  every export is in the activity log.
+- **Privacy tools** for the GDPR and similar laws. On a client's page, **Download their data** gives one JSON file with
+  everything Nuvabill keeps about them. **Erase personal data** removes their email, phone, password, tickets, saved
+  cards and sign-in methods, and they can no longer sign in. Invoices, payments and credit notes stay, as tax law
+  requires, with the name and address on them. Erasing waits until services and domains are ended, unpaid invoices
+  are settled and the wallet is empty.
+- Clients can download their own data and ask for erasure from **Your details** in the client area. The request
+  opens a ticket for your team.
+- Emails are never sent to a client whose data was erased.
 
 ## 0.6.6
 

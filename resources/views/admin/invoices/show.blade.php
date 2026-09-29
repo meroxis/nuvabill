@@ -98,18 +98,60 @@
                 </section>
             @endif
 
-            @if ($canManage && $status === \App\Enums\InvoiceStatus::Paid)
+            @if ($invoice->creditNotes->isNotEmpty())
+                <section class="card">
+                    <div class="card-header"><h2>{{ __('Credit notes') }}</h2></div>
+                    <ul class="list-plain">
+                        @foreach ($invoice->creditNotes as $creditNote)
+                            <li class="feed-item">
+                                <span><a class="mono" href="{{ route('admin.credit-notes.pdf', $creditNote) }}" target="_blank">{{ $creditNote->displayNumber() }}</a> · <b class="num">{{ money($creditNote->total, $creditNote->currency) }}</b>
+                                    <br><span class="faint" style="font-size:.85rem">{{ $creditNote->methodLabel() }}@if ($creditNote->reason) · {{ $creditNote->reason }}@endif</span>
+                                </span>
+                                <time>{{ $creditNote->issued_at->translatedFormat('d M Y') }}</time>
+                            </li>
+                        @endforeach
+                    </ul>
+                </section>
+            @endif
+
+            @if ($canManage && $status === \App\Enums\InvoiceStatus::Paid && $invoice->creditableAmount() > 0)
                 <section class="card">
                     <div class="card-header"><h2>{{ __('Refund') }}</h2></div>
                     <form method="POST" action="{{ route('admin.invoices.refund', $invoice) }}" data-confirm="{{ __('Refund this invoice? This cannot be undone.') }}" style="display:grid;gap:.9rem">
                         @csrf
-                        <p class="muted" style="margin:0">{{ __('Marks the invoice Refunded and records a refund for each payment. Services on the invoice are not changed.') }}</p>
+                        <p class="muted" style="margin:0">{{ __('Refunds :amount, marks the invoice Refunded and makes a credit note for it. Services on the invoice are not changed.', ['amount' => money($invoice->creditableAmount(), $invoice->currency)]) }}</p>
                         @if ($canRefundThroughGateway)
                             <x-checkbox name="through_gateway" :label="__('Send the money back through the payment gateway')" :help="__('Payments made another way are only recorded. Refund those yourself.')" checked />
                         @else
                             <p class="faint" style="margin:0;font-size:.85rem">{{ __('No payment here can be refunded through a gateway. Send the money back yourself.') }}</p>
                         @endif
                         <button class="btn btn-danger" type="submit">{{ __('Refund invoice') }}</button>
+                    </form>
+                </section>
+
+                <section class="card" x-data="{ method: @js(old('method', $invoice->currency === $invoice->client->currency ? 'wallet' : 'refund')) }">
+                    <div class="card-header"><h2>{{ __('Issue a credit note') }}</h2></div>
+                    <form method="POST" action="{{ route('admin.invoices.credit-notes.store', $invoice) }}" style="display:grid;gap:.9rem">
+                        @csrf
+                        <p class="muted" style="margin:0">{{ __('Take back part of this invoice, for example for a day of downtime. The invoice stays as it is.') }}</p>
+                        <x-input name="amount" type="number" step="0.01" min="0.01" :max="\App\Support\Money::toDecimal($invoice->creditableAmount())" :label="__('Amount (:currency), with tax', ['currency' => $invoice->currency])" :value="\App\Support\Money::toDecimal($invoice->creditableAmount())" required />
+                        <div class="field">
+                            <label for="f-credit-method">{{ __('What happens to the money') }}</label>
+                            <select id="f-credit-method" name="method" class="select" x-model="method">
+                                @if ($invoice->currency === $invoice->client->currency)
+                                    <option value="wallet">{{ __('Add it to the client\'s wallet') }}</option>
+                                @endif
+                                <option value="refund">{{ __('Send it back to the client') }}</option>
+                                <option value="none">{{ __('Nothing, I settle it myself') }}</option>
+                            </select>
+                        </div>
+                        @if ($canRefundThroughGateway)
+                            <div x-show="method === 'refund'" x-cloak>
+                                <x-checkbox name="through_gateway" id="f-credit-through-gateway" :label="__('Send the money back through the payment gateway')" checked />
+                            </div>
+                        @endif
+                        <x-input name="reason" :label="__('Reason')" maxlength="500" :help="__('Shown on the credit note, for example “Two days of downtime in May”.')" />
+                        <button class="btn" type="submit">{{ __('Issue credit note') }}</button>
                     </form>
                 </section>
             @endif

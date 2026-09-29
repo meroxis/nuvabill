@@ -45,7 +45,7 @@
                 @if ($quote->client->company_name)<div>{{ $quote->client->name }}</div>@endif
                 <div>{{ collect([$quote->client->address_1, $quote->client->address_2])->filter()->implode(', ') }}</div>
                 <div>{{ collect([trim($quote->client->postcode.' '.$quote->client->city), $quote->client->state, \App\Support\Countries::name($quote->client->country)])->filter()->implode(', ') }}</div>
-                <div class="muted">{{ $quote->client->email }}</div>
+                @unless ($quote->client->isErased())<div class="muted">{{ $quote->client->email }}</div>@endunless
                 @if ($quote->client->tax_id)<div class="muted">{{ setting('tax.id_label') }}: {{ $quote->client->tax_id }}</div>@endif
             </td>
             <td class="right">

@@ -131,6 +131,18 @@
                     @endforeach
                 </div>
             @endif
+
+            @if ($invoice->creditNotes->isNotEmpty())
+                <div style="display:grid;gap:.4rem">
+                    <span class="label">{{ __('Credit notes') }}</span>
+                    @foreach ($invoice->creditNotes as $creditNote)
+                        <div class="summary-row">
+                            <span><a href="{{ route('client.credit-notes.pdf', $creditNote) }}">{{ $creditNote->displayNumber() }}</a> · {{ $creditNote->issued_at->translatedFormat('d M Y') }}</span>
+                            <span class="num">{{ money($creditNote->total, $creditNote->currency) }}</span>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
         </aside>
     </div>
 @endsection

@@ -2,6 +2,7 @@
 
 namespace App\Billing;
 
+use App\Models\CreditNote;
 use App\Models\Invoice;
 use App\Models\Quote;
 use App\Support\Branding;
@@ -10,7 +11,7 @@ use Dompdf\Dompdf;
 use Dompdf\Options;
 
 /**
- * Renders invoices and quotes as PDF files, in the client's language. Arabic, Kurdish and Chinese PDFs
+ * Renders invoices, credit notes and quotes as PDF files, in the client's language. Arabic, Kurdish and Chinese PDFs
  * stay in English: the PDF engine cannot join Arabic letters or draw Chinese ones.
  */
 class InvoicePdf
@@ -62,6 +63,21 @@ class InvoicePdf
         $quote->loadMissing('items', 'client');
 
         return Locales::in(Locales::forPdf(Locales::forClient($quote->client)), fn (): string => $this->pdf(view('pdf.quote', ['quote' => $quote] + $this->shared())->render()));
+    }
+
+    /**
+     * A credit note, with the invoice it belongs to.
+     */
+    public function renderCreditNote(CreditNote $creditNote): string
+    {
+        $creditNote->loadMissing('invoice', 'client');
+
+        return Locales::in(Locales::forPdf(Locales::forClient($creditNote->client)), fn (): string => $this->pdf(view('pdf.credit-note', ['creditNote' => $creditNote] + $this->shared())->render()));
+    }
+
+    public function creditNoteFilename(CreditNote $creditNote): string
+    {
+        return 'credit-note-'.preg_replace('/[^A-Za-z0-9_-]/', '', $creditNote->displayNumber()).'.pdf';
     }
 
     public function quoteFilename(Quote $quote): string

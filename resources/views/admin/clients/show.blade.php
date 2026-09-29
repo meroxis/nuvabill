@@ -4,7 +4,7 @@
         <div>
             <p class="eyebrow">{{ __('Client') }} #{{ $client->id }}</p>
             <h1 style="margin-top:.2rem">{{ $client->name }} <x-status :value="$client->status" style="vertical-align:middle" /></h1>
-            <p>{{ $client->company_name ? $client->company_name.' · ' : '' }}{{ $client->email }}</p>
+            <p>{{ $client->company_name ? $client->company_name.' · ' : '' }}@if ($client->isErased())<x-pill>{{ __('Personal data erased') }}</x-pill>@else{{ $client->email }}@endif</p>
             @if ($client->tagList() !== [])
                 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:.4rem">@foreach ($client->tagList() as $tag)<x-pill tone="info">{{ $tag }}</x-pill>@endforeach</div>
             @endif
@@ -196,6 +196,35 @@
                     @endforelse
                 </ul>
             </section>
+
+            @if ($admin->hasPermission('clients.manage'))
+                <section class="card" style="display:grid;gap:.8rem" x-data="{ erase: false }">
+                    <div class="card-header" style="margin:0"><h2>{{ __('Privacy') }}</h2></div>
+                    @if ($client->isErased())
+                        <p class="muted" style="margin:0">{{ __('Personal data was erased on :date. Invoices and payments stay, as the law requires.', ['date' => $client->erased_at->translatedFormat('d M Y')]) }}</p>
+                    @else
+                        <p class="muted" style="margin:0;font-size:.9rem">{{ __('When a client asks what you keep about them, or asks you to delete it (GDPR and similar laws).') }}</p>
+                        <div class="form-actions">
+                            <a class="btn btn-sm" href="{{ route('admin.clients.data', $client) }}"><x-icon name="download" />{{ __('Download their data') }}</a>
+                            <button class="btn btn-sm btn-danger" type="button" @click="erase = ! erase">{{ __('Erase personal data') }}</button>
+                        </div>
+                        <div x-show="erase" x-cloak style="display:grid;gap:.7rem">
+                            @if ($privacyBlockers !== [])
+                                <ul style="margin:0;padding-inline-start:1.1rem;font-size:.9rem">
+                                    @foreach ($privacyBlockers as $blocker)<li>{{ $blocker }}</li>@endforeach
+                                </ul>
+                            @else
+                                <p style="margin:0;font-size:.9rem">{{ __('This removes their email, phone, password, tickets, saved cards and sign-in methods. They can no longer sign in. The name and address stay only on invoices, which the law requires you to keep. This cannot be undone.') }}</p>
+                                <form method="POST" action="{{ route('admin.clients.erase', $client) }}" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+                                    @csrf
+                                    <x-input name="confirm" :label="__('Type ERASE to confirm')" autocomplete="off" required style="max-width:180px" />
+                                    <button class="btn btn-danger" type="submit">{{ __('Erase now') }}</button>
+                                </form>
+                            @endif
+                        </div>
+                    @endif
+                </section>
+            @endif
         </div>
     </div>
 </x-layouts.admin>

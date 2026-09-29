@@ -7,14 +7,13 @@ use App\Enums\InvoiceStatus;
 use App\Extensions\ExtensionManager;
 use App\Models\Invoice;
 use App\Models\Transaction;
-use App\Support\Activity;
 use Illuminate\Support\Facades\Cache;
 use InvalidArgumentException;
 use RuntimeException;
 
 /**
- * Refunds a paid invoice. Each payment on it gets a matching refund transaction (a negative amount),
- * sent back through the gateway when asked and the gateway can do it.
+ * Sends money paid on an invoice back: through the gateway when asked and the gateway can do it,
+ * into the wallet for wallet payments, or only recorded. CreditNotes decides how much and why.
  */
 class RefundIssuer
 {
@@ -24,16 +23,19 @@ class RefundIssuer
     ) {}
 
     /**
-     * Refund everything paid on the invoice, up to its total, and mark it Refunded.
+     * Send back part or all of what was paid on the invoice: each payment gets a matching refund
+     * transaction (a negative amount), oldest payment first. Credit notes call this; the invoice
+     * status is theirs to change.
      *
      * Payments already refunded are skipped, so running this again after a gateway error is safe.
      *
      * @param  bool  $throughGateway  Send the money back through each payment's gateway where it supports refunds.
      *                                Other payments are only recorded as refunded.
+     * @return int The amount refunded, in minor units.
      *
      * @throws RuntimeException When a gateway refuses a refund, or another refund of this invoice is running.
      */
-    public function refund(Invoice $invoice, bool $throughGateway): Invoice
+    public function refundAmount(Invoice $invoice, int $amount, bool $throughGateway): int
     {
         $lock = Cache::lock("invoice-refund-{$invoice->id}", 120);
 
@@ -49,7 +51,8 @@ class RefundIssuer
             }
 
             $refunds = $invoice->transactions->where('type', 'refund');
-            $remaining = $invoice->total + (int) $refunds->sum('amount');
+            $remaining = min($amount, $invoice->total + (int) $refunds->sum('amount'));
+            $refunded = 0;
 
             foreach ($invoice->transactions->where('type', 'payment')->sortBy('id') as $payment) {
                 if ($remaining <= 0) {
@@ -57,22 +60,19 @@ class RefundIssuer
                 }
 
                 $alreadyRefunded = -(int) $refunds->filter(fn (Transaction $refund): bool => ($refund->meta['refund_of'] ?? null) === $payment->id)->sum('amount');
-                $amount = min($payment->amount - $alreadyRefunded, $remaining);
+                $part = min($payment->amount - $alreadyRefunded, $remaining);
 
-                if ($amount > 0) {
-                    $remaining -= $this->refundPayment($payment, $amount, $throughGateway);
+                if ($part > 0) {
+                    $sent = $this->refundPayment($payment, $part, $throughGateway);
+                    $remaining -= $sent;
+                    $refunded += $sent;
                 }
             }
-
-            $invoice->update(['status' => InvoiceStatus::Refunded]);
         } finally {
             $lock->release();
         }
 
-        Activity::log('invoice.refunded', "Refunded invoice {$invoice->displayNumber()}", $invoice);
-        app(Affiliates::class)->cancelForRefund($invoice);
-
-        return $invoice;
+        return $refunded;
     }
 
     /**

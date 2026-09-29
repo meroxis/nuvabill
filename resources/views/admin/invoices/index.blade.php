@@ -9,6 +9,8 @@
         @endif
     </div>
 
+    @include('admin.invoices.nav')
+
     <div class="filters">
         @foreach (['all' => __('All'), 'unpaid' => __('Unpaid'), 'overdue' => __('Overdue'), 'paid' => __('Paid'), 'draft' => __('Drafts'), 'cancelled' => __('Cancelled')] as $key => $label)
             <a class="chip" href="{{ route('admin.invoices.index', $key === 'all' ? [] : ['status' => $key]) }}" @if ($filter === $key) aria-current="true" @endif>{{ $label }}</a>

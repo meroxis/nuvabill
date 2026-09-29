@@ -49,6 +49,17 @@ MD],
 谢谢，
 {{ company.name }}
 MD],
+    'invoice.credit_note' => ['发票 {{ invoice.number }} 的贷项通知单 {{ credit_note.number }}', <<<'MD'
+{{ client.first_name }}，您好：
+
+我们已为发票 **{{ invoice.number }}** 开具贷项通知单 **{{ credit_note.number }}**，金额为 **{{ credit_note.total }}**。
+
+{{ credit_note.note }}
+
+[查看发票和贷项通知单]({{ invoice.url }})
+
+{{ company.name }}
+MD],
     'invoice.payment_received' => ['已收到发票 {{ invoice.number }} 的付款', <<<'MD'
 {{ client.first_name }}，你好：
 

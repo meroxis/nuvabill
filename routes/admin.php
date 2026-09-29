@@ -15,12 +15,15 @@ use App\Http\Controllers\Admin\AutoPayController;
 use App\Http\Controllers\Admin\BrandIconController;
 use App\Http\Controllers\Admin\ChatSettingsController;
 use App\Http\Controllers\Admin\ClientController;
+use App\Http\Controllers\Admin\ClientPrivacyController;
 use App\Http\Controllers\Admin\CouponController;
+use App\Http\Controllers\Admin\CreditNoteController;
 use App\Http\Controllers\Admin\CurrencyController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\DepartmentController;
 use App\Http\Controllers\Admin\DomainController;
 use App\Http\Controllers\Admin\EmailTemplateController;
+use App\Http\Controllers\Admin\ExportController;
 use App\Http\Controllers\Admin\ExtensionController;
 use App\Http\Controllers\Admin\GatewayController;
 use App\Http\Controllers\Admin\HealthController;
@@ -124,6 +127,8 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::get('clients/{client}/edit', [ClientController::class, 'edit'])->name('clients.edit');
         Route::put('clients/{client}', [ClientController::class, 'update'])->name('clients.update');
         Route::delete('clients/{client}/two-factor', [ClientController::class, 'resetTwoFactor'])->name('clients.two-factor.destroy');
+        Route::get('clients/{client}/data', [ClientPrivacyController::class, 'export'])->middleware('throttle:10,1')->name('clients.data');
+        Route::post('clients/{client}/erase', [ClientPrivacyController::class, 'erase'])->middleware('throttle:5,1')->name('clients.erase');
     });
 
     Route::middleware('admin.can:orders.manage')->group(function (): void {
@@ -157,6 +162,10 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
         Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->whereNumber('invoice')->name('invoices.show');
         Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'pdf'])->name('invoices.pdf');
+        Route::get('credit-notes', [CreditNoteController::class, 'index'])->name('credit-notes.index');
+        Route::get('credit-notes/{creditNote}/pdf', [CreditNoteController::class, 'pdf'])->name('credit-notes.pdf');
+        Route::get('exports', [ExportController::class, 'index'])->name('exports.index');
+        Route::get('exports/download', [ExportController::class, 'download'])->middleware('throttle:20,1')->name('exports.download');
         Route::get('quotes', [QuoteController::class, 'index'])->name('quotes.index');
         Route::get('quotes/{quote}', [QuoteController::class, 'show'])->whereNumber('quote')->name('quotes.show');
         Route::get('quotes/{quote}/pdf', [QuoteController::class, 'pdf'])->name('quotes.pdf');
@@ -174,6 +183,7 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::post('clients/{client}/wallet', [ClientController::class, 'wallet'])->name('clients.wallet');
         Route::post('invoices/{invoice}/payments', [InvoiceController::class, 'recordPayment'])->name('invoices.payments.store');
         Route::post('invoices/{invoice}/refund', [InvoiceController::class, 'refund'])->name('invoices.refund');
+        Route::post('invoices/{invoice}/credit-notes', [InvoiceController::class, 'creditNote'])->name('invoices.credit-notes.store');
         Route::post('invoices/{invoice}/charge', [AutoPayController::class, 'charge'])->middleware('throttle:10,1')->name('invoices.charge');
         Route::delete('clients/{client}/payment-methods/{paymentMethod}', [AutoPayController::class, 'forget'])->name('clients.payment-methods.destroy');
         Route::post('invoices/{invoice}/publish', [InvoiceController::class, 'publish'])->name('invoices.publish');

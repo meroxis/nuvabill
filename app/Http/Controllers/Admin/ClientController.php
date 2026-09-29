@@ -10,6 +10,7 @@ use App\Mail\TemplateMailer;
 use App\Models\ActivityLog;
 use App\Models\Client;
 use App\Support\Activity;
+use App\Support\ClientPrivacy;
 use App\Support\Money;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -76,6 +77,7 @@ class ClientController extends Controller
             'unpaid' => $client->unpaidInvoicesTotal(),
             'activity' => ActivityLog::query()->where('client_id', $client->id)->with('actor')->latest('id')->limit(10)->get(),
             'walletEntries' => $client->creditTransactions()->with('admin')->latest('id')->limit(6)->get(),
+            'privacyBlockers' => app(ClientPrivacy::class)->blockers($client),
         ]);
     }
 

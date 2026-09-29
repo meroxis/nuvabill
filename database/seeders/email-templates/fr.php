@@ -49,6 +49,17 @@ La facture **{{ invoice.number }}** d’un montant de **{{ invoice.total }}** es
 Merci,
 {{ company.name }}
 MD],
+    'invoice.credit_note' => ['Avoir {{ credit_note.number }} pour la facture {{ invoice.number }}', <<<'MD'
+Bonjour {{ client.first_name }},
+
+Nous avons émis l’avoir **{{ credit_note.number }}** de **{{ credit_note.total }}** sur la facture **{{ invoice.number }}**.
+
+{{ credit_note.note }}
+
+[Voir la facture et l’avoir]({{ invoice.url }})
+
+{{ company.name }}
+MD],
     'invoice.payment_received' => ['Paiement reçu pour la facture {{ invoice.number }}', <<<'MD'
 Bonjour {{ client.first_name }},
 

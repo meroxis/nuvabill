@@ -24,12 +24,12 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.6.4 | Upgrades and downgrades with a fair price for the days left |
 | 0.6.5 | Emails and PDF invoices in each client's language |
 | 0.6.6 | Knowledge base, announcements and a network status page with server checks |
+| 0.6.7 | Credit notes, CSV exports for accountants, and privacy tools |
 
 ## Next
 
 | Version | Focus |
 |---|---|
-| 0.6.7 | **Credit notes, CSV exports** for accountants, and **privacy tools** (export or erase a client's data) |
 | Later | **ClientExec importer**, once we have tested it against a real ClientExec database |
 
 ## The path to 1.0
@@ -39,15 +39,12 @@ payments for years. These are the gaps we still see.
 
 ### Billing
 
-- **Client self-service upgrades and downgrades** with prorated prices.
-- **Credit notes** and accounting exports (CSV, and later Xero or QuickBooks).
-- **Emails and PDF invoices in the client's language**; today they are in English.
+- Accounting connections: **Xero and QuickBooks** (CSV exports are there today).
+- **Arabic, Kurdish and Chinese PDF invoices**; today these PDFs are in English.
 
 ### Clients and support
 
-- **Knowledge base and announcements** in the client area.
-- **Network status page** for planned work and outages.
-- **Privacy tools**: export or erase a client's data on request.
+- Importing **knowledge base articles and announcements** from WHMCS.
 - **SMS notifications** for reminders and sign-in codes.
 
 ### Integrations

@@ -33,7 +33,7 @@ class RefundTest extends TestCase
             ->assertSee('Send the money back through the payment gateway');
 
         $this->post(route('admin.invoices.refund', $invoice), ['through_gateway' => '1'])
-            ->assertSessionHas('status', 'Invoice refunded.');
+            ->assertSessionHas('status', 'Invoice refunded. Credit note CN-0001 was made.');
 
         Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api.stripe.com/v1/refunds'
             && $request['payment_intent'] === 'pi_test_1'

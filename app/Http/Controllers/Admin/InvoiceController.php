@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Billing\AutoPay;
+use App\Billing\CreditNotes;
 use App\Billing\InvoiceManager;
 use App\Billing\InvoicePdf;
 use App\Billing\PaymentRecorder;
@@ -14,6 +15,7 @@ use App\Extensions\ExtensionManifest;
 use App\Http\Controllers\Controller;
 use App\Mail\TemplateMailer;
 use App\Models\Client;
+use App\Models\CreditNote;
 use App\Models\Invoice;
 use App\Models\Transaction;
 use App\Support\Money;
@@ -21,8 +23,10 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use InvalidArgumentException;
 use RuntimeException;
 
 class InvoiceController extends Controller
@@ -47,7 +51,7 @@ class InvoiceController extends Controller
 
     public function show(Invoice $invoice, ExtensionManager $extensions, RefundIssuer $refunds, AutoPay $autoPay, SavedMethods $savedMethods): View
     {
-        $invoice->load('items.service.product', 'client', 'transactions');
+        $invoice->load('items.service.product', 'client', 'transactions', 'creditNotes');
 
         $methods = $extensions->ofType(ExtensionManifest::TYPE_GATEWAY)
             ->map(fn (ExtensionManifest $manifest): string => $manifest->name)
@@ -145,21 +149,49 @@ class InvoiceController extends Controller
         return back()->with('status', __('Payment recorded.'));
     }
 
-    public function refund(Request $request, Invoice $invoice, RefundIssuer $refunds): RedirectResponse
+    /**
+     * Refund the whole invoice (what no credit note took back yet), with a credit note for it.
+     */
+    public function refund(Request $request, Invoice $invoice, CreditNotes $creditNotes): RedirectResponse
     {
         if ($invoice->status !== InvoiceStatus::Paid) {
             return back()->with('error', __('Only paid invoices can be refunded.'));
         }
 
         try {
-            $refunds->refund($invoice, $request->boolean('through_gateway'));
+            $creditNote = $creditNotes->issue($invoice, $invoice->creditableAmount(), CreditNote::METHOD_REFUND, __('Refund'), $request->user('admin'), $request->boolean('through_gateway'));
+        } catch (RuntimeException|InvalidArgumentException $exception) {
+            report($exception);
+
+            return back()->with('error', __('The refund did not finish: :reason', ['reason' => $exception->getMessage()]));
+        }
+
+        return back()->with('status', __('Invoice refunded. Credit note :number was made.', ['number' => $creditNote->number]));
+    }
+
+    /**
+     * Take back part or all of a paid invoice: the money goes back, into the wallet, or nowhere.
+     */
+    public function creditNote(Request $request, Invoice $invoice, CreditNotes $creditNotes): RedirectResponse
+    {
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0.01', 'max:99999999'],
+            'method' => ['required', Rule::in(CreditNote::METHODS)],
+            'reason' => ['nullable', 'string', 'max:500'],
+            'through_gateway' => ['boolean'],
+        ]);
+
+        try {
+            $creditNote = $creditNotes->issue($invoice, Money::toMinor((string) $data['amount']), $data['method'], $data['reason'] ?? null, $request->user('admin'), $request->boolean('through_gateway'));
+        } catch (InvalidArgumentException $exception) {
+            throw ValidationException::withMessages(['amount' => $exception->getMessage()]);
         } catch (RuntimeException $exception) {
             report($exception);
 
             return back()->with('error', __('The refund did not finish: :reason', ['reason' => $exception->getMessage()]));
         }
 
-        return back()->with('status', __('Invoice refunded.'));
+        return back()->with('status', __('Credit note :number was made.', ['number' => $creditNote->number]));
     }
 
     public function publish(Invoice $invoice, InvoiceManager $invoices): RedirectResponse

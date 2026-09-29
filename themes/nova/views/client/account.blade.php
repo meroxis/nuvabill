@@ -222,6 +222,20 @@
                     @endforeach
                 </section>
             @endif
+
+            <section class="card" id="your-data" style="display:grid;gap:.8rem;scroll-margin-top:90px">
+                <div>
+                    <h2 style="font-size:1.05rem">{{ __('Your data') }}</h2>
+                    <p class="muted" style="margin:.3rem 0 0;font-size:.88rem">{{ __('Download everything we keep about you, or ask us to erase it. Invoices stay, because the law requires them.') }}</p>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <a class="btn btn-sm" href="{{ route('client.account.data') }}"><x-icon name="download" />{{ __('Download my data') }}</a>
+                    <form method="POST" action="{{ route('client.account.erase-request') }}" data-confirm="{{ __('Ask us to erase your data? We open a ticket and answer there. Your services must be ended first.') }}">
+                        @csrf
+                        <button class="btn btn-sm" type="submit">{{ __('Ask to erase my data') }}</button>
+                    </form>
+                </div>
+            </section>
         </div>
     </div>
 @endsection

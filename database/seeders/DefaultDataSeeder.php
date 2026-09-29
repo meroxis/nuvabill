@@ -127,6 +127,21 @@ class DefaultDataSeeder extends Seeder
                 {{ company.name }}
                 MD,
             ],
+            'invoice.credit_note' => [
+                'Credit note',
+                'Credit note {{ credit_note.number }} for invoice {{ invoice.number }}',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                We issued credit note **{{ credit_note.number }}** for **{{ credit_note.total }}** on invoice **{{ invoice.number }}**.
+
+                {{ credit_note.note }}
+
+                [View the invoice and the credit note]({{ invoice.url }})
+
+                {{ company.name }}
+                MD,
+            ],
             'invoice.payment_received' => [
                 'Payment received',
                 'Payment received for invoice {{ invoice.number }}',

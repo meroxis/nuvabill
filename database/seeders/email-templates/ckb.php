@@ -49,6 +49,17 @@ MD],
 سوپاس،
 {{ company.name }}
 MD],
+    'invoice.credit_note' => ['پسوولەی گەڕاندنەوەی {{ credit_note.number }} بۆ پسوولەی {{ invoice.number }}', <<<'MD'
+سڵاو {{ client.first_name }}،
+
+پسوولەی گەڕاندنەوەی **{{ credit_note.number }}** بە بڕی **{{ credit_note.total }}** بۆ پسوولەی **{{ invoice.number }}** دەرکرد.
+
+{{ credit_note.note }}
+
+[بینینی پسوولە و پسوولەی گەڕاندنەوە]({{ invoice.url }})
+
+{{ company.name }}
+MD],
     'invoice.payment_received' => ['پارەی پسوولەی {{ invoice.number }} وەرگیرا', <<<'MD'
 سڵاو {{ client.first_name }}،
 

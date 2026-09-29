@@ -49,6 +49,17 @@ MD],
 شكرًا،
 {{ company.name }}
 MD],
+    'invoice.credit_note' => ['إشعار دائن {{ credit_note.number }} للفاتورة {{ invoice.number }}', <<<'MD'
+مرحبًا {{ client.first_name }}،
+
+أصدرنا الإشعار الدائن **{{ credit_note.number }}** بمبلغ **{{ credit_note.total }}** على الفاتورة **{{ invoice.number }}**.
+
+{{ credit_note.note }}
+
+[عرض الفاتورة والإشعار الدائن]({{ invoice.url }})
+
+{{ company.name }}
+MD],
     'invoice.payment_received' => ['تم استلام الدفعة للفاتورة {{ invoice.number }}', <<<'MD'
 مرحبًا {{ client.first_name }}،
 

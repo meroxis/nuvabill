@@ -36,6 +36,17 @@ All three are under **Support** in the admin area.
 
 Articles, categories and announcements have a tab for each other language you offer.
 
+## Credit notes, exports and privacy
+
+- **Credit notes**: open a paid invoice. **Refund** sends back what is left and makes a credit note. **Issue a credit
+  note** takes back part of it: the money goes back to the client, into their wallet, or nowhere (you settle it
+  yourself). Invoices never change. The number prefix is in **Settings → General → Billing**.
+- **Exports**: **Invoices → Exports** downloads CSV files of invoices, payments and refunds, credit notes or clients
+  for a date range.
+- **Privacy**: on a client's page, **Download their data** (JSON) and **Erase personal data**. Invoices, payments and
+  credit notes are kept, as tax law requires. Clients can download their own data and ask for erasure under **Your
+  details**.
+
 ## Currencies and exchange rates
 
 **Settings → Currencies**: your main currency, and exchange rates to other currencies. With a rate set you can, for

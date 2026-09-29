@@ -24,6 +24,11 @@ class TemplateMailer
      */
     public function send(string $key, Client $client, array $context = []): bool
     {
+        // Erased clients have no address or chat link left to write to.
+        if ($client->isErased()) {
+            return false;
+        }
+
         $context = ['client' => self::clientContext($client)] + $context;
         $sent = $this->sendTo($key, $client->email, $client->name, $context, Locales::forClient($client));
 

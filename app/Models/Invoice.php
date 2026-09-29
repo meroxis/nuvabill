@@ -90,6 +90,24 @@ class Invoice extends Model
         return $this->hasMany(Transaction::class)->orderBy('paid_at');
     }
 
+    /**
+     * @return HasMany<CreditNote, $this>
+     */
+    public function creditNotes(): HasMany
+    {
+        return $this->hasMany(CreditNote::class)->orderBy('id');
+    }
+
+    /**
+     * How much of the invoice credit notes can still take back, in minor units.
+     */
+    public function creditableAmount(): int
+    {
+        $credited = $this->relationLoaded('creditNotes') ? $this->creditNotes->sum('total') : $this->creditNotes()->sum('total');
+
+        return max(0, $this->total - (int) $credited);
+    }
+
     public function balance(): int
     {
         return max(0, $this->total - $this->amount_paid);

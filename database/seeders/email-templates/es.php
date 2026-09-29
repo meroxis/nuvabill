@@ -49,6 +49,17 @@ La factura **{{ invoice.number }}** por **{{ invoice.total }}** está lista. Ven
 Gracias,
 {{ company.name }}
 MD],
+    'invoice.credit_note' => ['Nota de crédito {{ credit_note.number }} de la factura {{ invoice.number }}', <<<'MD'
+Hola {{ client.first_name }}:
+
+Hemos emitido la nota de crédito **{{ credit_note.number }}** por **{{ credit_note.total }}** sobre la factura **{{ invoice.number }}**.
+
+{{ credit_note.note }}
+
+[Ver la factura y la nota de crédito]({{ invoice.url }})
+
+{{ company.name }}
+MD],
     'invoice.payment_received' => ['Pago recibido para la factura {{ invoice.number }}', <<<'MD'
 Hola, {{ client.first_name }}:
 

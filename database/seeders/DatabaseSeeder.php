@@ -24,6 +24,7 @@ use App\Models\Announcement;
 use App\Models\Automation;
 use App\Models\Client;
 use App\Models\Coupon;
+use App\Models\CreditNote;
 use App\Models\Domain;
 use App\Models\Invoice;
 use App\Models\KbArticle;
@@ -175,6 +176,35 @@ class DatabaseSeeder extends Seeder
         $this->automations($clients);
         $this->savedPaymentMethods($clients);
         $this->helpCenter($admin);
+        $this->creditNote($demo, $admin);
+    }
+
+    /**
+     * A credit note for an hour of downtime on one of the demo client's paid invoices, added to their wallet.
+     */
+    private function creditNote(Client $demo, Admin $admin): void
+    {
+        $invoice = $demo->invoices()->where('status', InvoiceStatus::Paid)->where('total', '>=', 300)->latest('id')->first();
+
+        if ($invoice === null) {
+            return;
+        }
+
+        $creditNote = CreditNote::query()->create([
+            'invoice_id' => $invoice->id,
+            'client_id' => $demo->id,
+            'admin_id' => $admin->id,
+            'currency' => $invoice->currency,
+            'subtotal' => 200,
+            'tax' => 0,
+            'total' => 200,
+            'items' => [['description' => 'Credit for invoice '.$invoice->number.': one hour of downtime', 'amount' => 200]],
+            'method' => CreditNote::METHOD_WALLET,
+            'reason' => 'One hour of downtime',
+            'issued_at' => now()->subDays(2),
+        ]);
+        $creditNote->forceFill(['number' => 'CN-'.str_pad((string) $creditNote->id, 4, '0', STR_PAD_LEFT)])->save();
+        app(Wallet::class)->change($demo, 200, 'Credit note '.$creditNote->number, $invoice, $admin);
     }
 
     /**

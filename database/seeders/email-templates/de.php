@@ -49,6 +49,17 @@ Rechnung **{{ invoice.number }}** über **{{ invoice.total }}** ist bereit. Sie 
 Vielen Dank,
 {{ company.name }}
 MD],
+    'invoice.credit_note' => ['Gutschrift {{ credit_note.number }} zu Rechnung {{ invoice.number }}', <<<'MD'
+Hallo {{ client.first_name }},
+
+wir haben die Gutschrift **{{ credit_note.number }}** über **{{ credit_note.total }}** zu Rechnung **{{ invoice.number }}** ausgestellt.
+
+{{ credit_note.note }}
+
+[Rechnung und Gutschrift ansehen]({{ invoice.url }})
+
+{{ company.name }}
+MD],
     'invoice.payment_received' => ['Zahlung für Rechnung {{ invoice.number }} erhalten', <<<'MD'
 Hallo {{ client.first_name }},
 

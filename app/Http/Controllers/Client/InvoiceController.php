@@ -9,6 +9,7 @@ use App\Billing\Wallet;
 use App\Enums\InvoiceStatus;
 use App\Extensions\ExtensionManager;
 use App\Http\Controllers\Controller;
+use App\Models\CreditNote;
 use App\Models\Invoice;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -30,7 +31,7 @@ class InvoiceController extends Controller
     {
         $this->authorizeOwner($request, $invoice);
 
-        $invoice->load('items', 'transactions');
+        $invoice->load('items', 'transactions', 'creditNotes');
         $autoMethod = $invoice->isPayable() ? $autoPay->methodFor($invoice) : null;
 
         return view('theme::client.invoices.show', [
@@ -60,6 +61,16 @@ class InvoiceController extends Controller
         return response($pdf->render($invoice), 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'attachment; filename="'.$pdf->filename($invoice).'"',
+        ]);
+    }
+
+    public function creditNotePdf(Request $request, CreditNote $creditNote, InvoicePdf $pdf): Response
+    {
+        abort_unless($creditNote->client_id === $request->user('web')->id, 404);
+
+        return response($pdf->renderCreditNote($creditNote), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="'.$pdf->creditNoteFilename($creditNote).'"',
         ]);
     }
 

@@ -20,7 +20,7 @@ class EmailTemplateController extends Controller
     public const PLACEHOLDERS = [
         'all' => ['company.name', 'company.email', 'company.url', 'client_area_url'],
         'client' => ['client.first_name', 'client.last_name', 'client.name', 'client.email', 'client.company_name'],
-        'invoice' => ['invoice.number', 'invoice.subtotal', 'invoice.tax', 'invoice.total', 'invoice.balance', 'invoice.due_date', 'invoice.url', 'days_overdue', 'payment_method.name', 'charge_date', 'next_try', 'failure', 'payment_methods_url'],
+        'invoice' => ['invoice.number', 'invoice.subtotal', 'invoice.tax', 'invoice.total', 'invoice.balance', 'invoice.due_date', 'invoice.url', 'days_overdue', 'payment_method.name', 'charge_date', 'next_try', 'failure', 'payment_methods_url', 'credit_note.number', 'credit_note.total', 'credit_note.reason', 'credit_note.note'],
         'payment' => ['payment_method.name', 'payment_method.expires', 'payment_methods_url'],
         'order' => ['order.number', 'order.total', 'admin_url'],
         'service' => ['service.product', 'service.domain', 'service.username', 'service.server', 'service.next_due_date', 'service.amount', 'service.url', 'reason'],

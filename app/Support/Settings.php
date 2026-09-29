@@ -27,6 +27,7 @@ class Settings
 
         'billing.currency' => 'USD',
         'billing.invoice_prefix' => 'INV-',
+        'billing.credit_note_prefix' => 'CN-',
         'billing.renewal_days_before' => 7,
         'billing.payment_terms_days' => 7,
         'billing.plan_changes' => true,

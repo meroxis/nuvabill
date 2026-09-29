@@ -72,6 +72,7 @@ class Client extends Authenticatable
         return [
             'password' => 'hashed',
             'status' => ClientStatus::class,
+            'erased_at' => 'datetime',
             'credit' => 'integer',
             'tax_exempt' => 'boolean',
             'has_password' => 'boolean',
@@ -83,6 +84,15 @@ class Client extends Authenticatable
             'tags' => 'array',
             'auto_pay' => 'boolean',
         ];
+    }
+
+    /**
+     * Whether staff erased this client's personal data. The name and address stay only when
+     * invoices need them.
+     */
+    public function isErased(): bool
+    {
+        return $this->erased_at !== null;
     }
 
     /**

@@ -49,6 +49,17 @@ MD],
 Спасибо,
 {{ company.name }}
 MD],
+    'invoice.credit_note' => ['Кредит-нота {{ credit_note.number }} по счёту {{ invoice.number }}', <<<'MD'
+Здравствуйте, {{ client.first_name }}!
+
+Мы выставили кредит-ноту **{{ credit_note.number }}** на сумму **{{ credit_note.total }}** по счёту **{{ invoice.number }}**.
+
+{{ credit_note.note }}
+
+[Посмотреть счёт и кредит-ноту]({{ invoice.url }})
+
+{{ company.name }}
+MD],
     'invoice.payment_received' => ['Оплата по счёту {{ invoice.number }} получена', <<<'MD'
 Здравствуйте, {{ client.first_name }}!
 

@@ -49,6 +49,17 @@ Merhaba {{ client.first_name }},
 Teşekkürler,
 {{ company.name }}
 MD],
+    'invoice.credit_note' => ['{{ invoice.number }} faturası için {{ credit_note.number }} alacak dekontu', <<<'MD'
+Merhaba {{ client.first_name }},
+
+**{{ invoice.number }}** faturası için **{{ credit_note.total }}** tutarında **{{ credit_note.number }}** alacak dekontu düzenledik.
+
+{{ credit_note.note }}
+
+[Faturayı ve alacak dekontunu görüntüleyin]({{ invoice.url }})
+
+{{ company.name }}
+MD],
     'invoice.payment_received' => ['{{ invoice.number }} faturası için ödeme alındı', <<<'MD'
 Merhaba {{ client.first_name }},
 

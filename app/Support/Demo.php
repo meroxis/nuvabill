@@ -93,6 +93,8 @@ class Demo
         'admin.network.settings',
         'admin.network.servers',
         'admin.network.check',
+        'admin.invoices.credit-notes.store',
+        'admin.clients.erase',
         'admin.invoices.refund',
         'client.account.*',
         'client.services.login',

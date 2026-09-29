@@ -17,6 +17,7 @@ use App\Http\Controllers\Client\PasskeyController;
 use App\Http\Controllers\Client\PaymentController;
 use App\Http\Controllers\Client\PaymentMethodController;
 use App\Http\Controllers\Client\PlanChangeController;
+use App\Http\Controllers\Client\PrivacyController;
 use App\Http\Controllers\Client\QuoteController;
 use App\Http\Controllers\Client\ServiceController;
 use App\Http\Controllers\Client\TicketController;
@@ -151,6 +152,7 @@ Route::middleware(['auth:web', 'client.active', 'client.two-factor'])->prefix('c
     Route::get('invoices', [InvoiceController::class, 'index'])->name('invoices.index');
     Route::get('invoices/{invoice}', [InvoiceController::class, 'show'])->name('invoices.show');
     Route::get('invoices/{invoice}/pdf', [InvoiceController::class, 'pdf'])->name('invoices.pdf');
+    Route::get('credit-notes/{creditNote}/pdf', [InvoiceController::class, 'creditNotePdf'])->name('credit-notes.pdf');
     Route::post('invoices/{invoice}/pay', [PaymentController::class, 'store'])->name('invoices.pay');
     Route::get('invoices/{invoice}/return/{gateway}', [PaymentController::class, 'return'])->name('invoices.return');
     Route::get('invoices/{invoice}/payment-status', [PaymentController::class, 'status'])->middleware('throttle:30,1')->name('invoices.payment-status');
@@ -184,6 +186,8 @@ Route::middleware(['auth:web', 'client.active', 'client.two-factor'])->prefix('c
     Route::post('account/two-factor/email', [TwoFactorController::class, 'startEmail'])->middleware('throttle:3,1')->name('account.two-factor.email');
     Route::post('account/two-factor/email/confirm', [TwoFactorController::class, 'confirmEmail'])->middleware('throttle:6,1')->name('account.two-factor.email.confirm');
     Route::delete('account/two-factor', [TwoFactorController::class, 'destroy'])->name('account.two-factor.destroy');
+    Route::get('account/data', [PrivacyController::class, 'export'])->middleware('throttle:3,10')->name('account.data');
+    Route::post('account/erase-request', [PrivacyController::class, 'requestErasure'])->middleware('throttle:3,60')->name('account.erase-request');
     Route::post('account/passkeys/options', [PasskeyController::class, 'options'])->middleware('throttle:6,1')->name('account.passkeys.options');
     Route::post('account/passkeys', [PasskeyController::class, 'store'])->middleware('throttle:10,1')->name('account.passkeys.store');
     Route::delete('account/passkeys/{passkey}', [PasskeyController::class, 'destroy'])->name('account.passkeys.destroy');
