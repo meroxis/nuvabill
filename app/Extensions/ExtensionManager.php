@@ -10,6 +10,7 @@ use App\Models\Extension;
 use App\Support\Installation;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Lang;
 use Illuminate\Support\Facades\Log;
@@ -374,6 +375,49 @@ class ExtensionManager
     }
 
     /**
+     * Visitor pages of active add-ons that may show public pages. Call after every other route, so an
+     * add-on page can never replace one of Nuvabill's.
+     */
+    public function registerPublicRoutes(): void
+    {
+        foreach ($this->publicAddons() as $slug => $addon) {
+            $this->tryMake(function () use ($slug, $addon): bool {
+                Route::name('addon.'.$slug.'.')->group(fn () => $addon->publicRoutes());
+
+                return true;
+            });
+        }
+    }
+
+    /**
+     * The active add-on that shows the home page instead of the store, if any.
+     */
+    public function homePageAddon(): ?Addon
+    {
+        return $this->publicAddons()->first(fn (Addon $addon): bool => (bool) $this->tryMake(fn (): bool => $addon->servesHomePage()));
+    }
+
+    /**
+     * Public pages of active add-ons for sitemap.xml.
+     *
+     * @return list<array{path: string, updated: Carbon|null}>
+     */
+    public function sitemapPages(): array
+    {
+        $pages = [];
+
+        foreach ($this->publicAddons() as $addon) {
+            foreach ((array) $this->tryMake(fn (): array => $addon->sitemapPages()) as $page) {
+                if (is_array($page) && is_string($page['path'] ?? null)) {
+                    $pages[] = ['path' => ltrim($page['path'], '/'), 'updated' => $page['updated'] ?? null];
+                }
+            }
+        }
+
+        return $pages;
+    }
+
+    /**
      * Forget cached manifests and database records, for example after installing an extension.
      */
     public function refresh(): void
@@ -381,6 +425,16 @@ class ExtensionManager
         $this->manifests = null;
         $this->records = null;
         $this->activeAddons = null;
+    }
+
+    /**
+     * Active add-ons whose manifest says they show pages to visitors.
+     *
+     * @return Collection<string, Addon>
+     */
+    private function publicAddons(): Collection
+    {
+        return $this->activeAddons()->filter(fn (Addon $addon): bool => in_array('public-page', (array) $this->find($addon->slug())?->permissions, true));
     }
 
     /**

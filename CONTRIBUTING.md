@@ -52,7 +52,7 @@ A few rules that matter a lot in billing software:
 
 ## Translations
 
-Nuvabill is in 26 languages. The texts are in `lang/<language>.json`, with the English text as the key. To improve a
+Nuvabill is in 10 languages. The texts are in `lang/<language>.json`, with the English text as the key. To improve a
 translation, change the value and open a pull request. Keep placeholders such as `:count` and `:name` exactly as they
 are.
 

@@ -41,7 +41,7 @@ takes one import.
 - **Domains**: search, register, transfer and renew at ResellerClub, Namecheap, Enom or OpenSRS
 - **Support**: tickets with departments, priorities and email notifications
 - **Security**: two-factor sign-in, passkeys, CAPTCHA, fraud checks, staff roles, security headers
-- **26 languages**, with right-to-left Arabic, Hebrew and Kurdish (Sorani)
+- **10 languages**, with right-to-left Arabic and Kurdish (Sorani)
 - **Search engines**: sitemap, titles and descriptions, prices on Google, language links and link previews, with every theme
 - **REST API**, a **marketplace** of signed themes and extensions, and **signed one-click updates** with rollback
 - **Importers for WHMCS, Blesta, FOSSBilling and Paymenter**: clients (with their passwords), products, services, domains, invoices, payments and tickets, with a dry run first
@@ -52,7 +52,7 @@ takes one import.
 curl -fsSL https://nuvabill.com/install.sh | bash
 ```
 
-> **Status: v0.5.** New: the **admin phone app** with push alerts, **Telegram and WhatsApp** (invoices, reminders and tickets in chat apps, linked by QR code), **AI help** with your own Claude key (reply drafts, tickets in two languages, summaries) and **Automations**, "when this happens, do that", with 9 ready-made templates. Also taxes, a client wallet, quotes, affiliates, a REST API, passkeys, and 26 languages with right-to-left pages for Arabic, Hebrew and Kurdish. See the [roadmap](#roadmap).
+> **Status: v0.5.** New: the **admin phone app** with push alerts, **Telegram and WhatsApp** (invoices, reminders and tickets in chat apps, linked by QR code), **AI help** with your own Claude key (reply drafts, tickets in two languages, summaries) and **Automations**, "when this happens, do that", with 9 ready-made templates. Also taxes, a client wallet, quotes, affiliates, a REST API, passkeys, and 10 languages with right-to-left pages for Arabic and Kurdish. See the [roadmap](#roadmap).
 >
 > **Try it:** the [live demo](https://demo.nuvabill.com/admin/login) has sample clients, invoices and tickets. One click signs you in, and the data resets every hour.
 
@@ -67,7 +67,7 @@ curl -fsSL https://nuvabill.com/install.sh | bash
 | Moving over | Built-in importers for [WHMCS](docs/whmcs-migration.md), [Blesta, FOSSBilling and Paymenter](docs/importing.md), with a dry run; run them as often as you like before you switch | — |
 | Updates | Signed releases, one-click update with backup and automatic rollback | See the vendor's documentation |
 | Iraqi payments | FIB, FastPay and Wayl built in; prices in dollars, payment in dinar | Check the vendor's marketplace |
-| Right to left | Arabic, Hebrew and Kurdish (Sorani) client and admin areas | Check the vendor's site |
+| Right to left | Arabic and Kurdish (Sorani) client and admin areas | Check the vendor's site |
 
 **When WHMCS may still be the better choice today.** Nuvabill is young (first release: September 2026). Stay with
 WHMCS, or wait, if you depend on:
@@ -325,11 +325,11 @@ and links shared on WhatsApp, Facebook and X show a preview with your share imag
 **Search appearance** box with a Google preview; changing a web address forwards the old one. The **Search engines**
 tab in Site health checks it all every night. See the [search engines guide](docs/search-engines.md).
 
-### 26 languages
+### 10 languages
 
-The whole client area and admin area speak **26 languages**: Azerbaijani, Catalan, Chinese (Simplified), Croatian, Czech, Danish, Dutch, English, Estonian, French, German,
-Hebrew, Hungarian, Italian, Macedonian, Norwegian, Portuguese (Brazil and Portugal), Romanian, Russian, Spanish,
-Swedish, Turkish, Ukrainian, Arabic and Kurdish (Sorani). Arabic, Hebrew and Kurdish pages read **right to left**.
+The whole client area and admin area speak **10 languages**, the most used in the world plus Kurdish: English,
+Chinese (Simplified), Spanish, French, Arabic, Portuguese (Brazil), Russian, German, Turkish and Kurdish (Sorani).
+Arabic and Kurdish pages read **right to left**.
 Clients and staff pick their language from a searchable menu in the top bar; you choose the default and which
 languages clients can pick in **Settings → General**.
 
@@ -395,10 +395,10 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 
 | Version | Focus |
 |---|---|
-| v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor (plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules), domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, search engine tools, Site health ([changelog](CHANGELOG.md)) |
+| v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor (plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules), domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, languages with right-to-left pages, search engine tools, Site health ([changelog](CHANGELOG.md)) |
 | v0.5.0–v0.5.6 | Done: **Automations** with 9 templates, client tags and ticket assignment; **AI help** with your own Claude key; **Telegram and WhatsApp**; the **admin phone app** with push alerts |
-| v0.6.0 | Done: **Automatic payments** with saved cards and PayPal accounts |
-| **next** | 0.6.1 client upgrades and downgrades, 0.6.2 emails and PDFs in the client's language, 0.6.3 knowledge base and status page, 0.6.4 credit notes and exports ([ROADMAP.md](ROADMAP.md)) |
+| v0.6.0–v0.6.1 | Done: **Automatic payments** with saved cards and PayPal accounts; a grouped **Settings** menu with search; add-ons that show your **company website**; 10 languages |
+| **next** | 0.6.2 client upgrades and downgrades, 0.6.3 emails and PDFs in the client's language, 0.6.4 knowledge base and status page, 0.6.5 credit notes and exports ([ROADMAP.md](ROADMAP.md)) |
 | v1.0 | Client upgrades, knowledge base and status page, security audit, and more |
 
 The full plan, including what we think is still missing before 1.0, is in [ROADMAP.md](ROADMAP.md).

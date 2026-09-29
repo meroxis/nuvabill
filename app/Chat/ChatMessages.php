@@ -80,10 +80,8 @@ final class ChatMessages
      * Nuvabill language => Meta's template language code. Meta has no Kurdish (Sorani) templates.
      */
     public const META_LANGUAGES = [
-        'en' => 'en', 'ar' => 'ar', 'az' => 'az', 'ca' => 'ca', 'cs' => 'cs', 'da' => 'da', 'de' => 'de', 'es' => 'es',
-        'et' => 'et', 'fr' => 'fr', 'he' => 'he', 'hr' => 'hr', 'hu' => 'hu', 'it' => 'it', 'mk' => 'mk', 'nb' => 'nb',
-        'nl' => 'nl', 'pt_BR' => 'pt_BR', 'pt_PT' => 'pt_PT', 'ro' => 'ro', 'ru' => 'ru', 'sv' => 'sv', 'tr' => 'tr',
-        'uk' => 'uk', 'zh_CN' => 'zh_CN',
+        'en' => 'en', 'ar' => 'ar', 'de' => 'de', 'es' => 'es', 'fr' => 'fr', 'pt_BR' => 'pt_BR', 'ru' => 'ru',
+        'tr' => 'tr', 'zh_CN' => 'zh_CN',
     ];
 
     private const EXAMPLES = [

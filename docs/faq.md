@@ -38,8 +38,8 @@ and 7 days. Card numbers never touch your server. See [Automatic payments](autom
 
 ## Which languages does it speak?
 
-The client area and the admin area speak 26 languages, including Arabic, Hebrew and Kurdish (Sorani), which read right
-to left. Emails and PDF invoices are in English.
+The client area and the admin area speak 10 languages: English, Chinese (Simplified), Spanish, French, Arabic,
+Portuguese (Brazil), Russian, German, Turkish and Kurdish (Sorani). Arabic and Kurdish read right to left. Emails and PDF invoices are in English.
 
 ## How do updates work?
 

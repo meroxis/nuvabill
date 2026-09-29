@@ -1,26 +1,28 @@
-@php $admin = auth('admin')->user(); @endphp
-<nav class="filters" aria-label="{{ __('Settings sections') }}">
-    @if ($admin->hasPermission('settings.manage'))
-        <a class="chip" href="{{ route('admin.settings.edit') }}" @if (request()->routeIs('admin.settings.edit')) aria-current="true" @endif>{{ __('General') }}</a>
-        <a class="chip" href="{{ route('admin.settings.currencies.edit') }}" @if (request()->routeIs('admin.settings.currencies.*')) aria-current="true" @endif>{{ __('Currencies') }}</a>
-        <a class="chip" href="{{ route('admin.settings.autopay.edit') }}" @if (request()->routeIs('admin.settings.autopay.*')) aria-current="true" @endif>{{ __('Automatic payments') }}</a>
-        <a class="chip" href="{{ route('admin.settings.taxes.index') }}" @if (request()->routeIs('admin.settings.taxes.*')) aria-current="true" @endif>{{ __('Taxes') }}</a>
-        <a class="chip" href="{{ route('admin.settings.tlds.index') }}" @if (request()->routeIs('admin.settings.tlds.*')) aria-current="true" @endif>{{ __('Domains') }}</a>
-        <a class="chip" href="{{ route('admin.settings.social.edit') }}" @if (request()->routeIs('admin.settings.social.*')) aria-current="true" @endif>{{ __('Social login') }}</a>
-        <a class="chip" href="{{ route('admin.settings.chat.edit') }}" @if (request()->routeIs('admin.settings.chat.*')) aria-current="true" @endif>{{ __('Chat apps') }}</a>
-        <a class="chip" href="{{ route('admin.settings.ai.edit') }}" @if (request()->routeIs('admin.settings.ai.*')) aria-current="true" @endif>{{ __('AI') }}</a>
-        <a class="chip" href="{{ route('admin.settings.seo.edit') }}" @if (request()->routeIs('admin.settings.seo.*')) aria-current="true" @endif>{{ __('Search engines') }}</a>
-        <a class="chip" href="{{ route('admin.settings.security.edit') }}" @if (request()->routeIs('admin.settings.security.*')) aria-current="true" @endif>{{ __('Security') }}</a>
-        <a class="chip" href="{{ route('admin.settings.email-templates.index') }}" @if (request()->routeIs('admin.settings.email-templates.*')) aria-current="true" @endif>{{ __('Email templates') }}</a>
-        <a class="chip" href="{{ route('admin.settings.departments.index') }}" @if (request()->routeIs('admin.settings.departments.*')) aria-current="true" @endif>{{ __('Support departments') }}</a>
-    @endif
-    @if ($admin->hasPermission('staff.manage'))
-        <a class="chip" href="{{ route('admin.settings.staff.index') }}" @if (request()->routeIs('admin.settings.staff.*')) aria-current="true" @endif>{{ __('Staff') }}</a>
-        <a class="chip" href="{{ route('admin.settings.roles.index') }}" @if (request()->routeIs('admin.settings.roles.*')) aria-current="true" @endif>{{ __('Roles') }}</a>
-    @endif
-    @if ($admin->hasPermission('settings.manage'))
-        <a class="chip" href="{{ route('admin.settings.license.edit') }}" @if (request()->routeIs('admin.settings.license.*')) aria-current="true" @endif>{{ __('License') }}</a>
-        <a class="chip" href="{{ route('admin.settings.activity') }}" @if (request()->routeIs('admin.settings.activity')) aria-current="true" @endif>{{ __('Activity log') }}</a>
-        <a class="chip" href="{{ route('admin.settings.import.index') }}" @if (request()->routeIs('admin.settings.import.*')) aria-current="true" @endif>{{ __('Import') }}</a>
-    @endif
+@php
+    $menu ??= \App\Support\SettingsMenu::groups(auth('admin')->user());
+    $currentKey = $current['key'] ?? null;
+@endphp
+<nav class="settings-menu" aria-label="{{ __('Settings sections') }}" x-data="{ q: '' }">
+    <label class="settings-find">
+        <x-icon name="search" />
+        <input type="search" x-model="q" placeholder="{{ __('Find a setting') }}" aria-label="{{ __('Find a setting') }}" autocomplete="off"
+            @keydown.enter.prevent="const link = [...$root.querySelectorAll('a[data-find]')].find((a) => a.offsetParent); if (link) window.location = link.href">
+    </label>
+    @foreach ($menu as $group)
+        <div class="settings-group" x-show="! q || [...$el.querySelectorAll('a[data-find]')].some((a) => a.dataset.find.includes(q.toLowerCase()))">
+            <div class="settings-group-label">{{ $group['label'] }}</div>
+            @foreach ($group['items'] as $item)
+                <a href="{{ $item['url'] }}" data-find="{{ mb_strtolower($item['label'].' '.$item['description'].' '.$item['keywords']) }}"
+                    x-show="! q || $el.dataset.find.includes(q.toLowerCase())" @if ($item['key'] === $currentKey) aria-current="page" @endif>
+                    <x-icon :name="$item['icon']" />
+                    <span class="settings-item">
+                        <span>{{ $item['label'] }}</span>
+                        <span class="settings-item-text">{{ $item['description'] }}</span>
+                    </span>
+                    @if ($item['external'])<x-icon name="external" class="settings-out" />@else<x-icon name="chevron-right" class="settings-go" />@endif
+                </a>
+            @endforeach
+        </div>
+    @endforeach
+    <p class="settings-none" x-show="q && ! [...$root.querySelectorAll('a[data-find]')].some((a) => a.dataset.find.includes(q.toLowerCase()))" x-cloak>{{ __('No setting matches.') }}</p>
 </nav>

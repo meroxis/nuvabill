@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Support\Activity;
 use App\Support\Locales;
 use App\Support\Settings;
+use App\Support\SettingsMenu;
 use App\Support\Themes;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -26,6 +27,17 @@ class SettingsController extends Controller
         'TRY', 'AED', 'SAR', 'QAR', 'IQD', 'EGP', 'MAD', 'INR', 'PKR', 'BDT', 'IDR', 'MYR', 'SGD', 'HKD',
         'PHP', 'THB', 'CNY', 'BRL', 'MXN', 'ARS', 'ZAR', 'NGN', 'KES', 'UAH',
     ];
+
+    /**
+     * Every settings page in its group. On phones this is where Settings starts.
+     */
+    public function index(Request $request): View
+    {
+        $admin = $request->user('admin');
+        abort_unless($admin->hasPermission('settings.manage') || $admin->hasPermission('staff.manage'), 403);
+
+        return view('admin.settings.index', ['menu' => SettingsMenu::groups($admin)]);
+    }
 
     public function edit(Themes $themes): View
     {

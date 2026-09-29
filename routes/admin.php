@@ -203,6 +203,8 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::post('servers/{server}/test', [ServerController::class, 'test'])->name('servers.test');
     });
 
+    Route::get('settings/all', [SettingsController::class, 'index'])->name('settings.index');
+
     Route::middleware('admin.can:settings.manage')->prefix('settings')->name('settings.')->group(function (): void {
         Route::get('/', [SettingsController::class, 'edit'])->name('edit');
         Route::put('/', [SettingsController::class, 'update'])->name('update');

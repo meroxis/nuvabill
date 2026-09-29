@@ -1,5 +1,6 @@
 <?php
 
+use App\Extensions\ExtensionManager;
 use App\Http\Controllers\ChatWebhookController;
 use App\Http\Controllers\PackageAssetController;
 use App\Http\Controllers\SeoController;
@@ -78,6 +79,9 @@ return Application::configure(basePath: dirname(__DIR__))
             Route::get('share-image/{name}', [SeoController::class, 'shareImage'])
                 ->where('name', 'share-[a-z0-9]{10}\.(jpg|png|webp)')
                 ->name('seo.share-image');
+
+            // Visitor pages of add-ons, such as Website Builder pages. Last, so they never replace a page above.
+            Route::middleware('web')->group(fn () => rescue(fn () => app(ExtensionManager::class)->registerPublicRoutes(), report: false));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {

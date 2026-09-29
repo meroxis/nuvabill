@@ -1,0 +1,10 @@
+{
+    "slug": "homepage",
+    "type": "addon",
+    "name": "Home page add-on",
+    "version": "1.0.0",
+    "namespace": "Tests\\Fixtures\\HomePage\\",
+    "class": "Tests\\Fixtures\\HomePage\\HomePageAddon",
+    "description": "Shows visitor pages and the home page, for the tests.",
+    "permissions": ["public-page"]
+}

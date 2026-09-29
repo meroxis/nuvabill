@@ -7,7 +7,7 @@ namespace App\Marketplace;
  * plain words before installing, and reviewers check the code does nothing else.
  *
  * Codes: "client-area" (changes client area pages), "store" (changes store and order pages),
- * "client-page" (adds a client area page), "admin-settings", "admin-page", "events" (reacts to
+ * "client-page" (adds a client area page), "public-page" (shows pages to visitors, maybe the home page), "admin-settings", "admin-page", "events" (reacts to
  * orders, payments and tickets), "head-script" (adds a script to pages), "payments" (takes
  * payments), "servers" (manages accounts on servers), "domains" (registers domains),
  * "database" (adds its own tables), "schedule" (runs on a schedule), "backups" (reads the whole site
@@ -28,6 +28,7 @@ class Permissions
             'client-area' => ['title' => __('Changes client area pages'), 'text' => __('Replaces how the client area looks.')],
             'store' => ['title' => __('Changes the store and order pages'), 'text' => __('Replaces how clients choose and order products.')],
             'client-page' => ['title' => __('Adds a client area page'), 'text' => __('Clients see a new page or panel.')],
+            'public-page' => ['title' => __('Shows pages to visitors'), 'text' => __('Adds pages to your site, and may show your home page. The store then moves to /store.')],
             'admin-settings' => ['title' => __('Adds settings for staff'), 'text' => __('Staff set it up in the admin area.')],
             'admin-page' => ['title' => __('Adds an admin page'), 'text' => __('Staff see a new page in the admin area.')],
             'events' => ['title' => __('Reacts to orders, payments and tickets'), 'text' => __('Runs when these things happen.')],

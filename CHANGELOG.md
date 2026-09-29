@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.6.1](https://github.com/meroxis/nuvabill/releases/tag/v0.6.1) | 29 Sep 2026 | A clearer Settings menu with search; add-ons can show your company website; 10 languages |
 | [0.6.0](https://github.com/meroxis/nuvabill/releases/tag/v0.6.0) | 29 Sep 2026 | Automatic payments: clients save a card or PayPal account and renewals are charged by themselves, with retries and notices |
 | [0.5.6](https://github.com/meroxis/nuvabill/releases/tag/v0.5.6) | 29 Sep 2026 | The phone app's QR code fits its box |
 | [0.5.5](https://github.com/meroxis/nuvabill/releases/tag/v0.5.5) | 29 Sep 2026 | Admin phone app: install the admin area on your phone, a Today screen and push alerts for orders, payments and tickets |
@@ -40,6 +41,24 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.6.1
+
+- **A clearer Settings menu.** Settings are grouped into Business, Payments, Messages, Sign-in and security, Growth,
+  Team and System, and every item says in one line what it is for. Type in **Find a setting** to jump straight to one.
+  **All settings** shows the whole list on one page. On phones, Settings opens as a list, with a back link on every page.
+- **Your company website.** Add-ons can now show pages to visitors, and one of them can be your home page. Your store
+  then moves to **/store**, and old store links keep working. Their pages join your sitemap. Staff see this as the new
+  **Shows pages to visitors** permission before they install. The first add-on to use it is the **Website Builder** on
+  the marketplace.
+- **CAPTCHA for contact forms** on your website, in **Settings → Security**.
+- **10 languages.** Nuvabill now focuses on the most used languages in the world, plus Kurdish: English, Arabic,
+  Kurdish (Sorani), Chinese (Simplified), Spanish, French, Portuguese (Brazil), Russian, German and Turkish. This keeps
+  every update fully translated. The other 16 languages were removed; clients and staff who used one of them now see
+  your default language.
+- For developers: new add-on hooks for public pages, the home page and the sitemap, a `captcha:contact` check for your
+  forms, and themes can style the Website Builder with `public/website.css`. See the
+  [developer guide](https://nuvabill.com/docs/developers/#addons).
 
 ## 0.6.0
 

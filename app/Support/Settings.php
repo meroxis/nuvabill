@@ -62,7 +62,7 @@ class Settings
         'license.white_label' => null,
 
         'locale.default' => 'en',
-        'locale.enabled' => ['az', 'ca', 'cs', 'da', 'de', 'et', 'en', 'es', 'fr', 'hr', 'it', 'hu', 'nl', 'nb', 'pt_BR', 'pt_PT', 'ro', 'sv', 'tr', 'mk', 'ru', 'uk', 'he', 'ar', 'ckb', 'zh_CN'],
+        'locale.enabled' => ['de', 'en', 'es', 'fr', 'pt_BR', 'tr', 'ru', 'ar', 'ckb', 'zh_CN'],
 
         'marketplace.developer_share' => 83,
         // Store only: old slug => new slug of renamed items (nuvabill:marketplace-rename).

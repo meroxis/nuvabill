@@ -6,7 +6,7 @@ has all of them.
 ## Company details
 
 **Settings → General → Your company**: company name, email address, postal address, phone and tax number (shown on
-invoices and in emails), the default language, and which of the 26 languages clients can choose.
+invoices and in emails), the default language, and which of the 10 languages clients can choose.
 
 ## Currencies and exchange rates
 

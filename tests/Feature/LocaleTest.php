@@ -71,7 +71,7 @@ class LocaleTest extends TestCase
     public function test_every_language_translates_every_text_and_keeps_its_placeholders(): void
     {
         // How many plural forms Laravel picks from in each language; Kurdish uses explicit ranges instead.
-        $pluralForms = ['ar' => 6, 'az' => 1, 'tr' => 1, 'zh_CN' => 1, 'cs' => 3, 'hr' => 3, 'ro' => 3, 'ru' => 3, 'uk' => 3];
+        $pluralForms = ['ar' => 6, 'tr' => 1, 'zh_CN' => 1, 'ru' => 3];
         $english = null;
 
         foreach (array_diff(array_keys(Locales::ALL), ['en']) as $locale) {
@@ -111,8 +111,8 @@ class LocaleTest extends TestCase
             $page->assertSee('value="'.$code.'"', false)->assertSee($locale['native']);
         }
 
-        $this->post(route('admin.language'), ['locale' => 'he']);
-        $this->get(route('admin.dashboard'))->assertSee('lang="he" dir="rtl"', false);
+        $this->post(route('admin.language'), ['locale' => 'ar']);
+        $this->get(route('admin.dashboard'))->assertSee('lang="ar" dir="rtl"', false);
 
         $this->post(route('admin.language'), ['locale' => 'pt_BR']);
         $this->get(route('admin.dashboard'))->assertSee('lang="pt-BR" dir="ltr"', false);

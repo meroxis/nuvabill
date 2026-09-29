@@ -6,6 +6,8 @@ use App\Events\OrderPlaced;
 use App\Extensions\ExtensionManager;
 use App\Extensions\ExtensionManifest;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 
 /**
  * Base class for add-on extensions: features that are not a gateway, server module or registrar,
@@ -14,7 +16,8 @@ use Illuminate\Console\Scheduling\Schedule;
  * An add-on is booted on every request while it is switched on. In boot() it can listen to
  * events such as {@see OrderPlaced}, and it can add HTML to page heads and extra
  * sources to the content security policy. Since Nuvabill 0.4.2 it can also run on a schedule,
- * add admin pages and show a panel on its settings page.
+ * add admin pages and show a panel on its settings page. Since 0.6.1 it can show pages to visitors,
+ * the home page included, and list them in sitemap.xml.
  */
 abstract class Addon
 {
@@ -95,6 +98,49 @@ abstract class Addon
      * List "admin-page" in the manifest's permissions.
      */
     public function adminRoutes(): void {}
+
+    /**
+     * Pages for visitors, registered after all of Nuvabill's own pages, so they can never replace one.
+     * Give them short names, for example Route::get('about', ...)->name('about'), and link to them with
+     * route($this->publicRouteName('about')). Search engines only show them when the page calls
+     * allowIndexing() on App\Seo\Seo. List "public-page" in the manifest's permissions.
+     */
+    public function publicRoutes(): void {}
+
+    /**
+     * Whether this add-on shows the site's home page instead of the store. The store then moves to /store.
+     * Needs "public-page" in the manifest's permissions.
+     */
+    public function servesHomePage(): bool
+    {
+        return false;
+    }
+
+    /**
+     * The home page, when servesHomePage() says so.
+     */
+    public function homePage(Request $request): mixed
+    {
+        abort(404);
+    }
+
+    /**
+     * The add-on's public pages for sitemap.xml: paths without the first slash, and when each last changed.
+     *
+     * @return list<array{path: string, updated: Carbon|null}>
+     */
+    public function sitemapPages(): array
+    {
+        return [];
+    }
+
+    /**
+     * The full route name for one of this add-on's public pages.
+     */
+    public function publicRouteName(string $name): string
+    {
+        return 'addon.'.$this->slug().'.'.$name;
+    }
 
     /**
      * HTML shown under the settings form, for example a connection status and buttons.

@@ -20,6 +20,7 @@ use App\Http\Controllers\Client\ServiceController;
 use App\Http\Controllers\Client\TicketController;
 use App\Http\Controllers\Client\TwoFactorController;
 use App\Http\Controllers\Client\WalletController;
+use App\Http\Controllers\HomePageController;
 use App\Http\Controllers\LanguageController;
 use App\Http\Controllers\PreviewController;
 use App\Http\Controllers\Store\CartController;
@@ -36,7 +37,8 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 */
 
-Route::get('/', [StoreController::class, 'index'])->name('store.index');
+// The store, or a website from an add-on such as the Website Builder with the store at /store.
+HomePageController::routes();
 Route::get('store/{group}', [StoreController::class, 'group'])->name('store.group');
 Route::get('store/{group}/{product}', [StoreController::class, 'product'])->name('store.product')->scopeBindings();
 

@@ -59,6 +59,7 @@ class Captcha
         'password_reset' => 'Forgot password (clients and staff)',
         'checkout' => 'Checkout',
         'tickets' => 'New support ticket',
+        'contact' => 'Contact forms on your website',
         'admin_login' => 'Staff sign-in',
     ];
 

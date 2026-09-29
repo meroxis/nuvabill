@@ -2,6 +2,7 @@
 
 namespace App\Seo;
 
+use App\Extensions\ExtensionManager;
 use App\Models\MarketplaceItem;
 use App\Models\Product;
 use App\Models\ProductGroup;
@@ -11,7 +12,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * sitemap.xml: every store page search engines may show, with its language versions. Made
+ * sitemap.xml: every store page search engines may show, and add-on pages such as a website, with
+ * their language versions. Made
  * again within the hour, and at once when a product or group changes.
  */
 class Sitemap
@@ -29,9 +31,12 @@ class Sitemap
         $products = Product::query()->visible()->where('seo_hidden', false)->whereIn('product_group_id', $groups->pluck('id'))
             ->with('group')->orderBy('sort_order')->orderBy('id')->get();
 
-        // The marketplace store's home page goes to the marketplace, so it is not listed itself.
+        // The marketplace store's home page goes to the marketplace, so it is not listed itself. With a
+        // website from an add-on, the store's first page is /store and the add-on lists the home page.
+        $addonHome = app(ExtensionManager::class)->homePageAddon() !== null;
+
         if (! $store) {
-            $pages[] = ['path' => '', 'updated' => $products->max('updated_at')];
+            $pages[] = ['path' => $addonHome ? 'store' : '', 'updated' => $products->max('updated_at')];
         }
 
         foreach ($groups as $group) {
@@ -62,7 +67,7 @@ class Sitemap
             $pages[] = ['path' => 'white-label', 'updated' => null];
         }
 
-        return $pages;
+        return [...$pages, ...app(ExtensionManager::class)->sitemapPages()];
     }
 
     public function xml(): string
