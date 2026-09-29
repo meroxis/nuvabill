@@ -68,6 +68,8 @@ class SettingsController extends Controller
             'invoice_prefix' => ['nullable', 'string', 'max:12', 'regex:/^[A-Za-z0-9_\-\/]*$/'],
             'renewal_days_before' => ['required', 'integer', 'between:0,60'],
             'payment_terms_days' => ['required', 'integer', 'between:0,90'],
+            'plan_changes' => ['boolean'],
+            'downgrade' => ['nullable', Rule::in(['credit', 'renewal'])],
             'automation_enabled' => ['boolean'],
             'reminder_days' => ['nullable', 'string', 'max:40', 'regex:/^[\d,\s]*$/'],
             'suspend_days' => ['required', 'integer', 'between:0,90'],
@@ -90,6 +92,8 @@ class SettingsController extends Controller
             'billing.invoice_prefix' => $data['invoice_prefix'] ?? '',
             'billing.renewal_days_before' => (int) $data['renewal_days_before'],
             'billing.payment_terms_days' => (int) $data['payment_terms_days'],
+            'billing.plan_changes' => (bool) ($data['plan_changes'] ?? false),
+            'billing.downgrade' => $data['downgrade'] ?? setting('billing.downgrade'),
             'automation.enabled' => $request->boolean('automation_enabled'),
             'automation.reminder_days' => collect(explode(',', (string) ($data['reminder_days'] ?? '')))
                 ->map(fn (string $day): int => (int) trim($day))

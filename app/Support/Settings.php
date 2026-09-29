@@ -29,6 +29,8 @@ class Settings
         'billing.invoice_prefix' => 'INV-',
         'billing.renewal_days_before' => 7,
         'billing.payment_terms_days' => 7,
+        'billing.plan_changes' => true,
+        'billing.downgrade' => 'credit',
         // Automatic payments: renewals charged to cards and PayPal accounts clients saved.
         'billing.autopay' => true,
         'billing.autopay_days_before' => 0,

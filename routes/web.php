@@ -15,6 +15,7 @@ use App\Http\Controllers\Client\InvoiceController;
 use App\Http\Controllers\Client\PasskeyController;
 use App\Http\Controllers\Client\PaymentController;
 use App\Http\Controllers\Client\PaymentMethodController;
+use App\Http\Controllers\Client\PlanChangeController;
 use App\Http\Controllers\Client\QuoteController;
 use App\Http\Controllers\Client\ServiceController;
 use App\Http\Controllers\Client\TicketController;
@@ -108,6 +109,9 @@ Route::middleware(['auth:web', 'client.active', 'client.two-factor'])->prefix('c
     Route::get('services', [ServiceController::class, 'index'])->name('services.index');
     Route::get('services/{service}', [ServiceController::class, 'show'])->name('services.show');
     Route::post('services/{service}/login', [ServiceController::class, 'login'])->name('services.login');
+    Route::get('services/{service}/change-plan', [PlanChangeController::class, 'show'])->name('services.change-plan');
+    Route::post('services/{service}/change-plan', [PlanChangeController::class, 'store'])->middleware('throttle:10,1')->name('services.change-plan.store');
+    Route::delete('services/{service}/change-plan', [PlanChangeController::class, 'destroy'])->name('services.change-plan.destroy');
     Route::post('services/{service}/panel/{action}', [ServiceController::class, 'panel'])->where('action', '[a-z0-9-]+')->middleware('throttle:20,1')->name('services.panel');
 
     Route::get('domains', [DomainController::class, 'index'])->name('domains.index');

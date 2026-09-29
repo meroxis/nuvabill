@@ -82,6 +82,37 @@
                 </dl>
             </section>
 
+            <section class="card" style="display:grid;gap:.8rem">
+                <div class="card-header" style="margin:0"><h2>{{ __('Change plan') }}</h2></div>
+                @if ($planChange['pending'])
+                    @php($pending = $planChange['pending'])
+                    <p style="margin:0">
+                        @if ($pending->mode === \App\Models\PlanChange::MODE_RENEWAL)
+                            {{ __('Moves to :plan on :date.', ['plan' => $pending->toProduct?->name, 'date' => $pending->apply_on->translatedFormat('d M Y')]) }}
+                        @else
+                            {{ __('Moves to :plan once invoice :number is paid.', ['plan' => $pending->toProduct?->name, 'number' => $pending->invoice?->displayNumber()]) }}
+                        @endif
+                    </p>
+                    <form method="POST" action="{{ route('admin.services.change-plan.destroy', $service) }}" data-confirm="{{ __('Stop this plan change?') }}">
+                        @csrf
+                        @method('DELETE')
+                        <button class="btn btn-sm btn-ghost" type="submit">{{ __('Stop this change') }}</button>
+                    </form>
+                @elseif ($planChange['blocked'])
+                    <p class="muted" style="margin:0">{{ $planChange['blocked'] }}</p>
+                @elseif ($planChange['options'] === [])
+                    <p class="muted" style="margin:0">{{ __('No other product with a price for this billing cycle uses the same server.') }}</p>
+                @else
+                    <form method="POST" action="{{ route('admin.services.change-plan', $service) }}" style="display:grid;gap:.7rem" data-confirm="{{ __('Change the plan of this service?') }}">
+                        @csrf
+                        <x-select name="product_id" :label="__('New plan')" :options="$planChange['options']" required :help="__('The amount is the difference for the days left in this period.')" />
+                        <label class="check"><input type="radio" name="charge" value="1" checked> <span>{{ __('Invoice the difference (a cheaper plan follows the downgrade setting)') }}</span></label>
+                        <label class="check"><input type="radio" name="charge" value="0"> <span>{{ __('Change now without charging or crediting') }}</span></label>
+                        <div><button class="btn btn-sm" type="submit">{{ __('Change plan') }}</button></div>
+                    </form>
+                @endif
+            </section>
+
             <section class="card">
                 <div class="card-header"><h2>{{ __('Invoices') }}</h2></div>
                 <ul class="list-plain">

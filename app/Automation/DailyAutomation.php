@@ -5,6 +5,7 @@ namespace App\Automation;
 use App\Billing\Affiliates;
 use App\Billing\AutoPay;
 use App\Billing\InvoicePaidHandler;
+use App\Billing\PlanChanges;
 use App\Billing\RenewalGenerator;
 use App\Domains\DomainProvisioner;
 use App\Enums\DomainStatus;
@@ -75,6 +76,8 @@ class DailyAutomation
      */
     private function runSteps(CarbonImmutable $today): array
     {
+        // Downgrades planned for today's renewals first, so the server matches the new plan.
+        app(PlanChanges::class)->applyScheduled($today);
 
         $invoices = $this->renewals->generate($today);
         // Saved cards are charged before reminders and suspensions, so a paid renewal is never suspended.

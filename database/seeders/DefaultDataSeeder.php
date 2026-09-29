@@ -233,6 +233,21 @@ class DefaultDataSeeder extends Seeder
                 {{ company.name }}
                 MD,
             ],
+            'service.plan_changed' => [
+                'Plan changed',
+                'Your plan is now {{ plan.new }}',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                Your service **{{ service.domain }}** moved from **{{ plan.old }}** to **{{ plan.new }}**.
+
+                From your next renewal you pay {{ plan.amount }} ({{ plan.cycle }}). {{ plan.note }}
+
+                [See your service]({{ service.url }})
+
+                {{ company.name }}
+                MD,
+            ],
             'service.unsuspended' => [
                 'Service active again',
                 'Service active again: {{ service.domain }}',

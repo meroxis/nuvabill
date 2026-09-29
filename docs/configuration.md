@@ -13,6 +13,14 @@ you can upload your own square PNG (at least 512 × 512 pixels). It becomes the 
 company name in the admin area and client area, and the phone app icon. If the license ends, the Nuvabill icon comes
 back and your icon is kept until the license is valid again.
 
+## Upgrades and downgrades
+
+**Products → a product → Upgrades and downgrades**: tick the plans clients with this product can switch to (only plans
+on the same kind of server are shown). Clients then see **Upgrade or downgrade** on the service page. They pay only the
+difference for the days left in the current period; an upgrade happens once its invoice is paid. For a cheaper plan,
+**Settings → General → Billing** decides: change now and add the unused amount to the client's wallet, or change on
+the next renewal date. Staff can change any service's plan from its page, with or without an invoice.
+
 ## Currencies and exchange rates
 
 **Settings → Currencies**: your main currency, and exchange rates to other currencies. With a rate set you can, for

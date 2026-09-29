@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Billing\PlanChanges;
 use App\Enums\BillingCycle;
 use App\Enums\ServiceStatus;
 use App\Http\Controllers\Controller;
+use App\Models\PlanChange;
+use App\Models\Product;
 use App\Models\Server;
 use App\Models\Service;
 use App\Provisioning\Provisioner;
@@ -14,6 +17,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use RuntimeException;
 
 class ServiceController extends Controller
 {
@@ -39,8 +43,20 @@ class ServiceController extends Controller
     {
         $service->load('client', 'product', 'server', 'order', 'invoiceItems.invoice', 'addons', 'coupon');
 
+        $changes = app(PlanChanges::class);
+        $blocked = $changes->blockedReason($service);
+
         return view('admin.services.show', [
             'service' => $service,
+            'planChange' => [
+                'pending' => $changes->pendingFor($service),
+                'blocked' => $blocked,
+                'options' => $blocked === null ? $changes->targets($service, staff: true)->mapWithKeys(function (Product $product) use ($changes, $service): array {
+                    $difference = $changes->quote($service, $product)['difference'];
+
+                    return [$product->id => $product->name.' ('.($difference >= 0 ? '+' : '−').money(abs($difference), $service->currency).')'];
+                })->all() : [],
+            ],
             'servers' => Server::query()->where('module', $service->product->server_module)->orderBy('name')->pluck('name', 'id')->all(),
         ]);
     }
@@ -68,6 +84,44 @@ class ServiceController extends Controller
         Activity::log('service.updated', "Service #{$service->id} details changed by staff", $service);
 
         return back()->with('status', __('Service saved. Only the billing record changed; use the buttons above to change the account on the server.'));
+    }
+
+    /**
+     * Move the service to another product, invoicing the difference for the days left or not.
+     */
+    public function changePlan(Request $request, Service $service, PlanChanges $changes): RedirectResponse
+    {
+        $data = $request->validate([
+            'product_id' => ['required', 'integer', 'exists:products,id'],
+            'charge' => ['required', 'boolean'],
+        ]);
+
+        try {
+            $change = $changes->start($service->load('product', 'client'), Product::query()->findOrFail($data['product_id']), $request->user('admin'), (bool) $data['charge']);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return back()->with('status', match (true) {
+            $change->status === PlanChange::STATUS_APPLIED => __('The plan was changed.'),
+            $change->mode === PlanChange::MODE_RENEWAL => __('The plan changes on the next renewal date.'),
+            default => __('The plan changes once the client pays invoice :number.', ['number' => $change->invoice?->displayNumber()]),
+        });
+    }
+
+    public function cancelPlanChange(Service $service, PlanChanges $changes): RedirectResponse
+    {
+        $pending = $changes->pendingFor($service);
+
+        try {
+            if ($pending !== null) {
+                $changes->cancel($pending);
+            }
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        return back()->with('status', __('The plan change was stopped.'));
     }
 
     public function module(Request $request, Service $service, string $action, Provisioner $provisioner): RedirectResponse

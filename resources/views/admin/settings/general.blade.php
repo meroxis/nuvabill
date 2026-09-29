@@ -25,6 +25,8 @@
                     <x-input name="invoice_prefix" :label="__('Invoice number prefix')" :value="$settings['billing.invoice_prefix']" :help="__('For example INV- gives INV-0042.')" />
                     <x-input name="renewal_days_before" type="number" min="0" max="60" :label="__('Create renewal invoices this many days before the due date')" :value="$settings['billing.renewal_days_before']" required />
                     <x-input name="payment_terms_days" type="number" min="0" max="90" :label="__('Days to pay manual invoices')" :value="$settings['billing.payment_terms_days']" required />
+                    <x-checkbox name="plan_changes" :label="__('Clients can upgrade and downgrade')" :help="__('Clients move to the plans you pick on each product, and pay only the difference for the days left.')" :checked="$settings['billing.plan_changes']" />
+                    <x-select name="downgrade" :label="__('When a client moves to a cheaper plan')" :options="['credit' => __('Change now and add the unused amount to their wallet'), 'renewal' => __('Change on the next renewal date')]" :value="$settings['billing.downgrade']" required />
                 </div>
             </section>
 

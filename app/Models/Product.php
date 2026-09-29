@@ -38,6 +38,7 @@ class Product extends Model
         'seo_title',
         'seo_description',
         'seo_hidden',
+        'upgrade_product_ids',
     ];
 
     /**
@@ -59,6 +60,7 @@ class Product extends Model
             'stock' => 'integer',
             'sort_order' => 'integer',
             'seo_hidden' => 'boolean',
+            'upgrade_product_ids' => 'array',
         ];
     }
 

@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.6.4](https://github.com/meroxis/nuvabill/releases/tag/v0.6.4) | 30 Sep 2026 | Upgrades and downgrades with a fair price for the days left |
 | [0.6.3](https://github.com/meroxis/nuvabill/releases/tag/v0.6.3) | 30 Sep 2026 | A browser tab icon on every page; your own icon with a White-label License |
 | [0.6.2](https://github.com/meroxis/nuvabill/releases/tag/v0.6.2) | 29 Sep 2026 | Settings opens as a home page with grouped cards |
 | [0.6.1](https://github.com/meroxis/nuvabill/releases/tag/v0.6.1) | 29 Sep 2026 | A clearer Settings menu with search; add-ons can show your company website; 10 languages |
@@ -43,6 +44,21 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.6.4
+
+- **Upgrades and downgrades.** Clients open a service and choose **Upgrade or downgrade** to move to another plan. They
+  see the price for the days left before they pick:
+  - **Bigger plan:** they pay only the difference for the days left in the current period. The plan changes as soon as
+    the invoice is paid, and the server account is updated.
+  - **Smaller plan:** you choose in **Settings → General → Billing**: change now and add the unused amount to their
+    wallet, or change on the next renewal date (that renewal already bills the new price).
+  - A waiting change can be stopped; cancelling its invoice stops it too.
+- **You choose the plans.** On each product, tick the plans clients can switch to under **Upgrades and downgrades**.
+  Only plans on the same kind of server are offered. Turn the feature off in **Settings → General → Billing**.
+- **Staff** can change any service's plan from its page: invoice the difference, or change it now without charging.
+- A new **Plan changed** email tells the client their new plan and price.
+- A service with an unpaid invoice has to be paid first.
 
 ## 0.6.3
 

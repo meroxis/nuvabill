@@ -103,6 +103,7 @@ class InvoiceManager
                 $invoice->items()->whereNotNull('billing_key')->update(['billing_key' => null]);
             });
             Activity::log('invoice.cancelled', "Cancelled invoice {$invoice->displayNumber()}", $invoice);
+            app(PlanChanges::class)->cancelForInvoice($invoice);
         }
 
         return $invoice;

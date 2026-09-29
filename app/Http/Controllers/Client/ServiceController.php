@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Client;
 
+use App\Billing\PlanChanges;
+use App\Enums\ServiceStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Service;
 use App\Provisioning\Provisioner;
@@ -24,9 +26,12 @@ class ServiceController extends Controller
         $this->authorizeOwner($request, $service);
 
         $service->load('product', 'server', 'invoiceItems.invoice', 'addons', 'coupon');
+        $changes = app(PlanChanges::class);
 
         return view('theme::client.services.show', [
             'service' => $service,
+            'canChangePlan' => $changes->enabled() && $service->status === ServiceStatus::Active && $changes->targets($service)->isNotEmpty(),
+            'pendingChange' => $changes->enabled() ? $changes->pendingFor($service) : null,
             'canLogin' => filled($service->product->server_module) && $service->server !== null && $service->username !== null && $provisioner->hasLoginLink($service),
             'panel' => $provisioner->clientPanel($service),
         ]);

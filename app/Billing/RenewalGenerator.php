@@ -109,7 +109,18 @@ class RenewalGenerator
     private function serviceItems(Service $service): array
     {
         $start = $service->next_due_date;
-        $items = [LineItems::servicePeriod($service, $start, $service->recurring_amount) + ['billing_key' => self::billingKey('service', $service->id, $start)]];
+        $amount = $service->recurring_amount;
+        $billed = $service;
+
+        // A downgrade planned for this renewal: bill the new plan from its first day.
+        $planned = app(PlanChanges::class)->scheduledFor($service, $start);
+
+        if ($planned !== null && $planned->toProduct !== null) {
+            $amount = $planned->new_amount;
+            $billed = (clone $service)->setRelation('product', $planned->toProduct);
+        }
+
+        $items = [LineItems::servicePeriod($billed, $start, $amount) + ['billing_key' => self::billingKey('service', $service->id, $start)]];
 
         foreach ($service->addons as $addon) {
             if ($addon->isActive() && $addon->recurring_amount > 0) {
@@ -120,7 +131,7 @@ class RenewalGenerator
         $coupon = $service->coupon;
 
         if ($coupon !== null && ($service->coupon_payments_left === null || $service->coupon_payments_left > 0)) {
-            $discount = $coupon->discountOn($service->recurring_amount);
+            $discount = $coupon->discountOn($amount);
 
             if ($discount > 0) {
                 $items[] = LineItems::discount($coupon, $discount, $service);

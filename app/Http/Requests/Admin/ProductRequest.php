@@ -55,6 +55,8 @@ class ProductRequest extends FormRequest
             'seo_title' => ['nullable', 'string', 'max:120'],
             'seo_description' => ['nullable', 'string', 'max:320'],
             'seo_hidden' => ['boolean'],
+            'upgrade_product_ids' => ['nullable', 'array'],
+            'upgrade_product_ids.*' => ['integer', 'exists:products,id'],
             'prices' => ['required', 'array'],
             'prices.*.enabled' => ['boolean'],
             'prices.*.price' => ['nullable', 'numeric', 'min:0', 'max:1000000'],

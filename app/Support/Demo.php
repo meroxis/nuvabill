@@ -86,6 +86,8 @@ class Demo
         'admin.addons.*',
         'admin.servers.*',
         'admin.services.module',
+        'admin.services.change-plan',
+        'admin.services.change-plan.destroy',
         'admin.invoices.refund',
         'client.account.*',
         'client.services.login',

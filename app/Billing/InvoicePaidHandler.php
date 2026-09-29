@@ -49,6 +49,10 @@ class InvoicePaidHandler
             }
         }
 
+        if ($invoice->items->contains('type', InvoiceItem::TYPE_PLAN_CHANGE)) {
+            app(PlanChanges::class)->applyForInvoice($invoice);
+        }
+
         Order::query()
             ->where('invoice_id', $invoice->id)
             ->where('status', OrderStatus::Pending)

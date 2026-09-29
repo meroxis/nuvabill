@@ -95,6 +95,7 @@ class ProductController extends Controller
             'modules' => $modules->all(),
             'moduleFields' => $modules->keys()->mapWithKeys(fn (string $slug): array => [$slug => $extensions->serverModule($slug)->productFields()])->all(),
             'servers' => Server::query()->orderBy('name')->get(['id', 'name', 'module']),
+            'otherProducts' => Product::query()->with('group')->whereKeyNot($product->id ?? 0)->orderBy('product_group_id')->orderBy('sort_order')->get(['id', 'name', 'product_group_id', 'server_module']),
             'currency' => setting('billing.currency'),
             'aiWriter' => app(Claude::class)->isOn('descriptions') && auth('admin')->user()->hasPermission('ai.use'),
             'seo' => [
@@ -116,6 +117,12 @@ class ProductController extends Controller
         $data['module_config'] = $data['server_module'] ? array_filter($data['module_config'] ?? [], fn ($value) => $value !== null) : null;
         $data['server_id'] = $data['server_module'] ? ($data['server_id'] ?? null) : null;
         $data['sort_order'] = $data['sort_order'] ?? 0;
+        // Plan changes only work between products on the same kind of server.
+        $data['upgrade_product_ids'] = Product::query()
+            ->whereIn('id', array_map('intval', $data['upgrade_product_ids'] ?? []))
+            ->whereKeyNot($request->route('product')?->id ?? 0)
+            ->where(fn ($query) => $data['server_module'] ? $query->where('server_module', $data['server_module']) : $query->whereNull('server_module'))
+            ->pluck('id')->all();
 
         return $data;
     }

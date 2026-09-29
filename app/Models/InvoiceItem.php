@@ -25,6 +25,11 @@ class InvoiceItem extends Model
      */
     public const TYPE_CREDIT = 'credit';
 
+    /**
+     * The price difference for moving a service to another plan for the rest of its period.
+     */
+    public const TYPE_PLAN_CHANGE = 'plan_change';
+
     public const TYPE_DOMAIN_REGISTER = 'domain_register';
 
     public const TYPE_DOMAIN_TRANSFER = 'domain_transfer';

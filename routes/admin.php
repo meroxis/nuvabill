@@ -134,6 +134,8 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::get('services', [ServiceController::class, 'index'])->name('services.index');
         Route::get('services/{service}', [ServiceController::class, 'show'])->name('services.show');
         Route::put('services/{service}', [ServiceController::class, 'update'])->name('services.update');
+        Route::post('services/{service}/change-plan', [ServiceController::class, 'changePlan'])->name('services.change-plan');
+        Route::delete('services/{service}/change-plan', [ServiceController::class, 'cancelPlanChange'])->name('services.change-plan.destroy');
         Route::post('services/{service}/module/{action}', [ServiceController::class, 'module'])
             ->whereIn('action', ['create', 'suspend', 'unsuspend', 'terminate', 'change-package'])
             ->name('services.module');

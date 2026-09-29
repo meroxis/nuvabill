@@ -61,6 +61,11 @@
                     <dt>{{ __('Coupon') }}</dt><dd><span class="mono">{{ $service->coupon->code }}</span> · {{ $service->coupon->describe() }}@if ($service->coupon_payments_left !== null) · {{ trans_choice(':count more payment|:count more payments', $service->coupon_payments_left, ['count' => $service->coupon_payments_left]) }}@endif</dd>
                 @endif
             </dl>
+            @if (! empty($pendingChange))
+                <p class="muted" style="margin:0">{{ $pendingChange->mode === \App\Models\PlanChange::MODE_RENEWAL ? __('Your plan changes to :plan on :date.', ['plan' => $pendingChange->toProduct?->name, 'date' => $pendingChange->apply_on->translatedFormat('d M Y')]) : __('A move to :plan is waiting for payment.', ['plan' => $pendingChange->toProduct?->name]) }} <a href="{{ route('client.services.change-plan', $service) }}">{{ __('Details') }}</a></p>
+            @elseif (! empty($canChangePlan))
+                <div><a class="btn btn-sm" href="{{ route('client.services.change-plan', $service) }}"><x-icon name="refresh" />{{ __('Upgrade or downgrade') }}</a></div>
+            @endif
         </section>
 
         <aside class="card" style="display:grid;gap:.8rem">
