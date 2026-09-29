@@ -13,6 +13,7 @@ Every gateway has a **Name shown to clients** field, so you can call it, for exa
 - **Webhook signing secret**: add a webhook in Stripe for the URL shown on the gateway's settings page, with the event
   `checkout.session.completed`, and paste its signing secret (`whsec_…`).
 - Refunds can be made from the invoice page.
+- Clients can save a card for [automatic payments](../automatic-payments.md). Nothing extra to set up.
 
 ## PayPal
 
@@ -22,6 +23,8 @@ Every gateway has a **Name shown to clients** field, so you can call it, for exa
 - **Webhook ID** (optional): add a webhook for the URL shown on the settings page with the event
   `PAYMENT.CAPTURE.COMPLETED` and paste its ID.
 - Refunds can be made from the invoice page.
+- Clients can save their PayPal account for [automatic payments](../automatic-payments.md). Turn on **Save payment
+  methods** for your app in **Apps & Credentials** first.
 
 ## FIB (First Iraqi Bank)
 

@@ -64,6 +64,7 @@ class Client extends Authenticatable
         'credit' => 0,
         'status' => 'active',
         'has_password' => true,
+        'auto_pay' => true,
     ];
 
     protected function casts(): array
@@ -80,7 +81,26 @@ class Client extends Authenticatable
             'email_verified_at' => 'datetime',
             'last_login_at' => 'datetime',
             'tags' => 'array',
+            'auto_pay' => 'boolean',
         ];
+    }
+
+    /**
+     * Cards and PayPal accounts saved to pay renewals automatically.
+     *
+     * @return HasMany<PaymentMethod, $this>
+     */
+    public function paymentMethods(): HasMany
+    {
+        return $this->hasMany(PaymentMethod::class);
+    }
+
+    /**
+     * The saved method that pays renewals, when the client has one.
+     */
+    public function defaultPaymentMethod(): ?PaymentMethod
+    {
+        return $this->paymentMethods()->orderByDesc('is_default')->latest('id')->first();
     }
 
     /**

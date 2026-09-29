@@ -133,6 +133,33 @@
                         <p class="help" style="margin:0">{{ __('Use a minus to take money away, for example -5.00.') }}</p>
                     @endif
                 </section>
+
+                @php $savedMethods = $client->paymentMethods()->orderByDesc('is_default')->latest('id')->get(); @endphp
+                <section class="card" style="display:grid;gap:.7rem">
+                    <div class="card-header" style="margin:0"><h2>{{ __('Saved payment methods') }}</h2>
+                        @if ($savedMethods->isNotEmpty())
+                            <x-pill :tone="$client->auto_pay ? 'good' : null">{{ $client->auto_pay ? __('Automatic payments on') : __('Automatic payments off') }}</x-pill>
+                        @endif
+                    </div>
+                    @forelse ($savedMethods as $method)
+                        <div class="feed-item" style="align-items:center">
+                            <span style="min-width:0">{{ $method->label() }}@if ($method->expiry())<span class="faint"> · {{ $method->isExpired() ? __('Expired :date', ['date' => $method->expiry()]) : __('Expires :date', ['date' => $method->expiry()]) }}</span>@endif
+                                @if ($method->is_default)<x-pill tone="good">{{ __('Pays renewals') }}</x-pill>@endif</span>
+                            @if ($admin->hasPermission('billing.manage'))
+                                <form method="POST" action="{{ route('admin.clients.payment-methods.destroy', [$client, $method]) }}" data-confirm="{{ __('Remove :method? It will not pay this client’s renewals anymore.', ['method' => $method->label()]) }}">
+                                    @csrf
+                                    @method('DELETE')
+                                    <button class="btn btn-sm btn-ghost" type="submit" aria-label="{{ __('Remove :name', ['name' => $method->label()]) }}"><x-icon name="trash" /></button>
+                                </form>
+                            @endif
+                        </div>
+                    @empty
+                        <p class="muted" style="margin:0;font-size:.88rem">{{ __('Nothing saved. Clients save a card or PayPal account themselves when they pay, or in Account → Payment methods.') }}</p>
+                    @endforelse
+                    @if ($savedMethods->isNotEmpty())
+                        <p class="help" style="margin:0">{{ __('Card numbers are never stored in Nuvabill. You can charge an invoice now from the invoice page, or remove a saved method; only the client can add one.') }}</p>
+                    @endif
+                </section>
             @endif
 
             <section class="card">

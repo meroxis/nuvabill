@@ -60,6 +60,9 @@ class Invoice extends Model
             'paid_at' => 'datetime',
             'last_reminder_at' => 'datetime',
             'reminder_count' => 'integer',
+            'autopay_attempts' => 'integer',
+            'autopay_retry_at' => 'datetime',
+            'autopay_notice_at' => 'datetime',
         ];
     }
 

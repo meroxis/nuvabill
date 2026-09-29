@@ -2,6 +2,7 @@
 
 namespace App\Billing;
 
+use App\Contracts\SavesPaymentMethods;
 use App\Extensions\ExtensionManager;
 use App\Models\Invoice;
 use App\Support\Activity;
@@ -17,7 +18,10 @@ class PaymentStarter
 {
     public function __construct(private ExtensionManager $extensions) {}
 
-    public function start(Invoice $invoice, string $slug): RedirectResponse
+    /**
+     * @param  bool  $save  The client ticked "Save it and pay my renewals automatically".
+     */
+    public function start(Invoice $invoice, string $slug, bool $save = false): RedirectResponse
     {
         $gateway = $this->extensions->activeGateways($invoice->currency)->get($slug);
 
@@ -28,11 +32,12 @@ class PaymentStarter
         $invoice->update(['payment_method' => $slug]);
 
         try {
-            $start = $gateway->startPayment(
-                $invoice->loadMissing('client'),
-                route('client.invoices.return', [$invoice, $slug]),
-                route('client.invoices.show', $invoice),
-            );
+            $save = $save && setting('billing.autopay_offer_save') && $gateway instanceof SavesPaymentMethods;
+            $returnUrl = route('client.invoices.return', [$invoice, $slug]);
+            $cancelUrl = route('client.invoices.show', $invoice);
+            $start = $save
+                ? $gateway->startSavingPayment($invoice->loadMissing('client'), $returnUrl, $cancelUrl)
+                : $gateway->startPayment($invoice->loadMissing('client'), $returnUrl, $cancelUrl);
         } catch (Throwable $exception) {
             report($exception);
             // Staff see the gateway's own reason in the activity log, without reading server logs.

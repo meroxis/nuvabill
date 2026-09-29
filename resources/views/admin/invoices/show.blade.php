@@ -60,6 +60,30 @@
         </section>
 
         <div style="display:grid;gap:14px;align-content:start">
+            @if ($autoPay && $status === \App\Enums\InvoiceStatus::Unpaid)
+                <section class="card" style="display:grid;gap:.7rem">
+                    <div class="card-header" style="margin:0"><h2>{{ __('Automatic payment') }}</h2>
+                        @if ($invoice->autopay_error)
+                            <x-pill tone="crit">{{ __('Charge failed') }}</x-pill>
+                        @elseif ($autoPay['automatic'])
+                            <x-pill tone="info">{{ __('Charged on :date', ['date' => $autoPay['date']->translatedFormat('d M Y')]) }}</x-pill>
+                        @endif
+                    </div>
+                    <span><b>{{ $autoPay['method']->label() }}</b>@if ($autoPay['method']->expiry())<span class="muted"> · {{ __('Expires :date', ['date' => $autoPay['method']->expiry()]) }}</span>@endif</span>
+                    @if ($invoice->autopay_error)
+                        <p class="muted" style="margin:0;font-size:.88rem">{{ $invoice->autopay_error }} @if ($autoPay['retries']){{ __('Tries again on :date.', ['date' => $autoPay['date']->translatedFormat('d M Y')]) }}@endif</p>
+                    @elseif (! $autoPay['automatic'])
+                        <p class="muted" style="margin:0;font-size:.88rem">{{ __('This invoice is not charged by itself: automatic payments are off for this client, or it is not a renewal.') }}</p>
+                    @endif
+                    @if ($canManage && $autoPay['usable'])
+                        <form method="POST" action="{{ route('admin.invoices.charge', $invoice) }}" data-confirm="{{ __('Charge :amount to :method now?', ['amount' => money($invoice->balance(), $invoice->currency), 'method' => $autoPay['method']->label()]) }}">
+                            @csrf
+                            <button class="btn btn-primary" type="submit"><x-icon name="card" />{{ __('Charge now') }}</button>
+                        </form>
+                    @endif
+                </section>
+            @endif
+
             @if ($canManage && $status === \App\Enums\InvoiceStatus::Unpaid)
                 <section class="card">
                     <div class="card-header"><h2>{{ __('Record a payment') }}</h2></div>

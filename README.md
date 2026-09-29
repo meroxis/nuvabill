@@ -73,7 +73,7 @@ curl -fsSL https://nuvabill.com/install.sh | bash
 WHMCS, or wait, if you depend on:
 
 - a module or integration Nuvabill does not have yet (WHMCS has a large third-party ecosystem)
-- automatic charging of saved cards, or client self-service upgrades with prorated prices
+- client self-service upgrades with prorated prices
 - a knowledge base, announcements or a network status page in the client area
 - emails and PDF invoices in your clients' own language (Nuvabill's are in English for now)
 - a long track record and a commercial support contract
@@ -212,6 +212,7 @@ tickets. See the [phone app guide](docs/phone-app.md).
 - Renewal invoices created before the due date, grouped per client
 - Overdue reminders, automatic suspension, optional termination
 - **Paying unsuspends automatically**
+- **Automatic payments**: clients save a card or PayPal account and renewals are charged by themselves, wallet first, with retries and notices ([guide](docs/automatic-payments.md))
 - **Taxes**: VAT, GST or sales tax by country and state, prices with or without tax, tax-exempt clients, and tax numbers on invoices
 - **Client wallet**: clients add funds and pay invoices with one click; overpayments and refunds land there too
 
@@ -395,9 +396,10 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 | Version | Focus |
 |---|---|
 | v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor (plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules), domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, search engine tools, Site health ([changelog](CHANGELOG.md)) |
-| v0.5.0–v0.5.5 | Done: **Automations** with 9 templates, client tags and ticket assignment; **AI help** with your own Claude key; **Telegram and WhatsApp**; the **admin phone app** with push alerts |
-| **next** | The path to 1.0 ([ROADMAP.md](ROADMAP.md)), and a ClientExec importer |
-| v1.0 | Automatic card payments, client upgrades, knowledge base and status page, security audit, and more |
+| v0.5.0–v0.5.6 | Done: **Automations** with 9 templates, client tags and ticket assignment; **AI help** with your own Claude key; **Telegram and WhatsApp**; the **admin phone app** with push alerts |
+| v0.6.0 | Done: **Automatic payments** with saved cards and PayPal accounts |
+| **next** | 0.6.1 client upgrades and downgrades, 0.6.2 emails and PDFs in the client's language, 0.6.3 knowledge base and status page, 0.6.4 credit notes and exports ([ROADMAP.md](ROADMAP.md)) |
+| v1.0 | Client upgrades, knowledge base and status page, security audit, and more |
 
 The full plan, including what we think is still missing before 1.0, is in [ROADMAP.md](ROADMAP.md).
 

@@ -3,6 +3,7 @@
 namespace App\Automation;
 
 use App\Billing\Affiliates;
+use App\Billing\AutoPay;
 use App\Billing\InvoicePaidHandler;
 use App\Billing\RenewalGenerator;
 use App\Domains\DomainProvisioner;
@@ -34,6 +35,7 @@ class DailyAutomation
         private DomainProvisioner $domains,
         private TemplateMailer $mailer,
         private Affiliates $affiliates,
+        private AutoPay $autoPay,
     ) {}
 
     /**
@@ -51,7 +53,7 @@ class DailyAutomation
      * Run everything once. Returns null when another run is busy: it does the work, so nothing is
      * done twice. Each step is also safe on its own when repeated (see the steps below).
      *
-     * @return array{invoices: int, reminders: int, suspended: int, terminated: int, failed: int, domains_expired: int, commissions: int}|null
+     * @return array{invoices: int, charged: int, charge_failed: int, reminders: int, suspended: int, terminated: int, failed: int, domains_expired: int, commissions: int}|null
      */
     public function run(?CarbonInterface $today = null): ?array
     {
@@ -69,13 +71,19 @@ class DailyAutomation
     }
 
     /**
-     * @return array{invoices: int, reminders: int, suspended: int, terminated: int, failed: int, domains_expired: int, commissions: int}
+     * @return array{invoices: int, charged: int, charge_failed: int, reminders: int, suspended: int, terminated: int, failed: int, domains_expired: int, commissions: int}
      */
     private function runSteps(CarbonImmutable $today): array
     {
 
+        $invoices = $this->renewals->generate($today);
+        // Saved cards are charged before reminders and suspensions, so a paid renewal is never suspended.
+        $autoPay = $this->autoPay->run($today);
+
         $summary = [
-            'invoices' => $this->renewals->generate($today),
+            'invoices' => $invoices,
+            'charged' => $autoPay['charged'],
+            'charge_failed' => $autoPay['failed'],
             'reminders' => $this->sendReminders($today),
             'suspended' => 0,
             'terminated' => 0,
@@ -201,6 +209,8 @@ class DailyAutomation
             ->with('client')
             ->where('status', InvoiceStatus::Unpaid)
             ->whereDate('due_at', '<', $today)
+            // While a saved card is still to be tried again, the failed-payment email already told the client.
+            ->where(fn (Builder $query) => $query->whereNull('autopay_retry_at')->orWhere('autopay_retry_at', '<=', now()))
             ->each(function (Invoice $invoice) use ($today, $days, &$sent): void {
                 $daysOverdue = (int) $invoice->due_at->diffInDays($today);
                 $stepsReached = $days->filter(fn (int $day): bool => $day <= $daysOverdue)->count();

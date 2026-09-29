@@ -138,6 +138,51 @@ class DefaultDataSeeder extends Seeder
                 {{ company.name }}
                 MD,
             ],
+            'invoice.autopay_upcoming' => [
+                'Automatic payment coming up',
+                'Invoice {{ invoice.number }} will be paid automatically on {{ charge_date }}',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                On **{{ charge_date }}** we will charge **{{ invoice.balance }}** for invoice **{{ invoice.number }}** to your {{ payment_method.name }}. You do not need to do anything.
+
+                [View the invoice]({{ invoice.url }})
+
+                To use another card or turn automatic payments off, open [Payment methods]({{ payment_methods_url }}).
+
+                {{ company.name }}
+                MD,
+            ],
+            'invoice.autopay_failed' => [
+                'Automatic payment failed',
+                'We could not charge your {{ payment_method.name }} for invoice {{ invoice.number }}',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                Today we tried to charge **{{ invoice.balance }}** for invoice **{{ invoice.number }}** to your {{ payment_method.name }}, but it did not work: {{ failure }} Nothing was taken from your account.
+
+                {{ next_try }}
+
+                [Pay the invoice]({{ invoice.url }})
+
+                If your card has expired or has a new number, [add the new one]({{ payment_methods_url }}) and we will use it for the next try.
+
+                {{ company.name }}
+                MD,
+            ],
+            'payment.method_expiring' => [
+                'Saved card expires soon',
+                'Your saved card expires soon',
+                <<<'MD'
+                Hi {{ client.first_name }},
+
+                Your {{ payment_method.name }}, which pays your renewals automatically, expires at the end of {{ payment_method.expires }}.
+
+                [Add your new card]({{ payment_methods_url }}) so your renewals keep paying themselves.
+
+                {{ company.name }}
+                MD,
+            ],
             'invoice.reminder' => [
                 'Overdue reminder',
                 'Reminder: invoice {{ invoice.number }} is overdue',

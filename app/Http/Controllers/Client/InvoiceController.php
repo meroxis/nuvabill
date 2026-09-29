@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers\Client;
 
+use App\Billing\AutoPay;
 use App\Billing\InvoicePdf;
+use App\Billing\SavedMethods;
+use App\Billing\Wallet;
 use App\Enums\InvoiceStatus;
 use App\Extensions\ExtensionManager;
 use App\Http\Controllers\Controller;
@@ -23,15 +26,28 @@ class InvoiceController extends Controller
         ]);
     }
 
-    public function show(Request $request, Invoice $invoice, ExtensionManager $extensions): View
+    public function show(Request $request, Invoice $invoice, ExtensionManager $extensions, AutoPay $autoPay, SavedMethods $methods): View
     {
         $this->authorizeOwner($request, $invoice);
 
         $invoice->load('items', 'transactions');
+        $autoMethod = $invoice->isPayable() ? $autoPay->methodFor($invoice) : null;
 
         return view('theme::client.invoices.show', [
             'invoice' => $invoice,
             'gateways' => $invoice->isPayable() ? $extensions->activeGateways($invoice->currency) : collect(),
+            // Gateways that can keep the method for automatic renewals, for "Save it" on the payment form.
+            'savable' => $invoice->isPayable() && $autoPay->isOn() && setting('billing.autopay_offer_save') && ! app(Wallet::class)->isTopUp($invoice)
+                ? $methods->gateways($invoice->currency)->keys()->values()->all()
+                : [],
+            'autoPay' => $autoMethod === null ? null : [
+                'method' => $autoMethod,
+                'date' => $autoPay->chargeDate($invoice),
+                'failed' => $invoice->autopay_attempts > 0,
+                'retries' => $autoPay->willRetry($invoice),
+                // The wallet is used first, so it pays the whole invoice when it holds enough.
+                'wallet' => app(Wallet::class)->enabled() && $invoice->client->credit >= $invoice->balance(),
+            ],
             'instructions' => session('payment_instructions'),
             'qr' => session('payment_qr'),
         ]);

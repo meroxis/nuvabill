@@ -23,6 +23,7 @@ use App\Models\Client;
 use App\Models\Domain;
 use App\Models\Invoice;
 use App\Models\Order;
+use App\Models\PaymentMethod;
 use App\Models\Product;
 use App\Models\Quote;
 use App\Models\Server;
@@ -86,6 +87,7 @@ class AppServiceProvider extends ServiceProvider
             'domain' => Domain::class,
             'invoice' => Invoice::class,
             'order' => Order::class,
+            'payment_method' => PaymentMethod::class,
             'product' => Product::class,
             'quote' => Quote::class,
             'server' => Server::class,

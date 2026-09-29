@@ -29,6 +29,13 @@ class Settings
         'billing.invoice_prefix' => 'INV-',
         'billing.renewal_days_before' => 7,
         'billing.payment_terms_days' => 7,
+        // Automatic payments: renewals charged to cards and PayPal accounts clients saved.
+        'billing.autopay' => true,
+        'billing.autopay_days_before' => 0,
+        'billing.autopay_notice_days' => 3,
+        'billing.autopay_retry_days' => [3, 7],
+        'billing.autopay_offer_save' => true,
+        'billing.autopay_card_notice' => true,
 
         'currency.rates' => [],
 
@@ -170,6 +177,7 @@ class Settings
         'chat.events' => [
             'invoice.created' => ['telegram' => true, 'whatsapp' => false],
             'invoice.reminder' => ['telegram' => true, 'whatsapp' => true],
+            'invoice.autopay_failed' => ['telegram' => true, 'whatsapp' => true],
             'invoice.payment_received' => ['telegram' => true, 'whatsapp' => false],
             'service.welcome' => ['telegram' => true, 'whatsapp' => true],
             'service.suspended' => ['telegram' => true, 'whatsapp' => true],

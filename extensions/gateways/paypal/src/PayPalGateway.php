@@ -2,24 +2,32 @@
 
 namespace Nuvabill\Extensions\PayPal;
 
+use App\Contracts\SavesPaymentMethods;
+use App\Extensions\Gateways\ChargeResult;
 use App\Extensions\Gateways\Gateway;
 use App\Extensions\Gateways\PaymentResult;
 use App\Extensions\Gateways\PaymentStart;
 use App\Extensions\Gateways\RefundResult;
+use App\Extensions\Gateways\SavedMethod;
 use App\Extensions\Gateways\WebhookResult;
+use App\Models\Client;
 use App\Models\Invoice;
+use App\Models\PaymentMethod;
 use App\Models\Transaction;
 use App\Support\Money;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 /**
  * PayPal Checkout (Orders API v2). The client approves the payment on PayPal and is sent back,
- * then the order is captured. A webhook confirms captures that finish later.
+ * then the order is captured. A webhook confirms captures that finish later. A client can keep
+ * their PayPal account for automatic renewals (PayPal calls it vaulting; the PayPal business account
+ * must allow it).
  */
-class PayPalGateway extends Gateway
+class PayPalGateway extends Gateway implements SavesPaymentMethods
 {
     /**
      * Currencies PayPal accepts with two decimal places.
@@ -68,6 +76,21 @@ class PayPalGateway extends Gateway
 
     public function startPayment(Invoice $invoice, string $returnUrl, string $cancelUrl): PaymentStart
     {
+        return $this->order($invoice, $returnUrl, $cancelUrl, false);
+    }
+
+    public function startSavingPayment(Invoice $invoice, string $returnUrl, string $cancelUrl): PaymentStart
+    {
+        return $this->order($invoice, $returnUrl, $cancelUrl, true);
+    }
+
+    private function order(Invoice $invoice, string $returnUrl, string $cancelUrl, bool $save): PaymentStart
+    {
+        $vault = $save ? ['attributes' => array_filter([
+            'vault' => ['store_in_vault' => 'ON_SUCCESS', 'usage_type' => 'MERCHANT', 'customer_type' => 'CONSUMER'],
+            'customer' => ($customer = $this->knownCustomer($invoice->client)) ? ['id' => $customer] : null,
+        ])] : [];
+
         $response = $this->api()->post($this->baseUrl().'/v2/checkout/orders', [
             'intent' => 'CAPTURE',
             'purchase_units' => [[
@@ -87,7 +110,7 @@ class PayPalGateway extends Gateway
                         'user_action' => 'PAY_NOW',
                         'shipping_preference' => 'NO_SHIPPING',
                     ],
-                ],
+                ] + $vault,
             ],
         ]);
 
@@ -126,7 +149,10 @@ class PayPalGateway extends Gateway
             return null;
         }
 
-        return $this->resultFromCapture($capture, $invoice->id);
+        $result = $this->resultFromCapture($capture, $invoice->id);
+        $saved = $this->savedFromSource((array) $response->json('payment_source.paypal', []));
+
+        return $saved === null ? $result : new PaymentResult($result->invoiceId, $result->amount, $result->currency, $result->reference, $result->fee, ['saved_method' => $saved->toArray()]);
     }
 
     public function handleWebhook(Request $request): WebhookResult
@@ -219,6 +245,116 @@ class PayPalGateway extends Gateway
             reference: (string) $capture['id'],
             fee: Money::toMinor($capture['seller_receivable_breakdown']['paypal_fee']['value'] ?? 0),
         );
+    }
+
+    public function startSavingMethod(Client $client, string $returnUrl, string $cancelUrl): PaymentStart
+    {
+        $response = $this->api()->post($this->baseUrl().'/v3/vault/setup-tokens', array_filter([
+            'customer' => ($customer = $this->knownCustomer($client)) ? ['id' => $customer] : null,
+            'payment_source' => ['paypal' => [
+                'usage_type' => 'MERCHANT',
+                'experience_context' => [
+                    'return_url' => $returnUrl,
+                    'cancel_url' => $cancelUrl,
+                    'shipping_preference' => 'NO_SHIPPING',
+                ],
+            ]],
+        ]));
+
+        $approveUrl = collect($response->json('links', []))->first(fn (array $link): bool => ($link['rel'] ?? null) === 'approve')['href'] ?? null;
+
+        if ($response->failed() || $approveUrl === null || ! is_string($response->json('id'))) {
+            throw new RuntimeException('PayPal could not start saving the account: '.($response->json('details.0.description') ?? $response->json('message') ?? $response->status()));
+        }
+
+        // Only the client who started saving can finish it with this token.
+        Cache::put('nuvabill.paypal-setup.'.$client->id, $response->json('id'), now()->addHour());
+
+        return PaymentStart::redirect($approveUrl);
+    }
+
+    public function finishSavingMethod(Request $request, Client $client): ?SavedMethod
+    {
+        $token = (string) $request->query('approval_token_id', '');
+        $expected = Cache::pull('nuvabill.paypal-setup.'.$client->id);
+
+        if ($token === '' || ! is_string($expected) || ! hash_equals($expected, $token)) {
+            return null;
+        }
+
+        $response = $this->api()->post($this->baseUrl().'/v3/vault/payment-tokens', [
+            'payment_source' => ['token' => ['id' => $token, 'type' => 'SETUP_TOKEN']],
+        ]);
+
+        if ($response->failed() || ! is_string($response->json('id'))) {
+            return null;
+        }
+
+        return SavedMethod::paypal($response->json('id'), $response->json('customer.id'), $response->json('payment_source.paypal.email_address'));
+    }
+
+    public function chargeSaved(PaymentMethod $method, Invoice $invoice, string $attemptKey): ChargeResult
+    {
+        if (! $this->supportsCurrency($invoice->currency)) {
+            return ChargeResult::failed(__('PayPal cannot be charged in :currency.', ['currency' => $invoice->currency]));
+        }
+
+        $response = $this->api()
+            // The same attempt sent twice creates one payment.
+            ->withHeaders(['PayPal-Request-Id' => 'nuvabill-'.$attemptKey])
+            ->post($this->baseUrl().'/v2/checkout/orders', [
+                'intent' => 'CAPTURE',
+                'purchase_units' => [[
+                    'reference_id' => (string) $invoice->id,
+                    'custom_id' => (string) $invoice->id,
+                    'description' => __('Invoice :number', ['number' => $invoice->displayNumber()]),
+                    'amount' => ['currency_code' => $invoice->currency, 'value' => Money::toDecimal($invoice->balance())],
+                ]],
+                'payment_source' => ['paypal' => ['vault_id' => $method->reference]],
+            ]);
+
+        $capture = $response->json('purchase_units.0.payments.captures.0');
+
+        if ($response->successful() && is_array($capture) && ($capture['status'] ?? null) === 'COMPLETED') {
+            $result = $this->resultFromCapture($capture, $invoice->id);
+
+            return ChargeResult::paid(new PaymentResult($result->invoiceId, $result->amount, $result->currency, $result->reference, $result->fee, ['autopay' => true]));
+        }
+
+        if (in_array($response->json('details.0.issue'), ['PAYER_ACTION_REQUIRED', 'PAYEE_ACCOUNT_RESTRICTED'], true) || $response->json('status') === 'PAYER_ACTION_REQUIRED') {
+            return ChargeResult::needsClient(__('PayPal wants you to confirm this payment yourself.'));
+        }
+
+        return ChargeResult::failed((string) ($response->json('details.0.description') ?: __('PayPal could not take the payment.')));
+    }
+
+    public function forgetSaved(PaymentMethod $method): void
+    {
+        $this->api()->delete($this->baseUrl().'/v3/vault/payment-tokens/'.rawurlencode($method->reference));
+    }
+
+    /**
+     * The PayPal customer the client's accounts were kept under before, if any.
+     */
+    private function knownCustomer(Client $client): ?string
+    {
+        $customer = PaymentMethod::query()->where('client_id', $client->id)->where('gateway', $this->slug())->whereNotNull('customer_reference')->latest('id')->value('customer_reference');
+
+        return is_string($customer) && $customer !== '' ? $customer : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $paypal
+     */
+    private function savedFromSource(array $paypal): ?SavedMethod
+    {
+        $vault = (array) ($paypal['attributes']['vault'] ?? []);
+
+        if (! is_string($vault['id'] ?? null) || ! in_array($vault['status'] ?? null, ['VAULTED', 'APPROVED'], true)) {
+            return null;
+        }
+
+        return SavedMethod::paypal($vault['id'], $vault['customer']['id'] ?? null, $paypal['email_address'] ?? null);
     }
 
     private function baseUrl(): string

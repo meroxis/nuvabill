@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\Auth\PasskeyLoginController;
 use App\Http\Controllers\Admin\Auth\PasswordResetController;
 use App\Http\Controllers\Admin\Auth\TwoFactorChallengeController;
 use App\Http\Controllers\Admin\AutomationController;
+use App\Http\Controllers\Admin\AutoPayController;
 use App\Http\Controllers\Admin\ChatSettingsController;
 use App\Http\Controllers\Admin\ClientController;
 use App\Http\Controllers\Admin\CouponController;
@@ -167,6 +168,8 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::post('clients/{client}/wallet', [ClientController::class, 'wallet'])->name('clients.wallet');
         Route::post('invoices/{invoice}/payments', [InvoiceController::class, 'recordPayment'])->name('invoices.payments.store');
         Route::post('invoices/{invoice}/refund', [InvoiceController::class, 'refund'])->name('invoices.refund');
+        Route::post('invoices/{invoice}/charge', [AutoPayController::class, 'charge'])->middleware('throttle:10,1')->name('invoices.charge');
+        Route::delete('clients/{client}/payment-methods/{paymentMethod}', [AutoPayController::class, 'forget'])->name('clients.payment-methods.destroy');
         Route::post('invoices/{invoice}/publish', [InvoiceController::class, 'publish'])->name('invoices.publish');
         Route::post('invoices/{invoice}/cancel', [InvoiceController::class, 'cancel'])->name('invoices.cancel');
         Route::post('invoices/{invoice}/email', [InvoiceController::class, 'email'])->name('invoices.email');
@@ -224,6 +227,9 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
             Route::delete('whatsapp', [ChatSettingsController::class, 'whatsappDisconnect'])->name('whatsapp.destroy');
             Route::put('messages', [ChatSettingsController::class, 'messages'])->name('messages');
         });
+
+        Route::get('automatic-payments', [AutoPayController::class, 'edit'])->name('autopay.edit');
+        Route::put('automatic-payments', [AutoPayController::class, 'update'])->name('autopay.update');
 
         Route::get('ai', [AiSettingsController::class, 'edit'])->name('ai.edit');
         Route::put('ai', [AiSettingsController::class, 'update'])->name('ai.update');

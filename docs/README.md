@@ -16,6 +16,7 @@ These pages cover running your own copy. The same guides, and the developer and 
 | [AI help](ai-help.md) | Reply drafts, two-way ticket translation, summaries and product texts with Claude and your own key; spending limit and privacy |
 | [Telegram and WhatsApp](chat-apps.md) | Invoices, reminders and ticket replies in chat apps, WhatsApp by QR code or your own Meta app, message templates, client commands, tickets from chats |
 | [Admin phone app](phone-app.md) | Install the admin area on a phone, the Today screen, and push alerts for orders, payments and tickets |
+| [Automatic payments](automatic-payments.md) | Saved cards and PayPal accounts, renewals charged by themselves, wallet first, retries, notices and PayPal vault setup |
 | [Automations](automations.md) | "When this happens, do that": templates, starting points, conditions, steps, Try it and the runs log |
 | [Search engines](search-engines.md) | Titles and descriptions, sitemap, robots.txt, prices on Google, language links and link previews |
 | [FAQ](faq.md) | License, White-label License, updates, backups, security and more |

@@ -131,7 +131,14 @@ class PaymentRecorder
             return null;
         }
 
-        return $this->record($invoice, $result->amount, $gateway, $result->reference, $result->fee, $result->meta);
+        $meta = $result->meta;
+        // The saved card or PayPal account is kept on its own row, not on the payment.
+        unset($meta['saved_method']);
+        $transaction = $this->record($invoice, $result->amount, $gateway, $result->reference, $result->fee, $meta);
+
+        rescue(fn () => app(SavedMethods::class)->rememberFromPayment($result, $gateway));
+
+        return $transaction;
     }
 
     /**

@@ -38,6 +38,23 @@
             @if ($invoice->isPayable())
                 <div class="summary-row total" style="border:0;padding:0"><span>{{ __('Amount due') }}</span><span class="num">{{ money($invoice->balance(), $invoice->currency) }}</span></div>
 
+                @if (! empty($autoPay))
+                    <div class="flash" data-tone="{{ $autoPay['failed'] ? 'warn' : 'info' }}" style="margin:0">
+                        <span>
+                            @if ($autoPay['failed'] && $autoPay['retries'])
+                                {{ __('We could not charge :method. We try again on :date, or you can pay now.', ['method' => $autoPay['method']->label(), 'date' => $autoPay['date']->translatedFormat('d M Y')]) }}
+                            @elseif ($autoPay['failed'])
+                                {{ __('We could not charge :method. Please pay this invoice here.', ['method' => $autoPay['method']->label()]) }}
+                            @elseif ($autoPay['wallet'])
+                                {{ __('This invoice is paid automatically from your wallet credit on :date. You can also pay it now.', ['date' => $autoPay['date']->translatedFormat('d M Y')]) }}
+                            @else
+                                {{ __('This invoice is paid automatically with :method on :date. You can also pay it now.', ['method' => $autoPay['method']->label(), 'date' => $autoPay['date']->translatedFormat('d M Y')]) }}
+                            @endif
+                            <a href="{{ route('client.account.payment-methods') }}">{{ __('Payment methods') }}</a>
+                        </span>
+                    </div>
+                @endif
+
                 @php $walletCredit = (int) auth('web')->user()->credit; @endphp
                 @if ($walletCredit > 0 && auth('web')->user()->currency === $invoice->currency && ! app(\App\Billing\Wallet::class)->isTopUp($invoice))
                     <form method="POST" action="{{ route('client.invoices.wallet', $invoice) }}" style="display:grid;gap:.35rem">
@@ -76,13 +93,13 @@
                 @if ($gateways->isEmpty())
                     <p class="muted" style="margin:0">{{ __('Online payment is not set up yet. Please contact us to pay this invoice.') }}</p>
                 @else
-                    <form method="POST" action="{{ route('client.invoices.pay', $invoice) }}" style="display:grid;gap:.8rem">
+                    <form method="POST" action="{{ route('client.invoices.pay', $invoice) }}" style="display:grid;gap:.8rem" x-data="{ gateway: @js($invoice->payment_method ?? $gateways->keys()->first()), savable: @js($savable ?? []) }">
                         @csrf
                         <div class="gateway-list" role="radiogroup" aria-label="{{ __('Payment method') }}">
                             @foreach ($gateways as $slug => $gateway)
                                 @php $quote = $gateway instanceof \App\Extensions\Gateways\Gateway ? $gateway->quote($invoice) : null; @endphp
                                 <label class="gateway-option">
-                                    <input type="radio" name="gateway" value="{{ $slug }}" @checked(($invoice->payment_method ?? $gateways->keys()->first()) === $slug) required>
+                                    <input type="radio" name="gateway" value="{{ $slug }}" x-model="gateway" @checked(($invoice->payment_method ?? $gateways->keys()->first()) === $slug) required>
                                     <x-icon :name="$slug === 'banktransfer' ? 'globe' : 'card'" style="width:18px;height:18px" />
                                     {{ $gateway->name() }}
                                     @if ($quote && $quote['currency'] !== $invoice->currency)
@@ -91,6 +108,12 @@
                                 </label>
                             @endforeach
                         </div>
+                        @if (! empty($savable))
+                            <label class="check" for="save-method" x-show="savable.includes(gateway)" x-cloak>
+                                <input id="save-method" type="checkbox" name="save_method" value="1" :disabled="! savable.includes(gateway)">
+                                <span>{{ __('Save it and pay my renewals automatically') }}<br><span class="help">{{ __('We email you before each payment. Turn it off or remove it any time in Payment methods.') }}</span></span>
+                            </label>
+                        @endif
                         <button class="btn btn-primary btn-block" type="submit">{{ __('Pay :amount', ['amount' => money($invoice->balance(), $invoice->currency)]) }}</button>
                     </form>
                 @endif

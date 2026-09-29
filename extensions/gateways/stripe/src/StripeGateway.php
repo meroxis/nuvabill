@@ -2,12 +2,17 @@
 
 namespace Nuvabill\Extensions\Stripe;
 
+use App\Contracts\SavesPaymentMethods;
+use App\Extensions\Gateways\ChargeResult;
 use App\Extensions\Gateways\Gateway;
 use App\Extensions\Gateways\PaymentResult;
 use App\Extensions\Gateways\PaymentStart;
 use App\Extensions\Gateways\RefundResult;
+use App\Extensions\Gateways\SavedMethod;
 use App\Extensions\Gateways\WebhookResult;
+use App\Models\Client;
 use App\Models\Invoice;
+use App\Models\PaymentMethod;
 use App\Models\Transaction;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Request;
@@ -16,8 +21,10 @@ use RuntimeException;
 
 /**
  * Stripe Checkout. The client pays on a page hosted by Stripe, so card numbers never reach this server.
+ * A client can keep the card at Stripe for automatic renewals; Nuvabill then charges it by its
+ * reference without the client.
  */
-class StripeGateway extends Gateway
+class StripeGateway extends Gateway implements SavesPaymentMethods
 {
     private const API = 'https://api.stripe.com/v1';
 
@@ -65,14 +72,25 @@ class StripeGateway extends Gateway
 
     public function startPayment(Invoice $invoice, string $returnUrl, string $cancelUrl): PaymentStart
     {
+        return $this->checkout($invoice, $returnUrl, $cancelUrl, false);
+    }
+
+    public function startSavingPayment(Invoice $invoice, string $returnUrl, string $cancelUrl): PaymentStart
+    {
+        return $this->checkout($invoice, $returnUrl, $cancelUrl, true);
+    }
+
+    private function checkout(Invoice $invoice, string $returnUrl, string $cancelUrl, bool $save): PaymentStart
+    {
         $separator = str_contains($returnUrl, '?') ? '&' : '?';
 
-        $response = $this->api()->asForm()->post(self::API.'/checkout/sessions', [
+        $customer = $save ? ['customer' => $this->customerFor($invoice->client)] : ['customer_email' => $invoice->client->email];
+
+        $response = $this->api()->asForm()->post(self::API.'/checkout/sessions', $customer + [
             'mode' => 'payment',
             'success_url' => $returnUrl.$separator.'session_id={CHECKOUT_SESSION_ID}',
             'cancel_url' => $cancelUrl,
             'client_reference_id' => (string) $invoice->id,
-            'customer_email' => $invoice->client->email,
             'line_items' => [[
                 'quantity' => 1,
                 'price_data' => [
@@ -81,8 +99,8 @@ class StripeGateway extends Gateway
                     'product_data' => ['name' => __('Invoice :number', ['number' => $invoice->displayNumber()])],
                 ],
             ]],
-            'metadata' => ['invoice_id' => (string) $invoice->id],
-            'payment_intent_data' => ['metadata' => ['invoice_id' => (string) $invoice->id]],
+            'metadata' => ['invoice_id' => (string) $invoice->id] + ($save ? ['save' => '1'] : []),
+            'payment_intent_data' => ['metadata' => ['invoice_id' => (string) $invoice->id]] + ($save ? ['setup_future_usage' => 'off_session'] : []),
         ]);
 
         if ($response->failed() || ! is_string($response->json('url'))) {
@@ -100,7 +118,7 @@ class StripeGateway extends Gateway
             return null;
         }
 
-        $response = $this->api()->get(self::API.'/checkout/sessions/'.$sessionId);
+        $response = $this->api()->get(self::API.'/checkout/sessions/'.$sessionId, ['expand' => ['payment_intent.payment_method']]);
 
         if ($response->failed()) {
             return null;
@@ -208,12 +226,166 @@ class StripeGateway extends Gateway
         $paymentIntent = $session['payment_intent'] ?? null;
         $reference = is_array($paymentIntent) ? ($paymentIntent['id'] ?? null) : $paymentIntent;
 
+        $saved = ($session['metadata']['save'] ?? null) === '1' ? $this->savedFromIntent($paymentIntent, $session['customer'] ?? null) : null;
+
         return new PaymentResult(
             invoiceId: $invoiceId,
             amount: (int) ($session['amount_total'] ?? 0),
             currency: strtoupper((string) ($session['currency'] ?? '')),
             reference: (string) ($reference ?: $session['id']),
-            meta: ['checkout_session' => $session['id'] ?? null],
+            meta: array_filter(['checkout_session' => $session['id'] ?? null, 'saved_method' => $saved?->toArray()]),
+        );
+    }
+
+    public function startSavingMethod(Client $client, string $returnUrl, string $cancelUrl): PaymentStart
+    {
+        $separator = str_contains($returnUrl, '?') ? '&' : '?';
+
+        $response = $this->api()->asForm()->post(self::API.'/checkout/sessions', [
+            'mode' => 'setup',
+            'customer' => $this->customerFor($client),
+            'payment_method_types' => ['card'],
+            'success_url' => $returnUrl.$separator.'session_id={CHECKOUT_SESSION_ID}',
+            'cancel_url' => $cancelUrl,
+            'metadata' => ['client_id' => (string) $client->id],
+        ]);
+
+        if ($response->failed() || ! is_string($response->json('url'))) {
+            throw new RuntimeException('Stripe could not start saving a card: '.($response->json('error.message') ?? $response->status()));
+        }
+
+        return PaymentStart::redirect($response->json('url'));
+    }
+
+    public function finishSavingMethod(Request $request, Client $client): ?SavedMethod
+    {
+        $sessionId = (string) $request->query('session_id', '');
+
+        if (! str_starts_with($sessionId, 'cs_')) {
+            return null;
+        }
+
+        $session = $this->api()->get(self::API.'/checkout/sessions/'.$sessionId, ['expand' => ['setup_intent.payment_method']]);
+        $intent = $session->json('setup_intent');
+
+        if ($session->failed() || (string) $session->json('metadata.client_id') !== (string) $client->id || ! is_array($intent) || ($intent['status'] ?? null) !== 'succeeded') {
+            return null;
+        }
+
+        return $this->savedFromPaymentMethod($intent['payment_method'] ?? null, $session->json('customer'));
+    }
+
+    public function chargeSaved(PaymentMethod $method, Invoice $invoice, string $attemptKey): ChargeResult
+    {
+        if (! $this->supportsCurrency($invoice->currency)) {
+            return ChargeResult::failed(__('This card cannot be charged in :currency.', ['currency' => $invoice->currency]));
+        }
+
+        $response = $this->api()->asForm()
+            // The same attempt sent twice (a timeout, then a retry) charges the card once.
+            ->withHeaders(['Idempotency-Key' => 'nuvabill-'.$attemptKey])
+            ->post(self::API.'/payment_intents', [
+                'amount' => $invoice->balance(),
+                'currency' => strtolower($invoice->currency),
+                'customer' => $method->customer_reference,
+                'payment_method' => $method->reference,
+                'off_session' => 'true',
+                'confirm' => 'true',
+                'description' => __('Invoice :number', ['number' => $invoice->displayNumber()]),
+                'metadata' => ['invoice_id' => (string) $invoice->id, 'autopay' => '1'],
+            ]);
+
+        $intent = $response->successful() ? $response->json() : (array) $response->json('error.payment_intent', []);
+
+        if ($response->successful() && ($intent['status'] ?? null) === 'succeeded') {
+            return ChargeResult::paid(new PaymentResult(
+                invoiceId: $invoice->id,
+                amount: (int) ($intent['amount_received'] ?? $intent['amount'] ?? 0),
+                currency: strtoupper((string) ($intent['currency'] ?? $invoice->currency)),
+                reference: (string) $intent['id'],
+                meta: ['autopay' => true],
+            ));
+        }
+
+        if (($intent['status'] ?? null) === 'requires_action' || $response->json('error.code') === 'authentication_required') {
+            return ChargeResult::needsClient(__('Your bank wants you to confirm this payment yourself.'));
+        }
+
+        if ($response->successful()) {
+            return ChargeResult::failed(__('The card could not be charged.'));
+        }
+
+        // Stripe's own message is written for card holders, for example "Your card has insufficient funds."
+        return ChargeResult::failed((string) ($response->json('error.message') ?: __('The card could not be charged.')));
+    }
+
+    public function forgetSaved(PaymentMethod $method): void
+    {
+        $this->api()->asForm()->post(self::API.'/payment_methods/'.rawurlencode($method->reference).'/detach');
+    }
+
+    /**
+     * The Stripe customer the client's cards are kept under: the one used before, or a new one.
+     */
+    private function customerFor(Client $client): string
+    {
+        $known = PaymentMethod::query()->where('client_id', $client->id)->where('gateway', $this->slug())->whereNotNull('customer_reference')->latest('id')->value('customer_reference');
+
+        if (is_string($known) && $known !== '') {
+            return $known;
+        }
+
+        $response = $this->api()->asForm()->post(self::API.'/customers', [
+            'email' => $client->email,
+            'name' => $client->name,
+            'metadata' => ['client_id' => (string) $client->id],
+        ]);
+
+        if ($response->failed() || ! is_string($response->json('id'))) {
+            throw new RuntimeException('Stripe could not create a customer: '.($response->json('error.message') ?? $response->status()));
+        }
+
+        return $response->json('id');
+    }
+
+    /**
+     * @param  array<string, mixed>|string|null  $paymentIntent
+     */
+    private function savedFromIntent(array|string|null $paymentIntent, ?string $customer): ?SavedMethod
+    {
+        if (is_string($paymentIntent) && str_starts_with($paymentIntent, 'pi_')) {
+            $paymentIntent = $this->api()->get(self::API.'/payment_intents/'.$paymentIntent, ['expand' => ['payment_method']])->json();
+        }
+
+        if (! is_array($paymentIntent)) {
+            return null;
+        }
+
+        return $this->savedFromPaymentMethod($paymentIntent['payment_method'] ?? null, $customer ?? ($paymentIntent['customer'] ?? null));
+    }
+
+    /**
+     * @param  array<string, mixed>|string|null  $method
+     */
+    private function savedFromPaymentMethod(array|string|null $method, mixed $customer): ?SavedMethod
+    {
+        if (is_string($method) && str_starts_with($method, 'pm_')) {
+            $method = $this->api()->get(self::API.'/payment_methods/'.$method)->json();
+        }
+
+        if (! is_array($method) || ($method['type'] ?? null) !== 'card' || ! is_string($method['id'] ?? null)) {
+            return null;
+        }
+
+        $card = (array) ($method['card'] ?? []);
+
+        return SavedMethod::card(
+            $method['id'],
+            is_string($customer) ? $customer : (is_string($method['customer'] ?? null) ? $method['customer'] : null),
+            isset($card['brand']) ? (string) $card['brand'] : null,
+            isset($card['last4']) ? (string) $card['last4'] : null,
+            isset($card['exp_month']) ? (int) $card['exp_month'] : null,
+            isset($card['exp_year']) ? (int) $card['exp_year'] : null,
         );
     }
 

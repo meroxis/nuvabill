@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.6.0](https://github.com/meroxis/nuvabill/releases/tag/v0.6.0) | 29 Sep 2026 | Automatic payments: clients save a card or PayPal account and renewals are charged by themselves, with retries and notices |
 | [0.5.6](https://github.com/meroxis/nuvabill/releases/tag/v0.5.6) | 29 Sep 2026 | The phone app's QR code fits its box |
 | [0.5.5](https://github.com/meroxis/nuvabill/releases/tag/v0.5.5) | 29 Sep 2026 | Admin phone app: install the admin area on your phone, a Today screen and push alerts for orders, payments and tickets |
 | [0.5.4](https://github.com/meroxis/nuvabill/releases/tag/v0.5.4) | 29 Sep 2026 | Ready for WhatsApp by QR code on every site: the store's Meta app address, hourly template checks |
@@ -39,6 +40,26 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.6.0
+
+- **Automatic payments.** Clients save a card (Stripe) or a PayPal account, and Nuvabill charges it for their renewal
+  invoices by itself. They save one with **Save it and pay my renewals automatically** when they pay an invoice (never
+  ticked for them), or in the new **Account → Payment methods** page, which also lists the next automatic payments and
+  has a switch to turn them off. Card numbers never reach your server.
+- **Wallet first, then the card.** Renewals are paid from wallet credit first; only the rest is charged. Clients get an
+  email 3 days before a charge (you choose the days), and a reminder 30 days before a saved card expires.
+- **Retries.** If a charge fails, the client gets an email, and a Telegram or WhatsApp message if they linked one, with a
+  **Pay now** button. Nuvabill tries again after 3 and 7 days, and sends no overdue reminder while a retry waits. After
+  the last try, your usual reminders and suspension rules take over. When the bank wants the client to confirm the
+  payment, the client pays on the invoice page instead.
+- **Settings → Automatic payments**: turn it on or off, when to charge, when to email, the retry days, and what will be
+  charged tomorrow.
+- **For staff:** an **Automatic payment** card on each unpaid invoice with **Charge now**, and the saved methods on the
+  client page.
+- PayPal: saving PayPal accounts needs **Save payment methods** turned on for your app at developer.paypal.com. Stripe
+  needs nothing new. See the [automatic payments guide](docs/automatic-payments.md).
+- The demo shows saved cards and a failed charge, but never charges anything.
 
 ## 0.5.6
 

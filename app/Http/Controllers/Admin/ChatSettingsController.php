@@ -46,7 +46,7 @@ class ChatSettingsController extends Controller
             'templates' => (array) setting('chat.whatsapp_templates'),
             'templateLanguages' => array_map(fn (string $locale): string => ChatMessages::META_LANGUAGES[$locale], ChatMessages::templateLanguages()),
             'events' => ChatMessages::EVENTS,
-            'matrix' => (array) setting('chat.events'),
+            'matrix' => (array) setting('chat.events') + Settings::DEFAULTS['chat.events'],
             'departments' => TicketDepartment::query()->orderBy('sort_order')->pluck('name', 'id')->all(),
             'links' => ChatLink::query()->selectRaw('channel, count(*) as total')->groupBy('channel')->pluck('total', 'channel')->all(),
             'qrReady' => ! $whatsApp->isConnected() && $setup->canConnectByQr(),

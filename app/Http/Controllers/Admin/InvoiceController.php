@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Billing\AutoPay;
 use App\Billing\InvoiceManager;
 use App\Billing\InvoicePdf;
 use App\Billing\PaymentRecorder;
 use App\Billing\RefundIssuer;
+use App\Billing\SavedMethods;
 use App\Enums\InvoiceStatus;
 use App\Extensions\ExtensionManager;
 use App\Extensions\ExtensionManifest;
@@ -43,7 +45,7 @@ class InvoiceController extends Controller
         return view('admin.invoices.index', ['invoices' => $invoices, 'filter' => $filter]);
     }
 
-    public function show(Invoice $invoice, ExtensionManager $extensions, RefundIssuer $refunds): View
+    public function show(Invoice $invoice, ExtensionManager $extensions, RefundIssuer $refunds, AutoPay $autoPay, SavedMethods $savedMethods): View
     {
         $invoice->load('items.service.product', 'client', 'transactions');
 
@@ -55,10 +57,19 @@ class InvoiceController extends Controller
         $canRefundThroughGateway = $invoice->status === InvoiceStatus::Paid
             && $invoice->transactions->where('type', 'payment')->contains(fn (Transaction $payment): bool => $refunds->canRefundThroughGateway($payment));
 
+        $savedMethod = $invoice->isPayable() ? $invoice->client?->defaultPaymentMethod() : null;
+
         return view('admin.invoices.show', [
             'invoice' => $invoice,
             'methods' => $methods,
             'canRefundThroughGateway' => $canRefundThroughGateway,
+            'autoPay' => $savedMethod === null ? null : [
+                'method' => $savedMethod,
+                'usable' => $savedMethods->gateway($savedMethod->gateway) !== null && ! $savedMethod->isExpired(),
+                'automatic' => $autoPay->methodFor($invoice) !== null,
+                'date' => $autoPay->chargeDate($invoice),
+                'retries' => $autoPay->willRetry($invoice),
+            ],
         ]);
     }
 

@@ -31,6 +31,13 @@ final class ChatMessages
             'button' => 'Pay now',
             'url' => 'invoice.url',
         ],
+        'invoice.autopay_failed' => [
+            'label' => 'Automatic payment failed',
+            'template' => 'nuvabill_autopay_failed',
+            'text' => 'Hello :name, we could not charge your saved card or PayPal account for invoice :number (:total). Please pay it here.',
+            'button' => 'Pay now',
+            'url' => 'invoice.url',
+        ],
         'invoice.payment_received' => [
             'label' => 'Payment received',
             'template' => 'nuvabill_payment_received',

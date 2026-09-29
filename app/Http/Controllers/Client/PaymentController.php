@@ -24,7 +24,7 @@ class PaymentController extends Controller
             return redirect()->route('client.invoices.show', $invoice)->with('status', __('This invoice is already paid.'));
         }
 
-        return $payments->start($invoice, (string) $request->validate(['gateway' => ['required', 'string']])['gateway']);
+        return $payments->start($invoice, (string) $request->validate(['gateway' => ['required', 'string']])['gateway'], $request->boolean('save_method'));
     }
 
     /**

@@ -9,6 +9,7 @@ use App\Billing\QuoteManager;
 use App\Billing\Wallet;
 use App\Enums\AutoSetup;
 use App\Enums\BillingCycle;
+use App\Enums\InvoiceStatus;
 use App\Enums\OrderStatus;
 use App\Enums\ProductType;
 use App\Enums\QuoteStatus;
@@ -24,6 +25,7 @@ use App\Models\Coupon;
 use App\Models\Domain;
 use App\Models\Invoice;
 use App\Models\Order;
+use App\Models\PaymentMethod;
 use App\Models\Product;
 use App\Models\ProductAddon;
 use App\Models\ProductGroup;
@@ -130,6 +132,7 @@ class DatabaseSeeder extends Seeder
                 'description' => $service->product->name.' - '.$service->domain.' (renewal)',
                 'amount' => $service->recurring_amount,
                 'period_start' => $service->next_due_date,
+                'billing_key' => 'service-'.$service->id.'-'.$service->next_due_date->toDateString(),
             ]);
         }
 
@@ -164,6 +167,39 @@ class DatabaseSeeder extends Seeder
         $this->billingExtras($demo, $clients, $admin);
         $this->activity($clients, $admin);
         $this->automations($clients);
+        $this->savedPaymentMethods($clients);
+    }
+
+    /**
+     * Saved cards and a PayPal account, one renewal charged automatically soon and one whose
+     * charge failed and waits for the next try, so automatic payments have something to show.
+     *
+     * @param  Collection<int, Client>  $clients
+     */
+    private function savedPaymentMethods(Collection $clients): void
+    {
+        $methods = [
+            0 => ['type' => PaymentMethod::TYPE_CARD, 'brand' => 'visa', 'last4' => '4242', 'expires_month' => 8, 'expires_year' => (int) now()->addYears(2)->format('Y')],
+            1 => ['gateway' => 'paypal', 'type' => PaymentMethod::TYPE_PAYPAL, 'email' => $clients[1]->email],
+            3 => ['type' => PaymentMethod::TYPE_CARD, 'brand' => 'mastercard', 'last4' => '5100', 'expires_month' => 1, 'expires_year' => (int) now()->addYear()->format('Y')],
+        ];
+
+        foreach ($methods as $index => $method) {
+            PaymentMethod::query()->create($method + [
+                'client_id' => $clients[$index]->id,
+                'gateway' => 'stripe',
+                'reference' => 'demo_'.$index,
+                'is_default' => true,
+                'last_used_at' => now()->subMonth(),
+            ]);
+        }
+
+        $clients[1]->invoices()->where('status', InvoiceStatus::Unpaid)->oldest('id')->first()?->update(['due_at' => today()->addDay()]);
+        $clients[3]->invoices()->where('status', InvoiceStatus::Unpaid)->oldest('id')->first()?->forceFill([
+            'autopay_attempts' => 2,
+            'autopay_retry_at' => today()->addDays(3),
+            'autopay_error' => 'Your card was declined.',
+        ])->save();
     }
 
     /**
@@ -297,6 +333,7 @@ class DatabaseSeeder extends Seeder
         $extensions = app(ExtensionManager::class);
         $extensions->saveSettings('banktransfer', ['instructions' => "Bank: Demo Bank\nIBAN: GB00 DEMO 0000 0000 0000\nReference: {invoice}"], true);
         $extensions->saveSettings('stripe', ['display_name' => 'Credit or debit card', 'secret_key' => 'sk_test_demo', 'webhook_secret' => 'whsec_demo'], true);
+        $extensions->saveSettings('paypal', ['mode' => 'sandbox', 'client_id' => 'demo', 'client_secret' => 'demo'], true);
     }
 
     /**

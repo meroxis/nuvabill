@@ -115,6 +115,16 @@
                 </section>
             @endif
 
+            @if (setting('billing.autopay'))
+                <section class="card" style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap">
+                    <div style="flex:1;min-width:200px">
+                        <h2 style="font-size:1.05rem">{{ __('Payment methods') }}</h2>
+                        <p class="muted" style="margin:.3rem 0 0;font-size:.88rem">{{ __('Save a card or PayPal to pay your renewals automatically.') }}</p>
+                    </div>
+                    <a class="btn" href="{{ route('client.account.payment-methods') }}"><x-icon name="card" />{{ __('Payment methods') }}</a>
+                </section>
+            @endif
+
             <section class="card" id="passkeys" style="display:grid;gap:.9rem;scroll-margin-top:90px">
                 <div style="display:flex;justify-content:space-between;gap:10px;align-items:center">
                     <h2 style="font-size:1.05rem">{{ __('Passkeys') }}</h2>

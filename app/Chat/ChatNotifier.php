@@ -6,6 +6,7 @@ use App\Jobs\SendChatMessage;
 use App\Models\ChatLink;
 use App\Models\Client;
 use App\Support\Demo;
+use App\Support\Settings;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -26,7 +27,8 @@ class ChatNotifier
             return;
         }
 
-        $events = (array) setting('chat.events');
+        // Messages added in a later version are on by default until the owner changes them.
+        $events = (array) setting('chat.events') + Settings::DEFAULTS['chat.events'];
         $channels = array_filter([
             ChatLink::TELEGRAM => ($events[$event][ChatLink::TELEGRAM] ?? false) && $this->telegram->isConnected(),
             ChatLink::WHATSAPP => ($events[$event][ChatLink::WHATSAPP] ?? false) && $this->whatsApp->isConnected(),

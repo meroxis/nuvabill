@@ -17,11 +17,16 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.5.3 | A clear note while connecting WhatsApp by QR code is not available yet |
 | 0.5.4 | Ready for WhatsApp by QR code on every site: the store's Meta app address, hourly template checks |
 | 0.5.5 | Admin phone app: install the admin area on your phone, a Today screen, push alerts for orders, payments and tickets |
+| 0.6.0 | Automatic payments: clients save a card or PayPal account, renewals are charged by themselves, wallet first, retries and notices |
 
 ## Next
 
 | Version | Focus |
 |---|---|
+| 0.6.1 | **Client upgrades and downgrades** with prorated prices |
+| 0.6.2 | **Emails and PDF invoices in the client's language** |
+| 0.6.3 | **Knowledge base, announcements and a network status page** |
+| 0.6.4 | **Credit notes, CSV exports** for accountants, and **privacy tools** (export or erase a client's data) |
 | Later | **ClientExec importer**, once we have tested it against a real ClientExec database |
 
 ## The path to 1.0
@@ -31,7 +36,6 @@ payments for years. These are the gaps we still see.
 
 ### Billing
 
-- **Automatic card payments**: save a card or PayPal billing agreement and charge renewals automatically.
 - **Client self-service upgrades and downgrades** with prorated prices.
 - **Credit notes** and accounting exports (CSV, and later Xero or QuickBooks).
 - **Emails and PDF invoices in the client's language**; today they are in English.

@@ -32,8 +32,9 @@ More can be added as extensions or installed from the Marketplace.
 
 ## Does it charge saved cards automatically?
 
-Not yet. Clients pay each invoice on the gateway's checkout page, or from their Nuvabill wallet (renewals and orders use
-the wallet balance first). Automatic card payments are on the [roadmap](../ROADMAP.md).
+Yes, since 0.6.0. Clients save a card (Stripe) or a PayPal account when they pay, or in **Account → Payment methods**,
+and renewal invoices are charged by themselves, after using any wallet credit. Failed charges are tried again after 3
+and 7 days. Card numbers never touch your server. See [Automatic payments](automatic-payments.md).
 
 ## Which languages does it speak?
 
