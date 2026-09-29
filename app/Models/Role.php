@@ -33,6 +33,7 @@ class Role extends Model
         ],
         'Support' => [
             'support.manage' => 'Answer tickets',
+            'ai.use' => 'Use AI help for ticket replies and product texts',
         ],
         'Setup' => [
             'products.manage' => 'Manage products and servers',

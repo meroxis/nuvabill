@@ -25,7 +25,7 @@ class DefaultDataSeeder extends Seeder
         $roles = [
             'Owner' => ['*'],
             'Billing' => ['clients.view', 'clients.manage', 'orders.manage', 'services.manage', 'domains.manage', 'billing.manage', 'coupons.manage', 'affiliates.manage'],
-            'Support' => ['clients.view', 'support.manage'],
+            'Support' => ['clients.view', 'support.manage', 'ai.use'],
         ];
 
         foreach ($roles as $name => $permissions) {

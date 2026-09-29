@@ -6,6 +6,7 @@
         <a class="chip" href="{{ route('admin.settings.taxes.index') }}" @if (request()->routeIs('admin.settings.taxes.*')) aria-current="true" @endif>{{ __('Taxes') }}</a>
         <a class="chip" href="{{ route('admin.settings.tlds.index') }}" @if (request()->routeIs('admin.settings.tlds.*')) aria-current="true" @endif>{{ __('Domains') }}</a>
         <a class="chip" href="{{ route('admin.settings.social.edit') }}" @if (request()->routeIs('admin.settings.social.*')) aria-current="true" @endif>{{ __('Social login') }}</a>
+        <a class="chip" href="{{ route('admin.settings.ai.edit') }}" @if (request()->routeIs('admin.settings.ai.*')) aria-current="true" @endif>{{ __('AI') }}</a>
         <a class="chip" href="{{ route('admin.settings.seo.edit') }}" @if (request()->routeIs('admin.settings.seo.*')) aria-current="true" @endif>{{ __('Search engines') }}</a>
         <a class="chip" href="{{ route('admin.settings.security.edit') }}" @if (request()->routeIs('admin.settings.security.*')) aria-current="true" @endif>{{ __('Security') }}</a>
         <a class="chip" href="{{ route('admin.settings.email-templates.index') }}" @if (request()->routeIs('admin.settings.email-templates.*')) aria-current="true" @endif>{{ __('Email templates') }}</a>

@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Ai\TicketAssistant;
 use App\Automations\Registry;
 use App\Billing\Affiliates;
 use App\Domains\Rdap;
@@ -14,6 +15,7 @@ use App\Events\ServiceTerminated;
 use App\Events\TicketOpened;
 use App\Events\TicketReplied;
 use App\Extensions\ExtensionManager;
+use App\Jobs\TranslateTicketReply;
 use App\Models\ActivityLog;
 use App\Models\Admin;
 use App\Models\Automation;
@@ -26,6 +28,7 @@ use App\Models\Quote;
 use App\Models\Server;
 use App\Models\Service;
 use App\Models\Ticket;
+use App\Models\TicketReply;
 use App\Models\Transaction;
 use App\Seo\Seo;
 use App\Support\Demo;
@@ -140,6 +143,15 @@ class AppServiceProvider extends ServiceProvider
         Event::listen(TicketReplied::class, fn (TicketReplied $event) => $event->reply->author_type === 'client'
             ? $fire('ticket.client_reply', $event->ticket, 'r'.$event->reply->id)
             : null);
+
+        // AI help: translate new client messages for staff in the background.
+        $translate = fn (TicketReply $reply) => rescue(function () use ($reply): void {
+            if ($this->app->make(TicketAssistant::class)->mightNeedTranslation($reply)) {
+                TranslateTicketReply::dispatch($reply->id)->afterCommit();
+            }
+        });
+        Event::listen(TicketOpened::class, fn (TicketOpened $event) => $translate($event->message));
+        Event::listen(TicketReplied::class, fn (TicketReplied $event) => $translate($event->reply));
     }
 
     /**

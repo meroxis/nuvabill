@@ -33,6 +33,7 @@ takes one import.
 
 - **Automation**: cPanel & WHM, DirectAdmin, Plesk, Proxmox VE and Virtualizor accounts created on payment, suspended when overdue, unsuspended when paid, plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules on the Marketplace
 - **Automations**: "when this happens, do that", like late fees, welcome emails, quote follow-ups and VIP tickets first, with 9 templates and a log of every run
+- **AI help** with your own Claude key: ticket reply drafts, two-way ticket translation, summaries and product texts; staff always send, and private details never reach the AI
 - **Billing**: invoices with PDFs, renewals, reminders, taxes (VAT, GST, sales tax), coupons, product add-ons, quotes, a client wallet and affiliates
 - **Payments**: Stripe, PayPal, bank transfer and Iraqi payments (FIB, FastPay and Wayl), with refunds and exchange rates
 - **Domains**: search, register, transfer and renew at ResellerClub, Namecheap, Enom or OpenSRS
@@ -49,7 +50,7 @@ takes one import.
 curl -fsSL https://nuvabill.com/install.sh | bash
 ```
 
-> **Status: v0.5.** New: **Automations**, "when this happens, do that", with 9 ready-made templates. Also taxes, a client wallet, quotes, affiliates, a REST API, passkeys, and 26 languages with right-to-left pages for Arabic, Hebrew and Kurdish. See the [roadmap](#roadmap).
+> **Status: v0.5.** New: **AI help** with your own Claude key (reply drafts, tickets in two languages, summaries) and **Automations**, "when this happens, do that", with 9 ready-made templates. Also taxes, a client wallet, quotes, affiliates, a REST API, passkeys, and 26 languages with right-to-left pages for Arabic, Hebrew and Kurdish. See the [roadmap](#roadmap).
 >
 > **Try it:** the [live demo](https://demo.nuvabill.com/admin/login) has sample clients, invoices and tickets. One click signs you in, and the data resets every hour.
 
@@ -260,6 +261,13 @@ with power controls in the client area. Install one with a click and it shows up
 Departments, priorities, assign a ticket to a staff member, email notifications for clients and staff, and a clean
 conversation view.
 
+**AI help** (with your own Anthropic key): **Write a draft** gives you a reply from the whole ticket and the client's
+account, which you make shorter, friendlier or more detailed, and always check and send yourself. Messages in other
+languages are translated for your team, and your reply can go out in the client's language after you check the
+translation. There is an AI summary with a suggested department and priority, and **Write with AI** on product pages.
+Passwords, card details, email addresses and phone numbers never reach the AI, and a monthly limit keeps spending in
+check. See the [AI help guide](docs/ai-help.md).
+
 ![Support ticket](.github/screenshots/support.png)
 
 ### A dashboard that tells you what matters
@@ -376,8 +384,8 @@ Copyright © 2026 RapidNet Ltd. Nuvabill is a product of RapidNet Ltd.
 | Version | Focus |
 |---|---|
 | v0.1–v0.4 | Done: billing, cPanel/DirectAdmin/Plesk/Proxmox/Virtualizor (plus free CyberPanel, HestiaCP, VirtFusion and SolusVM modules), domains, Iraqi payments, importers for **WHMCS, Blesta, FOSSBilling and Paymenter** with a dry run, marketplace, taxes, wallet, affiliates, REST API, passkeys, 26 languages, search engine tools, Site health ([changelog](CHANGELOG.md)) |
-| v0.5.0 | Done: **Automations** with 9 templates, client tags and ticket assignment |
-| **next** | **v0.5.1 AI help** for ticket replies, then Telegram and WhatsApp, and an admin phone app |
+| v0.5.0–v0.5.1 | Done: **Automations** with 9 templates, client tags and ticket assignment; **AI help** with your own Claude key |
+| **next** | **v0.5.2 Telegram and WhatsApp**, then an admin phone app |
 | later | A ClientExec importer |
 | v1.0 | Automatic card payments, client upgrades, knowledge base and status page, security audit, and more |
 

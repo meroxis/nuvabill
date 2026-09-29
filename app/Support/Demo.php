@@ -41,6 +41,8 @@ class Demo
         'admin.settings.license.update',
         'admin.settings.license.check',
         'admin.settings.seo.update',
+        'admin.settings.ai.update',
+        'admin.settings.ai.test',
         'admin.automations.store',
         'admin.automations.update',
         'admin.automations.destroy',

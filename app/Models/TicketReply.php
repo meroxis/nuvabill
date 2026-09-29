@@ -8,7 +8,11 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class TicketReply extends Model
 {
-    protected $fillable = ['ticket_id', 'author_type', 'author_id', 'message', 'ip_address'];
+    /**
+     * "language" is the language the message is in, "translation" a client message in the staff
+     * language, and "original_message" what staff wrote when the reply was sent translated.
+     */
+    protected $fillable = ['ticket_id', 'author_type', 'author_id', 'message', 'ip_address', 'language', 'translation', 'original_message'];
 
     /**
      * @return BelongsTo<Ticket, $this>

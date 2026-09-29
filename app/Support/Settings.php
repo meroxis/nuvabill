@@ -138,6 +138,17 @@ class Settings
         'automations.scan_hour' => 9,
         'automations.last_scan' => null,
 
+        // AI help: Claude with the owner's own Anthropic key. The limit is in US cents per month.
+        'ai.key' => '',
+        'ai.model' => 'claude-haiku-4-5',
+        'ai.monthly_limit' => 2000,
+        'ai.staff_language' => 'en',
+        'ai.drafts' => true,
+        'ai.translate' => true,
+        'ai.summaries' => true,
+        'ai.descriptions' => true,
+        'ai.warned_month' => null,
+
         // Search engines: what the store tells Google, Bing and the apps that show link previews.
         'seo.visible' => true,
         'seo.title_pattern' => '{page} · {company}',
@@ -160,7 +171,7 @@ class Settings
      *
      * @var list<string>
      */
-    public const SECRET_KEYS = ['license.white_label_key', 'mail.password', 'import.whmcs', 'import.connection', 'import.password_keys', 'social.google', 'social.github', 'social.facebook', 'security.captcha_secret'];
+    public const SECRET_KEYS = ['license.white_label_key', 'mail.password', 'import.whmcs', 'import.connection', 'import.password_keys', 'social.google', 'social.github', 'social.facebook', 'security.captcha_secret', 'ai.key'];
 
     /**
      * @var array<string, mixed>|null

@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.5.1](https://github.com/meroxis/nuvabill/releases/tag/v0.5.1) | 29 Sep 2026 | AI help with your own Claude key: reply drafts, two-way ticket translation, summaries, product texts |
 | [0.5.0](https://github.com/meroxis/nuvabill/releases/tag/v0.5.0) | 29 Sep 2026 | Automations: "when this happens, do that", with 9 ready-made templates; client tags; ticket assignment |
 | [0.4.11](https://github.com/meroxis/nuvabill/releases/tag/v0.4.11) | 28 Sep 2026 | Search engine tools: sitemap, titles and descriptions, prices on Google, link previews |
 | [0.4.10](https://github.com/meroxis/nuvabill/releases/tag/v0.4.10) | 28 Sep 2026 | Free CyberPanel, HestiaCP, VirtFusion and SolusVM modules; remove extensions and themes added by hand |
@@ -33,6 +34,27 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.5.1
+
+- **AI help, with your own Claude key.** Add an Anthropic API key in the new **Settings → AI** and pick a model:
+  Claude Haiku 4.5 (fast and low cost), Claude Sonnet 5.5 (best answers) or Claude Opus 5.5 (most capable). You pay
+  Anthropic for what you use; Nuvabill adds nothing.
+- **Reply drafts on the ticket page.** Press **Write a draft** and Claude writes a reply from the whole ticket and the
+  client's service and invoices. Make it **shorter**, **friendlier** or **more detailed**, or tell it what to say under
+  **Ask AI**. Staff always check and send the reply; AI never replies by itself.
+- **Tickets in two languages.** A client's message in another language is translated for your team, with **Show
+  the original**. Your reply can go out in the client's language: the first press shows the translation to check, the
+  second sends exactly that. The ticket keeps both versions.
+- **AI summary** of a ticket with a suggested department and priority.
+- **Write with AI** on product pages fills in the store description and the title and description for search results.
+- **Private details stay on your server.** Email addresses, phone numbers, card and bank numbers, passwords and keys
+  are taken out before anything goes to the AI. When a reply that contains them is translated, they are put back
+  after.
+- **A monthly spending limit** (default $20). When it is reached, AI help pauses until the next month, and your company
+  email gets a note at 80%. Settings → AI shows what AI help cost this month.
+- A new staff right, **Use AI help for ticket replies and product texts**, which roles that answer tickets or edit
+  products get. The demo shows sample answers, so you can try every button there.
 
 ## 0.5.0
 

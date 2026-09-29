@@ -72,6 +72,13 @@ Yes. **Automations** do "when this happens, do that": add a late fee after 7 day
 remind clients before a domain expires, give VIP tickets high priority, and more. Start from one of nine templates,
 try it on a real invoice first, and see every run in the log. See the [automations guide](automations.md).
 
+## Does it have AI?
+
+Yes, with your own Anthropic key: Claude drafts ticket replies, translates tickets both ways, summarizes tickets and
+writes product texts. Staff always check and send; AI never answers by itself. Passwords, card details, email addresses
+and phone numbers are taken out before anything goes to the AI, and a monthly limit keeps spending in check. See the
+[AI help guide](ai-help.md).
+
 ## Can the nightly job bill a client twice?
 
 No. Only one automation run works at a time, and each renewal period can only be invoiced once: the database itself

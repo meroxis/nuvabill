@@ -113,9 +113,18 @@ class TicketDesk
         return $reply;
     }
 
-    public function replyAsStaff(Ticket $ticket, Admin $admin, string $message, TicketStatus $status = TicketStatus::Answered): TicketReply
+    /**
+     * When the reply was translated for the client, $message is what the client gets and
+     * $original what the staff member wrote.
+     */
+    public function replyAsStaff(Ticket $ticket, Admin $admin, string $message, TicketStatus $status = TicketStatus::Answered, ?string $original = null, ?string $language = null): TicketReply
     {
         $reply = $this->addReply($ticket, $admin, $message);
+
+        if ($original !== null) {
+            $reply->forceFill(['original_message' => $original, 'language' => $language])->save();
+        }
+
         $ticket->update([
             'status' => $status,
             'last_reply_at' => now(),

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Ai\Claude;
 use App\Enums\AutoSetup;
 use App\Enums\BillingCycle;
 use App\Enums\ProductType;
@@ -95,6 +96,7 @@ class ProductController extends Controller
             'moduleFields' => $modules->keys()->mapWithKeys(fn (string $slug): array => [$slug => $extensions->serverModule($slug)->productFields()])->all(),
             'servers' => Server::query()->orderBy('name')->get(['id', 'name', 'module']),
             'currency' => setting('billing.currency'),
+            'aiWriter' => app(Claude::class)->isOn('descriptions') && auth('admin')->user()->hasPermission('ai.use'),
             'seo' => [
                 'title' => $product->exists ? SeoText::withPattern($product->name) : '',
                 'description' => $product->exists ? SeoText::suggestProductDescription($product) : '',

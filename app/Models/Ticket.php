@@ -34,6 +34,7 @@ class Ticket extends Model
             'status' => TicketStatus::class,
             'priority' => TicketPriority::class,
             'last_reply_at' => 'datetime',
+            'ai_summary' => 'array',
             'closed_at' => 'datetime',
         ];
     }
@@ -77,7 +78,7 @@ class Ticket extends Model
      */
     public function replies(): HasMany
     {
-        return $this->hasMany(TicketReply::class)->orderBy('created_at')->orderBy('id');
+        return $this->hasMany(TicketReply::class)->orderBy('created_at')->orderBy('id')->chaperone('ticket');
     }
 
     public function getRouteKeyName(): string

@@ -23,7 +23,7 @@
     defaultDescription: @js($defaultDescription),
     shown(value, fallback) { return value.trim() !== '' ? value.trim() : fallback },
     meter(value, fallback, limit) { const length = this.shown(value, fallback).length; return { width: Math.min(100, Math.round(length / limit * 100)) + '%', state: length > limit ? 'long' : 'good', length } },
-}">
+}" @ai-search-text.window="title = $event.detail.title; description = $event.detail.description">
     <div style="display:grid;gap:1rem;align-content:start">
         <div class="field">
             <label for="f-{{ $titleName }}">{{ __('Title in search results') }}</label>

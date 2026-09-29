@@ -17,6 +17,22 @@
                 <x-select name="type" :label="__('Type')" :options="collect(\App\Enums\ProductType::cases())->mapWithKeys(fn ($t) => [$t->value => $t->label()])->all()" :value="$product->type" required />
                 <x-input name="slug" :label="__('Web address')" :value="$product->slug" :help="__('Leave empty to create it from the name.')" />
                 <x-textarea name="description" :label="__('Description')" :value="$product->description" rows="4" class="span-2" :help="__('One feature per line shows as a list in the store.')" />
+                @if ($aiWriter)
+                    <div class="span-2" style="display:grid;gap:6px" x-data="productAi(@js([
+                        'url' => route('admin.products.ai.write'),
+                        'product' => $product->id,
+                        'failed' => __('AI help could not answer. Please try again.'),
+                        'done' => __('Done: the description and the search texts below are filled in. Check them, then save the product.'),
+                    ]))">
+                        <div class="ai-tools">
+                            <button type="button" class="btn btn-sm" @click="write" :disabled="busy"><x-icon name="sparkles" /><span x-text="busy ? @js(__('Writing…')) : @js(__('Write with AI'))"></span></button>
+                            <input class="input" style="flex:1 1 260px;min-width:0" type="text" maxlength="500" x-model="instruction"
+                                aria-label="{{ __('What the texts should stress') }}" placeholder="{{ __('Optional: what to stress, for example “for small online shops”') }}">
+                        </div>
+                        <p class="error" style="margin:0" x-show="error" x-text="error" x-cloak role="alert"></p>
+                        <p class="help" style="margin:0" x-show="notice" x-text="notice" x-cloak role="status"></p>
+                    </div>
+                @endif
                 <x-checkbox name="is_visible" :label="__('Show in the store')" :checked="$product->is_visible" />
                 <x-checkbox name="requires_domain" :label="__('Ask the client for a domain name')" :checked="$product->requires_domain" />
                 <x-checkbox name="taxable" :label="__('Charge tax on this product')" :help="__('Only when taxes are on in Settings → Taxes.')" :checked="$product->taxable ?? true" />

@@ -849,6 +849,105 @@
         }
     }
 
+    /* AI help */
+    .ticket-layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 360px;
+        gap: 18px;
+        align-items: start;
+    }
+
+    @media (max-width: 1100px) {
+        .ticket-layout {
+            grid-template-columns: minmax(0, 1fr);
+        }
+    }
+
+    .ai-label {
+        margin: 0;
+        font-size: 0.75rem;
+        font-weight: 800;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--nb-muted);
+    }
+
+    .ai-tools {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .ai-inline {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+        margin-top: 6px;
+        font-size: 0.82rem;
+    }
+
+    .ai-original {
+        margin-top: 8px;
+        font-size: 0.85rem;
+    }
+
+    .ai-original summary {
+        cursor: pointer;
+        color: var(--nb-accent);
+        font-weight: 600;
+    }
+
+    .ai-original .message-body {
+        margin-top: 6px;
+        padding: 8px 10px;
+        border-radius: 6px;
+        background: var(--nb-surface-2);
+    }
+
+    .ai-translation {
+        display: grid;
+        gap: 6px;
+        padding: 12px 14px;
+        border-radius: 6px;
+        background: var(--nb-surface-2);
+    }
+
+    .ai-fact {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 7px 0;
+        border-top: 1px solid var(--nb-line);
+        font-size: 0.88rem;
+    }
+
+    .ai-fact span:last-child {
+        text-align: end;
+        overflow-wrap: anywhere;
+    }
+
+    .ai-model {
+        display: flex;
+        gap: 12px;
+        align-items: flex-start;
+        padding: 12px 14px;
+        border: 1px solid var(--nb-line);
+        border-radius: 6px;
+        cursor: pointer;
+    }
+
+    .ai-model:has(input:checked) {
+        border-color: var(--nb-accent);
+        box-shadow: inset 0 0 0 1px var(--nb-accent);
+    }
+
+    .ai-model input {
+        margin-top: 3px;
+        accent-color: var(--nb-accent);
+    }
+
     /* Automations */
     .automation-layout {
         display: grid;

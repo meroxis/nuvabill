@@ -3,6 +3,7 @@
 use App\Extensions\ExtensionManager;
 use App\Http\Controllers\Admin\ActivityController;
 use App\Http\Controllers\Admin\AffiliateController;
+use App\Http\Controllers\Admin\AiSettingsController;
 use App\Http\Controllers\Admin\ApiKeyController;
 use App\Http\Controllers\Admin\Auth\LoginController;
 use App\Http\Controllers\Admin\Auth\PasskeyLoginController;
@@ -25,6 +26,7 @@ use App\Http\Controllers\Admin\MarketplaceController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\PasskeyController;
 use App\Http\Controllers\Admin\ProductAddonController;
+use App\Http\Controllers\Admin\ProductAiController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\Admin\ProductGroupController;
 use App\Http\Controllers\Admin\ProfileController;
@@ -39,6 +41,7 @@ use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\SocialLoginController;
 use App\Http\Controllers\Admin\StaffController;
 use App\Http\Controllers\Admin\TaxController;
+use App\Http\Controllers\Admin\TicketAiController;
 use App\Http\Controllers\Admin\TicketController;
 use App\Http\Controllers\Admin\TldPriceController;
 use App\Http\Controllers\Admin\UpdateController;
@@ -167,9 +170,17 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::post('tickets/{ticket}/reply', [TicketController::class, 'reply'])->name('tickets.reply');
         Route::post('tickets/{ticket}/close', [TicketController::class, 'close'])->name('tickets.close');
         Route::post('tickets/{ticket}/assign', [TicketController::class, 'assign'])->name('tickets.assign');
+
+        Route::middleware(['admin.can:ai.use', 'throttle:30,1'])->prefix('tickets/{ticket}/ai')->name('tickets.ai.')->group(function (): void {
+            Route::post('summary', [TicketAiController::class, 'summary'])->name('summary');
+            Route::post('draft', [TicketAiController::class, 'draft'])->name('draft');
+            Route::post('translate', [TicketAiController::class, 'translate'])->name('translate');
+            Route::post('messages/{reply}/translate', [TicketAiController::class, 'translateMessage'])->scopeBindings()->name('message');
+        });
     });
 
     Route::middleware('admin.can:products.manage')->group(function (): void {
+        Route::post('products/ai/write', [ProductAiController::class, 'write'])->middleware(['admin.can:ai.use', 'throttle:30,1'])->name('products.ai.write');
         Route::resource('products', ProductController::class)->except('show');
         Route::resource('product-addons', ProductAddonController::class)->except('show')->parameters(['product-addons' => 'productAddon']);
         Route::resource('product-groups', ProductGroupController::class)->except(['index', 'show'])->parameters(['product-groups' => 'productGroup']);
@@ -189,6 +200,10 @@ Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(functi
         Route::get('license', [WhiteLabelController::class, 'edit'])->name('license.edit');
         Route::put('license', [WhiteLabelController::class, 'update'])->middleware('throttle:10,1')->name('license.update');
         Route::post('license/check', [WhiteLabelController::class, 'check'])->middleware('throttle:10,1')->name('license.check');
+
+        Route::get('ai', [AiSettingsController::class, 'edit'])->name('ai.edit');
+        Route::put('ai', [AiSettingsController::class, 'update'])->name('ai.update');
+        Route::post('ai/test', [AiSettingsController::class, 'test'])->middleware('throttle:10,1')->name('ai.test');
 
         Route::get('search-engines', [SeoSettingsController::class, 'edit'])->name('seo.edit');
         Route::put('search-engines', [SeoSettingsController::class, 'update'])->name('seo.update');

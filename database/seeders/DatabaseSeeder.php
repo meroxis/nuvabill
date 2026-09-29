@@ -155,7 +155,7 @@ class DatabaseSeeder extends Seeder
             ]));
 
         $this->domains($clients);
-        $this->tickets($clients->slice(1, 3)->values(), $admin);
+        $this->tickets($clients->slice(1, 4)->values(), $admin);
 
         Invoice::query()->orderBy('id')->each(fn (Invoice $invoice) => $invoice->forceFill(['number' => 'INV-'.str_pad((string) $invoice->id, 4, '0', STR_PAD_LEFT)])->save());
 
@@ -522,6 +522,11 @@ class DatabaseSeeder extends Seeder
                 ['client', 'I think I paid my last invoice twice, by card and by PayPal. Can you check?'],
                 ['admin', "You are right, it was paid twice. I refunded the PayPal payment. You will see it back in 3 to 5 days.\n\nSorry for the trouble!"],
             ]],
+            // Written in Arabic and translated for staff by AI help, to show translation in the demo.
+            ['Technical support', 'Error after moving my website', TicketStatus::Open, [
+                ['client', 'بعد نقل موقعي إلى الاستضافة الجديدة تظهر رسالة Error establishing a database connection. رفعت الملفات وقاعدة البيانات أمس. هل يمكنكم المساعدة؟',
+                    'After moving my website to the new hosting, it shows “Error establishing a database connection”. I uploaded the files and the database yesterday. Can you help?', 'ar'],
+            ]],
         ];
 
         foreach ($threads as $index => [$department, $subject, $status, $messages]) {
@@ -534,11 +539,14 @@ class DatabaseSeeder extends Seeder
                 'last_reply_at' => now()->subMinutes(25 * ($index + 1)),
             ]);
 
-            foreach ($messages as $position => [$author, $message]) {
+            foreach ($messages as $position => $parts) {
+                [$author, $message] = $parts;
                 $reply = $ticket->replies()->create([
                     'author_type' => $author,
                     'author_id' => $author === 'admin' ? $admin->id : $client->id,
                     'message' => $message,
+                    'translation' => $parts[2] ?? null,
+                    'language' => $parts[3] ?? null,
                 ]);
                 $reply->forceFill(['created_at' => now()->subMinutes(25 * ($index + 1) + 60 * (count($messages) - $position))])->save();
             }
