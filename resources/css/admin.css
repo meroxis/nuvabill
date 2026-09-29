@@ -1686,6 +1686,20 @@
         }
     }
 
+    /* Profile → Phone app: a device in the list of phones that get alerts. */
+    .device-name {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .device-name svg {
+        width: 16px;
+        height: 16px;
+        flex: none;
+        color: var(--nb-muted);
+    }
+
     .tab-icon {
         position: relative;
         display: inline-flex;

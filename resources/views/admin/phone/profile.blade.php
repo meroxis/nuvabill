@@ -87,7 +87,7 @@
             <tbody>
             @foreach ($pushDevices as $device)
                 <tr>
-                    <td><x-icon name="phone" /> {{ $device->device ?? __('Device') }}</td>
+                    <td><span class="device-name"><x-icon name="phone" />{{ $device->device ?? __('Device') }}</span></td>
                     <td>{{ $device->created_at->diffForHumans() }}</td>
                     <td>{{ $device->last_sent_at?->diffForHumans() ?? __('Never') }}</td>
                     <td class="end">
