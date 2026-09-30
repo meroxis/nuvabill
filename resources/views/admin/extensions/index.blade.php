@@ -39,6 +39,39 @@
         @endforeach
     </nav>
 
+    @if ($paymentOrder->count() > 1)
+        <section class="card card-flush" style="margin-top:14px" aria-labelledby="payment-order">
+            <div class="card-header">
+                <h2 id="payment-order">{{ __('Payment order') }}</h2>
+                <span class="muted" style="font-size:.85rem">{{ __('Clients see the payment methods in this order. The first one is chosen for them.') }}</span>
+            </div>
+            <div class="table-wrap"><table class="table">
+                <tbody>
+                @foreach ($paymentOrder as $slug => $name)
+                    <tr>
+                        <td style="width:3rem" class="faint mono">{{ $loop->iteration }}</td>
+                        <td><strong style="font-weight:600">{{ $name }}</strong></td>
+                        <td class="end">
+                            <div style="display:inline-flex;gap:6px">
+                                <form method="POST" action="{{ route('admin.extensions.move', $slug) }}">
+                                    @csrf
+                                    <input type="hidden" name="direction" value="up">
+                                    <button class="btn btn-sm" type="submit" @disabled($loop->first) aria-label="{{ __('Move :name up', ['name' => $name]) }}"><x-icon name="chevron-up" />{{ __('Up') }}</button>
+                                </form>
+                                <form method="POST" action="{{ route('admin.extensions.move', $slug) }}">
+                                    @csrf
+                                    <input type="hidden" name="direction" value="down">
+                                    <button class="btn btn-sm" type="submit" @disabled($loop->last) aria-label="{{ __('Move :name down', ['name' => $name]) }}"><x-icon name="chevron-down" />{{ __('Down') }}</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                @endforeach
+                </tbody>
+            </table></div>
+        </section>
+    @endif
+
     <section class="card card-flush" style="margin-top:14px">
         @if ($items->isEmpty())
             <div class="empty">

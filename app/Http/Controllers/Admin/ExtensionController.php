@@ -41,7 +41,7 @@ class ExtensionController extends Controller
         ExtensionManifest::TYPE_ADDON => 'marketplace.manage',
     ];
 
-    public function index(Request $request, ExtensionOverview $overview): View
+    public function index(Request $request, ExtensionOverview $overview, ExtensionManager $extensions): View
     {
         $admin = $this->admin($request);
         $tab = array_key_exists((string) $request->query('tab'), self::TABS) ? (string) $request->query('tab') : 'all';
@@ -67,6 +67,10 @@ class ExtensionController extends Controller
                 'manual' => $all->where('origin', ExtensionOverview::ORIGIN_MANUAL)->count(),
             ],
             'may' => collect(self::PERMISSIONS)->map(fn (string $permission): bool => $admin->hasPermission($permission))->all(),
+            // Switched-on gateways in the order clients see them, for staff who may change it.
+            'paymentOrder' => $tab === 'gateways' && $search === '' && $admin->hasPermission(self::PERMISSIONS[ExtensionManifest::TYPE_GATEWAY])
+                ? $extensions->activeGateways()->map(fn ($gateway): string => $gateway->name())
+                : collect(),
         ]);
     }
 
@@ -91,6 +95,25 @@ class ExtensionController extends Controller
         Activity::log('extension.updated', "Extension {$manifest->name} ".($enable ? 'switched on' : 'switched off'));
 
         return back()->with('status', $enable ? __(':name is switched on.', ['name' => $manifest->name]) : __(':name is switched off.', ['name' => $manifest->name]));
+    }
+
+    /**
+     * Move a switched-on payment gateway one place up or down in the order clients see.
+     */
+    public function move(Request $request, string $slug, ExtensionManager $extensions): RedirectResponse
+    {
+        $manifest = $extensions->find($slug);
+
+        abort_if($manifest === null || $manifest->type !== ExtensionManifest::TYPE_GATEWAY, 404);
+        abort_unless($this->admin($request)->hasPermission(self::PERMISSIONS[$manifest->type]), 403);
+
+        $direction = $request->validate(['direction' => ['required', 'in:up,down']])['direction'];
+
+        if ($extensions->moveGateway($slug, $direction)) {
+            Activity::log('extension.updated', "Payment gateway {$manifest->name} moved {$direction} in the payment order");
+        }
+
+        return redirect()->route('admin.extensions.index', ['tab' => 'gateways'])->with('status', __('Payment order saved.'));
     }
 
     /**

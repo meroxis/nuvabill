@@ -26,6 +26,7 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.6.6 | Knowledge base, announcements and a network status page with server checks |
 | 0.6.7 | Credit notes, CSV exports for accountants, and privacy tools |
 | 0.6.8 | Fix for sites with the Crystal Mail add-on |
+| 0.6.9 | Choose the order clients see payment methods in |
 
 ## Next
 

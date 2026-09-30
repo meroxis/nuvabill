@@ -8,6 +8,7 @@ use App\Contracts\ServerModule;
 use App\Extensions\Addons\Addon;
 use App\Models\Extension;
 use App\Support\Installation;
+use App\Support\Settings;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
@@ -166,18 +167,41 @@ class ExtensionManager
     }
 
     /**
-     * Gateways that are switched on and fully set up, keyed by slug.
+     * Gateways that are switched on and fully set up, keyed by slug, in the order staff chose.
      *
      * @return Collection<string, PaymentGateway>
      */
     public function activeGateways(?string $currency = null): Collection
     {
+        $order = array_flip(array_values(array_filter((array) setting('billing.gateway_order'), 'is_string')));
+
         return $this->ofType(ExtensionManifest::TYPE_GATEWAY)
             ->filter(fn (ExtensionManifest $manifest): bool => $this->isEnabled($manifest->slug))
             ->map(fn (ExtensionManifest $manifest): ?PaymentGateway => $this->tryMake(fn () => $this->gateway($manifest->slug)))
             ->filter(fn (?PaymentGateway $gateway): bool => $gateway !== null
                 && $gateway->isConfigured()
-                && ($currency === null || $gateway->chargeCurrencyFor($currency) !== null));
+                && ($currency === null || $gateway->chargeCurrencyFor($currency) !== null))
+            // Gateways staff never placed keep their order by name, after the placed ones.
+            ->sortBy(fn (PaymentGateway $gateway, string $slug): int => $order[$slug] ?? PHP_INT_MAX);
+    }
+
+    /**
+     * Move a switched-on gateway one place up or down in the order clients see.
+     */
+    public function moveGateway(string $slug, string $direction): bool
+    {
+        $slugs = $this->activeGateways()->keys()->all();
+        $from = array_search($slug, $slugs, true);
+        $to = $from === false ? false : $from + ($direction === 'up' ? -1 : 1);
+
+        if ($to === false || ! isset($slugs[$to])) {
+            return false;
+        }
+
+        [$slugs[$from], $slugs[$to]] = [$slugs[$to], $slugs[$from]];
+        app(Settings::class)->set('billing.gateway_order', $slugs);
+
+        return true;
     }
 
     public function serverModule(string $slug): ServerModule

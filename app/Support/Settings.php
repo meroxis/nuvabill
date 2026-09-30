@@ -31,6 +31,8 @@ class Settings
         'billing.renewal_days_before' => 7,
         'billing.payment_terms_days' => 7,
         'billing.plan_changes' => true,
+        // Payment gateway slugs in the order clients see them. Gateways not listed come last, by name.
+        'billing.gateway_order' => [],
         // Knowledge base, announcements and the network status page. Servers are checked every 5 minutes.
         'knowledgebase.enabled' => true,
         'announcements.enabled' => true,

@@ -5,6 +5,7 @@ namespace Tests\Feature\Admin;
 use App\Extensions\ExtensionManager;
 use App\Models\Admin;
 use App\Models\Client;
+use App\Models\Invoice;
 use App\Models\Role;
 use App\Models\Server;
 use App\Models\Transaction;
@@ -55,6 +56,32 @@ class ExtensionsPageTest extends TestCase
 
         $this->post(route('admin.extensions.toggle', 'banktransfer'))->assertSessionHas('status');
         $this->assertFalse(app(ExtensionManager::class)->isEnabled('banktransfer'));
+    }
+
+    public function test_staff_choose_the_order_clients_see_payment_methods_in(): void
+    {
+        $this->signInAdmin();
+        $this->enableGateway('banktransfer', ['instructions' => 'Pay to IBAN 123']);
+        $this->enableGateway('stripe', ['secret_key' => 'sk_test_x', 'webhook_secret' => 'whsec_x']);
+        $this->enableGateway('paypal', ['mode' => 'sandbox', 'client_id' => 'id', 'client_secret' => 'secret']);
+
+        $this->get(route('admin.extensions.index', ['tab' => 'gateways']))->assertOk()
+            ->assertSee('Payment order')
+            ->assertSeeInOrder(['Move Bank transfer up', 'Move PayPal up', 'Move Stripe up']);
+
+        $this->post(route('admin.extensions.move', 'stripe'), ['direction' => 'up'])->assertSessionHas('status');
+        $this->post(route('admin.extensions.move', 'stripe'), ['direction' => 'up'])->assertSessionHas('status');
+        $this->post(route('admin.extensions.move', 'stripe'), ['direction' => 'up'])->assertSessionHas('status');
+        $this->post(route('admin.extensions.move', 'banktransfer'), ['direction' => 'sideways'])->assertSessionHasErrors('direction');
+
+        $this->assertSame(['stripe', 'banktransfer', 'paypal'], app(ExtensionManager::class)->activeGateways()->keys()->all());
+
+        // The client's invoice lists them in that order, with the first one chosen.
+        $client = Client::factory()->create(['currency' => 'USD']);
+        $invoice = Invoice::factory()->for($client)->create(['total' => 1000, 'subtotal' => 1000, 'currency' => 'USD']);
+
+        $this->actingAs($client, 'web')->get(route('client.invoices.show', $invoice))->assertOk()
+            ->assertSeeInOrder(['value="stripe"', 'checked', 'value="banktransfer"', 'value="paypal"'], false);
     }
 
     public function test_each_type_needs_its_own_permission(): void
