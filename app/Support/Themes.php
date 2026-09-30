@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Http\Middleware\ApplyThemePreview;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Lang;
 use Illuminate\Support\Facades\View;
 
 /**
@@ -94,6 +95,14 @@ class Themes
         ])));
 
         View::replaceNamespace('theme', $paths);
+
+        // A theme or order form can bring its own translations in lang/{locale}.json. Nuvabill's own
+        // texts win when both have one.
+        foreach ([$orderForm !== self::STANDARD_ORDER_FORM ? $this->orderFormsPath.'/'.$orderForm : null, $this->path.'/'.$this->active()] as $folder) {
+            if ($folder !== null && is_dir($folder.'/lang') && ! in_array($folder.'/lang', Lang::getLoader()->jsonPaths(), true)) {
+                Lang::addJsonPath($folder.'/lang');
+            }
+        }
     }
 
     /**

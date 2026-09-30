@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.6.11](https://github.com/meroxis/nuvabill/releases/tag/v0.6.11) | 30 Sep 2026 | Sign in from an order and come back to it; themes and order forms bring their own translations |
 | [0.6.10](https://github.com/meroxis/nuvabill/releases/tag/v0.6.10) | 30 Sep 2026 | Webhooks for add-ons |
 | [0.6.9](https://github.com/meroxis/nuvabill/releases/tag/v0.6.9) | 30 Sep 2026 | Choose the order clients see payment methods in |
 | [0.6.8](https://github.com/meroxis/nuvabill/releases/tag/v0.6.8) | 30 Sep 2026 | Fix: sites with the Crystal Mail add-on could not send email or sign clients in with Google |
@@ -50,6 +51,15 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.6.11
+
+- **Sign in from an order and come back to it.** Sign-in links can carry the page to return to, for example
+  `/login?return=/store/web-hosting/starter`, and so can "Continue with Google, GitHub or Facebook". Order forms use
+  this so a returning client signs in and lands on the same plan, instead of the dashboard. Only a page on your own
+  site is accepted.
+- **Themes and order forms bring their own translations** in a `lang` folder, like extensions. With the Aurora and
+  Swift updates of today, their own words (such as "Choose a plan" and "Your order") are shown in all 10 languages.
 
 ## 0.6.10
 

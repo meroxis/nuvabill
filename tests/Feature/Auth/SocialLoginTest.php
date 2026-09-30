@@ -49,6 +49,25 @@ class SocialLoginTest extends TestCase
         $this->assertSame(1, Client::query()->count());
     }
 
+    public function test_signing_in_from_an_order_form_comes_back_to_the_same_order(): void
+    {
+        $client = Client::factory()->create(['email' => 'raz@example.com']);
+        $this->enable('google');
+        $this->fakeGoogle(['sub' => 'g-9', 'email' => 'raz@example.com', 'email_verified' => true]);
+
+        $this->completeSignIn('google', ['return' => '/store/web-hosting/starter'])->assertRedirect(url('/store/web-hosting/starter'));
+        $this->assertAuthenticatedAs($client, 'web');
+
+        // The sign-in page keeps a path on this site too, and nothing else.
+        auth('web')->logout();
+        $this->get(route('client.login', ['return' => '/store/web-hosting']))->assertOk()->assertSessionHas('url.intended', url('/store/web-hosting'));
+
+        foreach (['//elsewhere.example/path', 'https://elsewhere.example/', '/\\elsewhere.example', 'store/web-hosting', "/store\n/x"] as $return) {
+            $this->withSession([])->flushSession();
+            $this->get(route('client.login', ['return' => $return]))->assertOk()->assertSessionMissing('url.intended');
+        }
+    }
+
     public function test_a_verified_email_signs_in_to_the_existing_account(): void
     {
         $client = Client::factory()->create(['email' => 'raz@example.com']);
@@ -167,9 +186,12 @@ class SocialLoginTest extends TestCase
     /**
      * Start the sign-in, then come back from the provider with the state it was given.
      */
-    private function completeSignIn(string $provider): TestResponse
+    /**
+     * @param  array<string, string>  $query
+     */
+    private function completeSignIn(string $provider, array $query = []): TestResponse
     {
-        $location = $this->get(route('client.social.redirect', $provider))->assertRedirect()->headers->get('Location');
+        $location = $this->get(route('client.social.redirect', ['provider' => $provider] + $query))->assertRedirect()->headers->get('Location');
         parse_str((string) parse_url((string) $location, PHP_URL_QUERY), $query);
 
         return $this->get(route('client.social.callback', ['provider' => $provider, 'state' => $query['state'], 'code' => 'auth-code']));

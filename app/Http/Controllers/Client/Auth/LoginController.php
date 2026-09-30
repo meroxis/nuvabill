@@ -15,9 +15,26 @@ use Illuminate\View\View;
 
 class LoginController extends Controller
 {
-    public function create(SocialLogin $social): View
+    public function create(Request $request, SocialLogin $social): View
     {
+        self::rememberReturnPath($request);
+
         return view('theme::auth.login', ['socialProviders' => $social->enabled()]);
+    }
+
+    /**
+     * Sign-in links may carry ?return=/store/hosting/starter, so an order form can send a client to
+     * sign in and back to the same order. Only a path on this site is kept, never another address.
+     */
+    public static function rememberReturnPath(Request $request): void
+    {
+        $path = $request->query('return');
+
+        if (! is_string($path) || strlen($path) > 500 || ! preg_match('#^/(?![/\\\\])[^\s\\\\\x00-\x1f\x7f]*$#', $path)) {
+            return;
+        }
+
+        $request->session()->put('url.intended', url($path));
     }
 
     public function store(Request $request): RedirectResponse

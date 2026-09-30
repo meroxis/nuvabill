@@ -28,6 +28,7 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.6.8 | Fix for sites with the Crystal Mail add-on |
 | 0.6.9 | Choose the order clients see payment methods in |
 | 0.6.10 | Webhooks for add-ons |
+| 0.6.11 | Sign in from an order and come back to it; themes and order forms bring their own translations |
 
 ## Next
 

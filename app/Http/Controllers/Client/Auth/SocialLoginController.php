@@ -29,6 +29,11 @@ class SocialLoginController extends Controller
     public function redirect(Request $request, string $provider, SocialLogin $social): RedirectResponse
     {
         $driver = $social->provider($provider) ?? abort(404);
+
+        if ($request->user('web') === null) {
+            LoginController::rememberReturnPath($request);
+        }
+
         $state = Str::random(40);
         $verifier = Str::random(64);
 
