@@ -65,8 +65,9 @@ class SendChatMessage implements ShouldQueue
             return;
         }
 
-        // WhatsApp: free text inside the 24-hour window, otherwise a template Meta approved.
-        if ($link->canReceiveFreeText()) {
+        // WhatsApp: free text inside the 24-hour window (or always, through an add-on that allows it),
+        // otherwise a template Meta approved.
+        if ($link->canReceiveFreeText() || $whatsApp->sendsFreeTextAnytime()) {
             $whatsApp->sendText($link->external_id, $message['text'].($message['button'] ? "\n\n".$message['button']['url'] : ''));
 
             return;

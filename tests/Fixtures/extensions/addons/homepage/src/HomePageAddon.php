@@ -17,6 +17,14 @@ class HomePageAddon extends Addon
         Route::get('{page}', fn (string $page): string => 'Add-on page '.$page)->where('page', '[a-z0-9-]+')->name('page');
     }
 
+    /**
+     * Never registered: the manifest does not ask for the "webhook" permission.
+     */
+    public function webhookRoutes(): void
+    {
+        Route::post('ping', fn (): string => 'should not be reachable')->name('ping');
+    }
+
     public function servesHomePage(): bool
     {
         return true;

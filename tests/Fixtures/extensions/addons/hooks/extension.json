@@ -1,0 +1,10 @@
+{
+    "slug": "hooks",
+    "type": "addon",
+    "name": "Webhook add-on",
+    "version": "1.0.0",
+    "namespace": "Tests\\Fixtures\\Hooks\\",
+    "class": "Tests\\Fixtures\\Hooks\\HooksAddon",
+    "description": "Receives data from another service, for the tests.",
+    "permissions": ["webhook"]
+}

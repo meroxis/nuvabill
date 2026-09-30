@@ -49,15 +49,26 @@
                 <section class="card" style="display:grid;gap:1rem" id="whatsapp">
                     <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap">
                         <h2 style="font-size:1.05rem">WhatsApp</h2>
-                        @if ($whatsApp)
+                        @if ($whatsAppAddon)
+                            <span class="pill" data-tone="good">{{ __('Connected: :number', ['number' => $whatsAppAddon['number']]) }}</span>
+                        @elseif ($whatsApp)
                             <span class="pill" data-tone="good">{{ __('Connected: :number', ['number' => setting('chat.whatsapp_number')]) }}</span>
                         @else
                             <span class="pill">{{ __('Not connected') }}</span>
                         @endif
                     </div>
-                    <p class="muted" style="margin:0;font-size:.9rem">{{ __('Uses Meta’s official WhatsApp Business Platform. Meta charges a small fee for messages you send first, like invoice reminders; replies to clients within 24 hours are free.') }}</p>
 
-                    @if ($whatsApp)
+                    @unless ($whatsAppAddon)
+                        <p class="muted" style="margin:0;font-size:.9rem">{{ __('Uses Meta’s official WhatsApp Business Platform. Meta charges a small fee for messages you send first, like invoice reminders; replies to clients within 24 hours are free.') }}</p>
+                    @endunless
+
+                    @if ($whatsAppAddon)
+                        <p style="margin:0;font-size:.9rem">
+                            {{ __('WhatsApp messages go through the :name add-on.', ['name' => $whatsAppAddon['name']]) }}
+                            · {{ trans_choice(':count client has linked WhatsApp.|:count clients have linked WhatsApp.', $links['whatsapp'] ?? 0, ['count' => $links['whatsapp'] ?? 0]) }}
+                        </p>
+                        <div><a class="btn btn-sm" href="{{ $whatsAppAddon['url'] }}"><x-icon name="settings" />{{ __('Open :name', ['name' => $whatsAppAddon['name']]) }}</a></div>
+                    @elseif ($whatsApp)
                         <p style="margin:0;font-size:.9rem">
                             <b>{{ setting('chat.whatsapp_name') ?: setting('chat.whatsapp_number') }}</b>
                             · {{ setting('chat.whatsapp_via') === 'qr' ? __('connected by QR code') : __('connected with your own Meta app') }}

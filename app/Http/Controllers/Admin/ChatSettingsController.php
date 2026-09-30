@@ -42,6 +42,8 @@ class ChatSettingsController extends Controller
         return view('admin.settings.chat', [
             'telegram' => $telegram->isConnected(),
             'whatsApp' => $whatsApp->isConnected(),
+            // An add-on, such as WhatsApp by QR code, that connects WhatsApp instead of Meta's platform.
+            'whatsAppAddon' => $whatsApp->isConnected() ? $whatsApp->connectedThrough() : null,
             'groups' => (array) setting('chat.telegram_groups'),
             'templates' => (array) setting('chat.whatsapp_templates'),
             'templateLanguages' => array_map(fn (string $locale): string => ChatMessages::META_LANGUAGES[$locale], ChatMessages::templateLanguages()),

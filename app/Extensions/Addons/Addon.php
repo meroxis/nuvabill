@@ -108,6 +108,15 @@ abstract class Addon
     public function publicRoutes(): void {}
 
     /**
+     * Addresses another service sends data to, such as a chat bridge reporting new messages. They are
+     * registered under /webhooks/addons/{slug}/, without a session, cookies or a form token, so check
+     * every request yourself: put a long random secret in the address or verify a signature. Link to
+     * them with route($this->webhookRouteName('messages')). List "webhook" in the manifest's
+     * permissions. Since Nuvabill 0.6.10.
+     */
+    public function webhookRoutes(): void {}
+
+    /**
      * Whether this add-on shows the site's home page instead of the store. The store then moves to /store.
      * Needs "public-page" in the manifest's permissions.
      */
@@ -140,6 +149,14 @@ abstract class Addon
     public function publicRouteName(string $name): string
     {
         return 'addon.'.$this->slug().'.'.$name;
+    }
+
+    /**
+     * The full route name for one of this add-on's webhook addresses.
+     */
+    public function webhookRouteName(string $name): string
+    {
+        return 'webhooks.addon.'.$this->slug().'.'.$name;
     }
 
     /**

@@ -68,6 +68,11 @@ return Application::configure(basePath: dirname(__DIR__))
                 Route::match(['get', 'post'], 'webhooks/meta/whatsapp', [WhatsAppConnectController::class, 'webhook'])->name('webhooks.meta');
             });
 
+            // Add-ons that receive data from other services. No session, cookies or form token: each
+            // add-on checks its own requests.
+            Route::prefix('webhooks/addons')->middleware('throttle:240,1')
+                ->group(fn () => rescue(fn () => app(ExtensionManager::class)->registerWebhookRoutes(), report: false));
+
             // Theme, order form and extension files. No session or cookies: these are static files.
             Route::get('package-assets/{kind}/{slug}/{path}', PackageAssetController::class)
                 ->whereIn('kind', ['themes', 'orderforms', 'extensions'])

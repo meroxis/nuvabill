@@ -414,6 +414,22 @@ class ExtensionManager
     }
 
     /**
+     * Webhook addresses of active add-ons that may receive them, under /webhooks/addons/{slug}/.
+     */
+    public function registerWebhookRoutes(): void
+    {
+        $addons = $this->activeAddons()->filter(fn (Addon $addon): bool => in_array('webhook', (array) $this->find($addon->slug())?->permissions, true));
+
+        foreach ($addons as $slug => $addon) {
+            $this->tryMake(function () use ($slug, $addon): bool {
+                Route::prefix($slug)->name('webhooks.addon.'.$slug.'.')->group(fn () => $addon->webhookRoutes());
+
+                return true;
+            });
+        }
+    }
+
+    /**
      * The active add-on that shows the home page instead of the store, if any.
      */
     public function homePageAddon(): ?Addon

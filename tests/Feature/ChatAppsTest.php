@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Chat\ChatMessages;
 use App\Chat\LinkCodes;
+use App\Chat\WhatsApp;
 use App\Chat\WhatsAppSetup;
 use App\Mail\TemplatedMessage;
 use App\Mail\TemplateMailer;
@@ -171,6 +172,62 @@ class ChatAppsTest extends TestCase
         app(TemplateMailer::class)->send('invoice.created', $client, TemplateMailer::invoiceContext($invoice));
 
         Http::assertSent(fn (Request $request): bool => $request['type'] === 'text' && str_contains($request['text']['body'], 'is ready. It is due on'));
+    }
+
+    public function test_an_addon_that_connects_whatsapp_sends_free_text_any_time_and_shows_on_the_settings_page(): void
+    {
+        Mail::fake();
+        $this->setSettings(['chat.events' => ['invoice.created' => ['telegram' => false, 'whatsapp' => true]]]);
+        // Shaped like WhatsApp by QR code: a number linked through a bridge, no Meta templates.
+        $whatsApp = new class extends WhatsApp
+        {
+            /** @var list<array{to: string, text: string}> */
+            public array $sent = [];
+
+            public function isConnected(): bool
+            {
+                return true;
+            }
+
+            public function number(): string
+            {
+                return '9647501234567';
+            }
+
+            public function sendsFreeTextAnytime(): bool
+            {
+                return true;
+            }
+
+            public function connectedThrough(): ?array
+            {
+                return ['name' => 'WhatsApp by QR Code', 'url' => url('admin/addons/whatsapp-qr'), 'number' => '+964 750 123 4567'];
+            }
+
+            public function sendText(string $to, string $text): void
+            {
+                $this->sent[] = ['to' => $to, 'text' => $text];
+            }
+        };
+        $this->app->instance(WhatsApp::class, $whatsApp);
+
+        $client = Client::factory()->create(['first_name' => 'Raz', 'language' => 'en']);
+        ChatLink::create(['client_id' => $client->id, 'channel' => 'whatsapp', 'external_id' => '9647501234567']);
+        $invoice = Invoice::factory()->for($client)->create(['number' => 'INV-1042', 'total' => 1299]);
+
+        // The client never wrote in the last 24 hours, and no template is approved: free text anyway.
+        app(TemplateMailer::class)->send('invoice.created', $client, TemplateMailer::invoiceContext($invoice));
+
+        $this->assertCount(1, $whatsApp->sent);
+        $this->assertSame('9647501234567', $whatsApp->sent[0]['to']);
+        $this->assertStringContainsString('is ready. It is due on', $whatsApp->sent[0]['text']);
+
+        $this->signInAdmin();
+        $this->get(route('admin.settings.chat.edit'))->assertOk()
+            ->assertSee('Connected: +964 750 123 4567')
+            ->assertSee('WhatsApp messages go through the WhatsApp by QR Code add-on.')
+            ->assertSee(url('admin/addons/whatsapp-qr'), false)
+            ->assertDontSee('Message templates');
     }
 
     public function test_the_whatsapp_webhook_address_is_verified_and_links_a_client(): void

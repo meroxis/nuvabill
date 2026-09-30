@@ -27,6 +27,28 @@ class WhatsApp
         return (string) preg_replace('/\D/', '', (string) setting('chat.whatsapp_number'));
     }
 
+    /**
+     * Whether any message may be free text, without Meta's templates and 24-hour window. Add-ons that
+     * send through another WhatsApp connection, such as a number linked by QR code, say yes.
+     * Since Nuvabill 0.6.10.
+     */
+    public function sendsFreeTextAnytime(): bool
+    {
+        return false;
+    }
+
+    /**
+     * The add-on that connects WhatsApp instead of Meta's platform: its name, the address of its page
+     * and the connected number. The chat settings page then shows it instead of Meta's setup.
+     * Since Nuvabill 0.6.10.
+     *
+     * @return array{name: string, url: string, number: string}|null
+     */
+    public function connectedThrough(): ?array
+    {
+        return null;
+    }
+
     public function link(string $code): string
     {
         return 'https://wa.me/'.$this->number().'?text='.rawurlencode('LINK '.$code);

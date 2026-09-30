@@ -7,7 +7,8 @@ namespace App\Marketplace;
  * plain words before installing, and reviewers check the code does nothing else.
  *
  * Codes: "client-area" (changes client area pages), "store" (changes store and order pages),
- * "client-page" (adds a client area page), "public-page" (shows pages to visitors, maybe the home page), "admin-settings", "admin-page", "events" (reacts to
+ * "client-page" (adds a client area page), "public-page" (shows pages to visitors, maybe the home page), "webhook" (receives data
+ * from another service at /webhooks/addons/{slug}), "admin-settings", "admin-page", "events" (reacts to
  * orders, payments and tickets), "head-script" (adds a script to pages), "payments" (takes
  * payments), "servers" (manages accounts on servers), "domains" (registers domains),
  * "database" (adds its own tables), "schedule" (runs on a schedule), "backups" (reads the whole site
@@ -31,6 +32,7 @@ class Permissions
             'public-page' => ['title' => __('Shows pages to visitors'), 'text' => __('Adds pages to your site, and may show your home page. The store then moves to /store.')],
             'admin-settings' => ['title' => __('Adds settings for staff'), 'text' => __('Staff set it up in the admin area.')],
             'admin-page' => ['title' => __('Adds an admin page'), 'text' => __('Staff see a new page in the admin area.')],
+            'webhook' => ['title' => __('Receives data from another service'), 'text' => __('Another service can send data to a secret address on your site, for example new chat messages.')],
             'events' => ['title' => __('Reacts to orders, payments and tickets'), 'text' => __('Runs when these things happen.')],
             'head-script' => ['title' => __('Adds a script to your pages'), 'text' => __('For example a chat window.')],
             'payments' => ['title' => __('Takes payments'), 'text' => __('Clients pay invoices with it.')],
