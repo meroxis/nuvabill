@@ -27,7 +27,7 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.6.7 | Credit notes, CSV exports for accountants, and privacy tools |
 | 0.6.8 | Fix for sites with the Crystal Mail add-on |
 | 0.6.9 | Choose the order clients see payment methods in |
-| 0.6.10 | Add-ons can receive webhooks and send WhatsApp through your own number (WhatsApp by QR Code) |
+| 0.6.10 | Webhooks for add-ons |
 
 ## Next
 

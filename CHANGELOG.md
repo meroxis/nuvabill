@@ -9,7 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
-| [0.6.10](https://github.com/meroxis/nuvabill/releases/tag/v0.6.10) | 30 Sep 2026 | WhatsApp through your own number, linked by QR code, with the free WhatsApp by QR Code add-on |
+| [0.6.10](https://github.com/meroxis/nuvabill/releases/tag/v0.6.10) | 30 Sep 2026 | Webhooks for add-ons |
 | [0.6.9](https://github.com/meroxis/nuvabill/releases/tag/v0.6.9) | 30 Sep 2026 | Choose the order clients see payment methods in |
 | [0.6.8](https://github.com/meroxis/nuvabill/releases/tag/v0.6.8) | 30 Sep 2026 | Fix: sites with the Crystal Mail add-on could not send email or sign clients in with Google |
 | [0.6.7](https://github.com/meroxis/nuvabill/releases/tag/v0.6.7) | 30 Sep 2026 | Credit notes, CSV exports for accountants, and privacy tools |
@@ -53,12 +53,11 @@ the [roadmap](ROADMAP.md).
 
 ## 0.6.10
 
-- **WhatsApp through your own number.** The new free **WhatsApp by QR Code** add-on in the marketplace links your
-  WhatsApp Business number by scanning a QR code, like WhatsApp Web, through your own Evolution API server. Invoices,
-  reminders and ticket replies then go out as normal messages at any time, with no Meta templates. It is unofficial:
-  WhatsApp can block numbers that send like a robot, so use a number you can afford to lose. Meta's official way in
-  Settings → Chat apps stays as it is.
 - When an add-on connects WhatsApp, Settings → Chat apps says so and links to it.
+- The unofficial **WhatsApp by QR Code** add-on released with this version was withdrawn from the marketplace the same
+  day: a number linked like WhatsApp Web can be blocked by WhatsApp, and whoever holds the bridge's key controls the
+  number. Use Meta's official WhatsApp in Settings → Chat apps. If you installed the add-on, remove it in
+  Marketplace → Installed.
 - **For add-on developers:** add-ons can receive data from other services at `/webhooks/addons/{slug}/…`
   (`webhookRoutes()`, with the new "webhook" permission). These addresses have no session or cookies, so each add-on
   checks its own requests. WhatsApp add-ons can send free text at any time (`sendsFreeTextAnytime()`) and show
