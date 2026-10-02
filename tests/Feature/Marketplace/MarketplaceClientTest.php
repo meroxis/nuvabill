@@ -9,6 +9,7 @@ use App\Models\MarketplaceInstall;
 use App\Support\Themes;
 use App\Updates\Signature;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Factory as HttpFactory;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -108,6 +109,46 @@ class MarketplaceClientTest extends TestCase
 
         $this->assertTrue(Schema::hasTable('vendor_notes'));
         $this->assertSame('1.0.0', MarketplaceInstall::query()->sole()->version);
+    }
+
+    public function test_an_update_whose_database_change_fails_puts_the_old_version_back(): void
+    {
+        $manifest = fn (string $version): array => [
+            'slug' => 'notes', 'type' => 'addon', 'name' => 'Notes', 'version' => $version,
+            'namespace' => 'Vendor\\Notes\\', 'class' => 'Vendor\\Notes\\Notes', 'permissions' => ['database'],
+        ];
+        $code = fn (string $version): string => "<?php\nnamespace Vendor\\Notes;\nclass Notes extends \\App\\Extensions\\Addons\\Addon { public const VERSION = '{$version}'; }\n";
+        $first = 'database/migrations/2026_09_28_000001_create_vendor_notes_table.php';
+
+        $this->fakeStore('notes', 'addon', '1.0.0', $this->package('notes', '1.0.0', 'extension.json', $manifest('1.0.0'), [
+            'src/Notes.php' => $code('1.0.0'), $first => $this->migration('vendor_notes'),
+        ]));
+        $this->post(route('admin.marketplace.install', 'notes'))->assertSessionMissing('error');
+
+        $this->newStore();
+        $this->fakeStore('notes', 'addon', '2.0.0', $this->package('notes', '2.0.0', 'extension.json', $manifest('2.0.0'), [
+            'src/Notes.php' => $code('2.0.0'), $first => $this->migration('vendor_notes'),
+            'database/migrations/2026_10_01_000001_break.php' => "<?php\nreturn new class extends \\Illuminate\\Database\\Migrations\\Migration {\n    public function up(): void { throw new \\RuntimeException('Column vendor_notes.body already exists'); }\n};\n",
+        ]));
+        $this->post(route('admin.marketplace.install', 'notes'))
+            ->assertSessionHas('error', fn (string $error): bool => str_contains($error, 'so version 1.0.0 was put back') && str_contains($error, 'Column vendor_notes.body already exists'));
+
+        $this->assertStringContainsString("VERSION = '1.0.0'", (string) file_get_contents($this->dir.'/extensions/addons/notes/src/Notes.php'));
+        $this->assertFileDoesNotExist($this->dir.'/extensions/addons/notes/database/migrations/2026_10_01_000001_break.php');
+        $this->assertSame('1.0.0', MarketplaceInstall::query()->sole()->version);
+        $this->assertDatabaseHas('activity_logs', ['action' => 'marketplace.failed']);
+
+        // A fixed version installs normally.
+        $this->newStore();
+        $this->fakeStore('notes', 'addon', '2.0.1', $this->package('notes', '2.0.1', 'extension.json', $manifest('2.0.1'), [
+            'src/Notes.php' => $code('2.0.1'), $first => $this->migration('vendor_notes'),
+            'database/migrations/2026_10_01_000002_add_body.php' => "<?php\nreturn new class extends \\Illuminate\\Database\\Migrations\\Migration {\n    public function up(): void { \\Illuminate\\Support\\Facades\\Schema::table('vendor_notes', fn (\\Illuminate\\Database\\Schema\\Blueprint \$table) => \$table->text('body')->nullable()); }\n};\n",
+        ]));
+        $this->post(route('admin.marketplace.install', 'notes'))->assertSessionMissing('error');
+
+        $this->assertSame('2.0.1', MarketplaceInstall::query()->sole()->version);
+        $this->assertTrue(Schema::hasColumn('vendor_notes', 'body'));
+        $this->assertStringContainsString("VERSION = '2.0.1'", (string) file_get_contents($this->dir.'/extensions/addons/notes/src/Notes.php'));
     }
 
     public function test_an_extension_that_changes_the_database_without_saying_so_is_refused(): void
@@ -250,6 +291,15 @@ class MarketplaceClientTest extends TestCase
             'price' => 0, 'currency' => 'USD', 'developer' => ['name' => 'Nuvabill', 'verified' => true],
             'permissions' => $type === 'theme' ? ['client-area'] : ['events'], 'compatible' => true,
         ];
+    }
+
+    /**
+     * Forget the store answers faked so far, so the next fakeStore() offers another version.
+     */
+    private function newStore(): void
+    {
+        Http::swap(new HttpFactory);
+        Http::preventStrayRequests();
     }
 
     private function fakeStore(string $slug, string $type, string $version, string $zip, ?string $signature = null): void

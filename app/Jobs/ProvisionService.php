@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\ServiceStatus;
 use App\Models\Service;
 use App\Provisioning\Provisioner;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -25,6 +26,14 @@ class ProvisionService implements ShouldQueue
 
     public function handle(Provisioner $provisioner): void
     {
-        $provisioner->create($this->service);
+        // Staff may have cancelled or terminated the service, or held its order for a review,
+        // while this waited in the queue. Only a service still waiting to be set up is set up.
+        $service = $this->service->fresh(['order']);
+
+        if ($service === null || $service->status !== ServiceStatus::Pending || $service->order?->needs_review === true) {
+            return;
+        }
+
+        $provisioner->create($service);
     }
 }

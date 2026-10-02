@@ -2,6 +2,7 @@
 
 namespace App\Billing;
 
+use App\Contracts\ChecksSavedCharges;
 use App\Enums\InvoiceStatus;
 use App\Extensions\Gateways\ChargeResult;
 use App\Mail\TemplateMailer;
@@ -26,6 +27,8 @@ use Throwable;
  *
  * Part of the nightly run (see DailyAutomation). Each invoice is locked while it is charged, and
  * every attempt has its own key at the gateway, so a card is never charged twice for one try.
+ * A try whose result is not known (still processing at the bank, or no answer) is kept on the
+ * invoice and checked before anything else, so an unclear payment is never followed by a second one.
  */
 class AutoPay
 {
@@ -82,7 +85,7 @@ class AutoPay
      */
     public function run(CarbonImmutable $today): array
     {
-        $summary = ['charged' => 0, 'failed' => 0, 'notices' => 0, 'card_notices' => 0];
+        $summary = ['charged' => 0, 'failed' => 0, 'pending' => 0, 'notices' => 0, 'card_notices' => 0];
 
         // The demo never charges anyone.
         if (! $this->isOn() || Demo::isEnabled()) {
@@ -94,7 +97,8 @@ class AutoPay
             $summary['notices'] = $this->sendNotices($today);
 
             foreach ($this->dueInvoices($today) as $invoice) {
-                $this->charge($invoice)->isPaid() ? $summary['charged']++ : $summary['failed']++;
+                $result = $this->charge($invoice);
+                $summary[$result->isPaid() ? 'charged' : ($result->isPending() ? 'pending' : 'failed')]++;
             }
 
             $summary['card_notices'] = $this->sendCardNotices($today);
@@ -122,6 +126,14 @@ class AutoPay
                 return ChargeResult::settled();
             }
 
+            // A payment whose result was not known is settled first, so the invoice is not charged twice.
+            $pending = is_array($invoice->autopay_pending) ? $invoice->autopay_pending : null;
+            $earlier = $pending === null ? null : $this->checkPending($invoice, $pending);
+
+            if ($earlier !== null) {
+                return $this->settle($invoice, PaymentMethod::query()->find($pending['method'] ?? 0), $earlier, $by, $pending);
+            }
+
             if ($this->wallet->enabled()) {
                 $this->wallet->pay($invoice);
                 $invoice->refresh();
@@ -138,31 +150,96 @@ class AutoPay
                 return ChargeResult::failed(__('No saved card or PayPal account can pay this invoice.'));
             }
 
-            // One key per try: the same try sent twice is charged once at the gateway.
-            $attemptKey = 'invoice-'.$invoice->id.'-'.$invoice->balance().'-'.($by === null ? 'try-'.$invoice->autopay_attempts : 'staff-'.now()->getTimestampMs());
+            // One key per try: the same try sent twice is charged once at the gateway. A gateway that
+            // cannot be asked about an unclear try gets that try again, with the same key.
+            $attemptKey = $pending !== null && ($pending['gateway'] ?? null) === $method->gateway && ! $gateway instanceof ChecksSavedCharges
+                ? (string) $pending['key']
+                : 'invoice-'.$invoice->id.'-'.$invoice->balance().'-'.($by === null ? 'try-'.$invoice->autopay_attempts : 'staff-'.now()->getTimestampMs());
+
+            // Kept before the charge, so a payment the gateway took just before the connection broke
+            // is checked before the next try.
+            $attempt = ['gateway' => $method->gateway, 'method' => $method->id, 'customer' => $method->customer_reference, 'key' => $attemptKey, 'since' => now()->toIso8601String()];
+            $invoice->forceFill(['autopay_pending' => $attempt])->save();
 
             try {
                 $result = $gateway->chargeSaved($method, $invoice, $attemptKey);
             } catch (Throwable $exception) {
                 report($exception);
-                $result = ChargeResult::failed(__('The payment service could not be reached.'));
+                $result = ChargeResult::pending(__('The payment service did not answer. The payment is checked before the next try.'));
             }
 
-            if ($result->isPaid() && $result->payment !== null) {
-                $this->payments->recordGatewayResult($result->payment, $method->gateway);
-                $method->forceFill(['last_used_at' => now()])->save();
-                $invoice->forceFill(['autopay_error' => null, 'autopay_retry_at' => null])->save();
-                Activity::log('invoice.autopay_paid', ($by ? "{$by} charged" : 'Charged')." {$method->label()} for invoice {$invoice->displayNumber()}", $invoice, $invoice->client);
-
-                return $result;
-            }
-
-            $this->failed($invoice, $method, $result, $by);
-
-            return $result;
+            return $this->settle($invoice, $method, $result, $by, $attempt);
         } finally {
             $lock->release();
         }
+    }
+
+    /**
+     * Record what a charge or a check of an unclear charge found.
+     *
+     * @param  array<string, mixed>  $attempt  The try: gateway, method, customer, key, since and the gateway's reference.
+     */
+    private function settle(Invoice $invoice, ?PaymentMethod $method, ChargeResult $result, ?string $by, array $attempt): ChargeResult
+    {
+        $label = $method?->label() ?? __('saved payment method');
+
+        if ($result->isPaid() && $result->payment !== null) {
+            $this->payments->recordGatewayResult($result->payment, (string) $attempt['gateway']);
+            $method?->forceFill(['last_used_at' => now()])->save();
+            $invoice->forceFill(['autopay_error' => null, 'autopay_retry_at' => null, 'autopay_pending' => null])->save();
+            Activity::log('invoice.autopay_paid', ($by ? "{$by} charged" : 'Charged')." {$label} for invoice {$invoice->displayNumber()}", $invoice, $invoice->client);
+
+            return $result;
+        }
+
+        if ($result->isPending()) {
+            // Checked again by the next nightly run; no failure email, as nothing failed yet.
+            $invoice->forceFill([
+                'autopay_pending' => array_filter(['reference' => $result->reference ?? $attempt['reference'] ?? null] + $attempt),
+                'autopay_error' => Str::limit($result->message, 240),
+                'autopay_retry_at' => Carbon::tomorrow(),
+            ])->save();
+            Activity::log('invoice.autopay_pending', "Payment with {$label} for invoice {$invoice->displayNumber()} is not finished: {$result->message}", $invoice, $invoice->client);
+
+            return $result;
+        }
+
+        $invoice->forceFill(['autopay_pending' => null])->save();
+        $this->failed($invoice, $label, $result, $by);
+
+        return $result;
+    }
+
+    /**
+     * What became of a try whose result was not known, or null when the gateway has no payment for
+     * it and the invoice can be charged.
+     *
+     * @param  array<string, mixed>  $pending
+     */
+    private function checkPending(Invoice $invoice, array $pending): ?ChargeResult
+    {
+        $gateway = $this->methods->gateway((string) ($pending['gateway'] ?? ''));
+        $reference = isset($pending['reference']) ? (string) $pending['reference'] : null;
+
+        if (! $gateway instanceof ChecksSavedCharges) {
+            // Still processing, and the gateway cannot be asked: its webhook settles the invoice.
+            return $reference !== null ? ChargeResult::pending(__('The payment is still being processed.'), $reference) : null;
+        }
+
+        try {
+            $result = $gateway->checkSavedCharge($invoice, (string) ($pending['key'] ?? ''), $reference, isset($pending['customer']) ? (string) $pending['customer'] : null);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return ChargeResult::pending(__('The payment service did not answer. The payment is checked before the next try.'), $reference);
+        }
+
+        // A payment sent a few minutes ago may not be listed at the gateway yet.
+        if ($result === null && Carbon::parse((string) ($pending['since'] ?? 'now'))->gt(now()->subMinutes(10))) {
+            return ChargeResult::pending(__('The last try is still being checked. Try again in a few minutes.'));
+        }
+
+        return $result;
     }
 
     /**
@@ -225,10 +302,10 @@ class AutoPay
             ->whereHas('client', fn (Builder $query) => $query->where('auto_pay', true)->whereHas('paymentMethods'));
     }
 
-    private function failed(Invoice $invoice, PaymentMethod $method, ChargeResult $result, ?string $by): void
+    private function failed(Invoice $invoice, string $label, ChargeResult $result, ?string $by): void
     {
         $message = Str::limit($result->message, 240);
-        Activity::log('invoice.autopay_failed', ($by ? "{$by} could not charge" : 'Could not charge')." {$method->label()} for invoice {$invoice->displayNumber()}: {$message}", $invoice, $invoice->client);
+        Activity::log('invoice.autopay_failed', ($by ? "{$by} could not charge" : 'Could not charge')." {$label} for invoice {$invoice->displayNumber()}: {$message}", $invoice, $invoice->client);
 
         if ($by !== null) {
             $invoice->forceFill(['autopay_error' => $message])->save();
@@ -253,7 +330,7 @@ class AutoPay
         ])->save();
 
         $this->mailer->send('invoice.autopay_failed', $invoice->client, TemplateMailer::invoiceContext($invoice) + [
-            'payment_method' => ['name' => $method->label()],
+            'payment_method' => ['name' => $label],
             'failure' => $message,
             'next_try' => Locales::in(Locales::forClient($invoice->client), fn (): string => $retryAt
                 ? __('We will try again on :date.', ['date' => $retryAt->translatedFormat('d M Y')])

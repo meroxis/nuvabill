@@ -17,6 +17,7 @@ use App\Mail\TemplateMailer;
 use App\Models\Client;
 use App\Models\CreditNote;
 use App\Models\Invoice;
+use App\Models\InvoiceItem;
 use App\Models\Transaction;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
@@ -67,6 +68,8 @@ class InvoiceController extends Controller
             'invoice' => $invoice,
             'methods' => $methods,
             'canRefundThroughGateway' => $canRefundThroughGateway,
+            // Funds added to the wallet are already in it, so a credit note cannot put them there again.
+            'creditToWallet' => $invoice->currency === $invoice->client->currency && ! $invoice->items->contains('type', InvoiceItem::TYPE_CREDIT),
             'autoPay' => $savedMethod === null ? null : [
                 'method' => $savedMethod,
                 'usable' => $savedMethods->gateway($savedMethod->gateway) !== null && ! $savedMethod->isExpired(),

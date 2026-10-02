@@ -12,10 +12,12 @@ use App\Models\Domain;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Service;
+use App\Models\ServiceAddon;
 use App\Models\TldPrice;
 use App\Support\Activity;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Log;
 
@@ -38,6 +40,13 @@ class RenewalGenerator
     public function generate(?CarbonInterface $today = null): int
     {
         $today = CarbonImmutable::instance($today ?? today());
+
+        // Free renewals made before they were paid at once (0.6.11 and older) are paid now.
+        Invoice::query()
+            ->where('status', InvoiceStatus::Unpaid)
+            ->where('total', 0)
+            ->whereHas('items', fn (Builder $query) => $query->whereNotNull('billing_key'))
+            ->each(fn (Invoice $invoice) => app(PaymentRecorder::class)->settleFreeInvoice($invoice));
 
         /** @var array<string, array{client: Client, currency: string, due: CarbonImmutable, items: list<array<string, mixed>>}> $groups */
         $groups = [];
@@ -86,8 +95,7 @@ class RenewalGenerator
             }
 
             Activity::log('invoice.renewal', "Renewal invoice {$invoice->number} created", $invoice, $group['client']);
-            $this->mailer->send('invoice.created', $group['client'], TemplateMailer::invoiceContext($invoice));
-            $this->wallet->applyAutomatically($invoice);
+            $this->sendOrSettle($invoice, $group['client']);
         }
 
         return $created;
@@ -194,10 +202,25 @@ class RenewalGenerator
         }
 
         Activity::log('invoice.renewal', "Renewal invoice {$invoice->number} created for {$domain->name}", $invoice, $domain->client);
-        $this->mailer->send('invoice.created', $domain->client, TemplateMailer::invoiceContext($invoice));
-        $this->wallet->applyAutomatically($invoice);
+        $this->sendOrSettle($invoice, $domain->client);
 
         return $invoice->refresh();
+    }
+
+    /**
+     * Email a new renewal invoice and pay it from the wallet when that is on. One that costs nothing
+     * (a 100% coupon) is paid at once, like a free order, so the period renews and nothing goes overdue.
+     */
+    private function sendOrSettle(Invoice $invoice, Client $client): void
+    {
+        if ($invoice->total === 0) {
+            app(PaymentRecorder::class)->settleFreeInvoice($invoice);
+
+            return;
+        }
+
+        $this->mailer->send('invoice.created', $client, TemplateMailer::invoiceContext($invoice));
+        $this->wallet->applyAutomatically($invoice);
     }
 
     /**
@@ -211,7 +234,10 @@ class RenewalGenerator
             ->whereNotIn('billing_cycle', [BillingCycle::OneTime, BillingCycle::Free])
             ->whereNotNull('next_due_date')
             ->whereDate('next_due_date', '<=', $today->addDays((int) setting('billing.renewal_days_before')))
-            ->where('recurring_amount', '>', 0)
+            // A free plan still renews when it has a paid add-on.
+            ->where(fn (Builder $query) => $query
+                ->where('recurring_amount', '>', 0)
+                ->orWhereHas('addons', fn (Builder $query) => $query->where('status', ServiceAddon::STATUS_ACTIVE)->where('recurring_amount', '>', 0)))
             ->get()
             ->reject(fn (Service $service): bool => $this->alreadyInvoiced('service_id', $service->id, InvoiceItem::TYPE_SERVICE, $service->next_due_date));
     }

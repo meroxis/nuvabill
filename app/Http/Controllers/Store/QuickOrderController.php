@@ -8,6 +8,7 @@ use App\Billing\CartLine;
 use App\Billing\ExchangeRates;
 use App\Billing\OrderPlacer;
 use App\Billing\PaymentStarter;
+use App\Billing\SoldOut;
 use App\Billing\Taxes;
 use App\Domains\AvailabilityChecker;
 use App\Domains\DomainName;
@@ -166,7 +167,12 @@ class QuickOrderController extends Controller
         }
 
         $ipCountry = $request->isFromTrustedProxy() ? $request->header('CF-IPCountry') : null;
-        $order = $placer->place($client, $lines, $request->ip(), $ipCountry, $coupon);
+        try {
+            $order = $placer->place($client, $lines, $request->ip(), $ipCountry, $coupon);
+        } catch (SoldOut $exception) {
+            throw ValidationException::withMessages(['product_id' => $exception->getMessage()]);
+        }
+
         $cart->clear();
 
         $invoice = $order->invoice;

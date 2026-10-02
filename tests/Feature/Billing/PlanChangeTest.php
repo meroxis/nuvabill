@@ -91,6 +91,40 @@ class PlanChangeTest extends TestCase
         $this->assertSame(0, Invoice::query()->count());
     }
 
+    public function test_a_period_paid_with_a_free_coupon_gives_no_credit_on_a_downgrade(): void
+    {
+        $this->service->update(['product_id' => $this->business->id, 'recurring_amount' => 2000]);
+        $this->paidPeriod(2000, discount: 2000);
+
+        $this->actingAs($this->service->client)
+            ->post(route('client.services.change-plan.store', $this->service), ['product_id' => $this->starter->id])
+            ->assertRedirect(route('client.services.show', $this->service));
+
+        $this->assertSame($this->starter->id, $this->service->fresh()->product_id);
+        $this->assertSame(0, $this->service->client->fresh()->credit);
+    }
+
+    public function test_a_half_price_period_gives_half_the_credit_and_a_paid_one_the_full_credit(): void
+    {
+        $this->service->update(['product_id' => $this->business->id, 'recurring_amount' => 2000]);
+        $this->paidPeriod(2000, discount: 1000);
+
+        // Half of $5 (the unused half of the price difference).
+        $this->assertSame(-250, app(PlanChanges::class)->quote($this->service->fresh(), $this->starter)['difference']);
+
+        // The next period is paid in full: the usual credit.
+        $this->paidPeriod(2000, discount: 0);
+        $this->assertSame(-500, app(PlanChanges::class)->quote($this->service->fresh(), $this->starter)['difference']);
+    }
+
+    public function test_an_upgrade_after_a_free_period_pays_the_bigger_plan_for_the_days_left(): void
+    {
+        $this->paidPeriod(1000, discount: 1000);
+
+        // Business costs $10 for the 15 days left; the free Starter period is worth nothing.
+        $this->assertSame(1000, app(PlanChanges::class)->quote($this->service->fresh(), $this->business)['difference']);
+    }
+
     public function test_a_downgrade_can_wait_for_the_next_renewal_which_bills_the_new_plan(): void
     {
         $this->setSettings(['billing.downgrade' => 'renewal']);
@@ -183,5 +217,18 @@ class PlanChangeTest extends TestCase
 
         $this->get(route('client.services.show', $this->service))->assertOk()->assertDontSee('Upgrade or downgrade');
         $this->get(route('client.services.change-plan', $this->service))->assertNotFound();
+    }
+
+    /**
+     * A paid invoice for the current period of the service, with a coupon taking $discount off.
+     */
+    private function paidPeriod(int $price, int $discount): void
+    {
+        $invoice = Invoice::factory()->for($this->service->client)->create(['status' => InvoiceStatus::Paid, 'subtotal' => $price - $discount, 'total' => $price - $discount, 'currency' => 'USD']);
+        $invoice->items()->create(['type' => InvoiceItem::TYPE_SERVICE, 'service_id' => $this->service->id, 'description' => 'Business', 'amount' => $price, 'period_start' => '2026-09-16', 'period_end' => '2026-10-16']);
+
+        if ($discount > 0) {
+            $invoice->items()->create(['type' => InvoiceItem::TYPE_DISCOUNT, 'service_id' => $this->service->id, 'description' => 'Coupon', 'amount' => -$discount]);
+        }
     }
 }

@@ -75,6 +75,7 @@ class PaymentRecorder
             'paid_at' => $paidAt ?? now(),
         ]);
 
+        $paidBefore = $invoice->amount_paid;
         $invoice->amount_paid += $amount;
         $becamePaid = false;
 
@@ -83,17 +84,54 @@ class PaymentRecorder
             $invoice->paid_at = $transaction->paid_at;
             $invoice->payment_method = $gateway;
             $becamePaid = true;
+        }
 
-            $overpaid = $invoice->amount_paid - $invoice->total;
+        // Money beyond the total goes into the wallet: from the payment that settled the invoice and
+        // from every payment after it. Only the new surplus counts, so nothing is credited twice.
+        $surplus = max(0, $invoice->amount_paid - $invoice->total) - max(0, $paidBefore - $invoice->total);
 
-            if ($overpaid > 0) {
-                app(Wallet::class)->change($invoice->client, $overpaid, __('Overpayment on invoice :number', ['number' => $invoice->displayNumber()]), $invoice);
-            }
+        if ($surplus > 0 && $invoice->status === InvoiceStatus::Paid) {
+            $this->creditSurplus($invoice, $surplus);
         }
 
         $invoice->save();
 
         return [$transaction, $becamePaid];
+    }
+
+    /**
+     * Put an overpayment into the client's wallet. A wallet in another currency gets the amount at
+     * the exchange rate staff set, and its line says the amount and rate used. Without a rate the
+     * money stays on the invoice for staff to settle, and the activity log says so.
+     */
+    private function creditSurplus(Invoice $invoice, int $surplus): void
+    {
+        $client = $invoice->client;
+        $number = $invoice->displayNumber();
+
+        if ($invoice->currency === $client->currency) {
+            app(Wallet::class)->change($client, $surplus, __('Overpayment on invoice :number', ['number' => $number]), $invoice);
+
+            return;
+        }
+
+        $rates = app(ExchangeRates::class);
+        $rate = $rates->rate($invoice->currency, $client->currency);
+        $converted = $rates->convert($surplus, $invoice->currency, $client->currency);
+
+        if ($rate === null || $converted === null || $converted <= 0) {
+            Activity::log('payment.overpaid', 'Overpayment of '.money($surplus, $invoice->currency)." on invoice {$number} was not added to the {$client->currency} wallet: there is no exchange rate. Settle it by hand.", $invoice);
+
+            return;
+        }
+
+        app(Wallet::class)->change($client, $converted, __('Overpayment on invoice :number (:amount at 1 :from = :rate :to)', [
+            'number' => $number,
+            'amount' => money($surplus, $invoice->currency),
+            'from' => $invoice->currency,
+            'rate' => rtrim(rtrim(number_format($rate, 6, '.', ''), '0'), '.'),
+            'to' => $client->currency,
+        ]), $invoice);
     }
 
     /**

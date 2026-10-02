@@ -28,12 +28,12 @@ class DashboardController extends Controller
         return view('admin.dashboard', [
             'currency' => $currency,
             'revenueThisMonth' => (int) Transaction::query()
-                ->whereIn('type', ['payment', 'refund'])
+                ->revenue()
                 ->where('currency', $currency)
                 ->where('paid_at', '>=', $monthStart)
                 ->sum('amount'),
             'revenueLastMonth' => (int) Transaction::query()
-                ->whereIn('type', ['payment', 'refund'])
+                ->revenue()
                 ->where('currency', $currency)
                 ->whereBetween('paid_at', [$monthStart->subMonth(), $monthStart])
                 ->sum('amount'),
@@ -66,7 +66,7 @@ class DashboardController extends Controller
         $start = CarbonImmutable::now()->startOfMonth()->subMonths(11);
 
         $totals = Transaction::query()
-            ->whereIn('type', ['payment', 'refund'])
+            ->revenue()
             ->where('currency', $currency)
             ->where('paid_at', '>=', $start)
             ->get(['amount', 'paid_at'])

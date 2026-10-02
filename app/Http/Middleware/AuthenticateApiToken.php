@@ -29,6 +29,11 @@ class AuthenticateApiToken
             return response()->json(['message' => __('Send a valid API key in the Authorization header: Bearer nb_…')], 401);
         }
 
+        // Required two-factor login for staff applies to their API keys too.
+        if (EnsureStaffTwoFactor::mustSetUp($admin)) {
+            return response()->json(['message' => __('Your company requires two-factor login for staff. Turn it on in your profile, then use this API key again.')], 403);
+        }
+
         if (! $token->can_write && ! $request->isMethodSafe()) {
             return response()->json(['message' => __('This API key can only read. Make a key that can write to change data.')], 403);
         }

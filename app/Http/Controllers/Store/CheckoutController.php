@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Store;
 
 use App\Billing\Cart;
 use App\Billing\OrderPlacer;
+use App\Billing\SoldOut;
 use App\Billing\Taxes;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\RedirectResponse;
@@ -59,7 +60,12 @@ class CheckoutController extends Controller
         // Only trust the visitor's country when a trusted proxy such as Cloudflare added it.
         $ipCountry = $request->isFromTrustedProxy() ? $request->header('CF-IPCountry') : null;
 
-        $order = $placer->place($client, $lines, $request->ip(), $ipCountry, $coupon);
+        try {
+            $order = $placer->place($client, $lines, $request->ip(), $ipCountry, $coupon);
+        } catch (SoldOut $exception) {
+            return redirect()->route('cart.show')->with('error', $exception->getMessage());
+        }
+
         $cart->clear();
 
         $invoice = $order->invoice;

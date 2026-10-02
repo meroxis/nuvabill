@@ -78,6 +78,10 @@ class AutoPayController extends Controller
     {
         $result = $autoPay->charge($invoice, by: $request->user('admin')->name);
 
+        if ($result->isPending()) {
+            return back()->with('status', __('The payment is not finished yet: :reason', ['reason' => $result->message]));
+        }
+
         return back()->with($result->isPaid() ? 'status' : 'error', $result->isPaid()
             ? __('The invoice is paid.')
             : __('The charge did not work: :reason', ['reason' => $result->message]));

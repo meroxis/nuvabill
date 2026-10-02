@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Billing\Wallet;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -21,6 +22,17 @@ class Transaction extends Model
             'meta' => 'array',
             'paid_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Money that came in or went back out through a payment method: payments and refunds, without
+     * the wallet's own moves. Funds added to a wallet count when they arrive, not again when spent.
+     *
+     * @param  Builder<self>  $query
+     */
+    public function scopeRevenue(Builder $query): void
+    {
+        $query->whereIn('type', ['payment', 'refund'])->where('gateway', '!=', Wallet::GATEWAY);
     }
 
     /**

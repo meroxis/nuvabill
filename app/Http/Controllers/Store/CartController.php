@@ -58,6 +58,12 @@ class CartController extends Controller
             throw ValidationException::withMessages(['product_id' => __('This product is not available right now.')]);
         }
 
+        $left = $product->stockLeft();
+
+        if ($left !== null && $cart->quantityOf($product) >= $left) {
+            throw ValidationException::withMessages(['product_id' => __('Your cart already has all of this product that is left.')]);
+        }
+
         if ($product->priceFor($this->currency(), $cycle) === null) {
             throw ValidationException::withMessages(['billing_cycle' => __('Choose one of the billing options shown.')]);
         }

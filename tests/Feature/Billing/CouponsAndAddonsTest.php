@@ -2,8 +2,12 @@
 
 namespace Tests\Feature\Billing;
 
+use App\Automation\DailyAutomation;
+use App\Billing\InvoiceManager;
+use App\Billing\PaymentRecorder;
 use App\Billing\RenewalGenerator;
 use App\Enums\BillingCycle;
+use App\Enums\InvoiceStatus;
 use App\Enums\ServiceStatus;
 use App\Models\Client;
 use App\Models\Coupon;
@@ -12,6 +16,7 @@ use App\Models\Order;
 use App\Models\Product;
 use App\Models\ProductAddon;
 use App\Models\Service;
+use App\Models\ServiceAddon;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -70,6 +75,67 @@ class CouponsAndAddonsTest extends TestCase
 
         $this->assertSame([500, 500, 1000], $totals);
         $this->assertNull($service->fresh()->coupon_id);
+    }
+
+    public function test_a_renewal_a_coupon_makes_free_is_paid_at_once_and_renews_the_service(): void
+    {
+        $coupon = Coupon::factory()->create(['code' => 'FREEFOREVER', 'value' => 100, 'recurring' => Coupon::RECURRING_EVERY]);
+        $due = CarbonImmutable::today()->addDays(3);
+        $service = Service::factory()->create(['recurring_amount' => 1000, 'next_due_date' => $due, 'coupon_id' => $coupon->id]);
+
+        $this->assertSame(1, app(RenewalGenerator::class)->generate());
+
+        $invoice = $service->client->invoices()->sole();
+        $this->assertSame(0, $invoice->total);
+        $this->assertSame(InvoiceStatus::Paid, $invoice->status);
+        $this->assertTrue($service->fresh()->next_due_date->isSameDay($due->addMonthNoOverflow()));
+
+        // Running again, or later, neither invoices the period again nor moves the date twice.
+        app(RenewalGenerator::class)->generate();
+        $this->travelTo($due->addDays(10));
+        app(DailyAutomation::class)->run();
+
+        $this->assertSame(1, $service->client->invoices()->count());
+        $this->assertSame(1, $coupon->redemptions()->count());
+        $this->assertTrue($service->fresh()->next_due_date->isSameDay($due->addMonthNoOverflow()));
+        $this->assertSame(ServiceStatus::Active, $service->fresh()->status);
+    }
+
+    public function test_a_free_renewal_left_unpaid_by_an_older_version_is_paid_by_the_next_run(): void
+    {
+        $due = CarbonImmutable::today();
+        $service = Service::factory()->create(['recurring_amount' => 1000, 'next_due_date' => $due]);
+        $invoice = app(InvoiceManager::class)->create($service->client, [
+            ['type' => InvoiceItem::TYPE_SERVICE, 'service_id' => $service->id, 'description' => 'Hosting', 'amount' => 1000, 'period_start' => $due, 'period_end' => $due->addMonthNoOverflow()->subDay(), 'billing_key' => RenewalGenerator::billingKey('service', $service->id, $due)],
+            ['type' => InvoiceItem::TYPE_DISCOUNT, 'service_id' => $service->id, 'description' => 'Coupon', 'amount' => -1000],
+        ]);
+
+        app(RenewalGenerator::class)->generate();
+
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertTrue($service->fresh()->next_due_date->isSameDay($due->addMonthNoOverflow()));
+    }
+
+    public function test_a_paid_add_on_on_a_free_plan_is_renewed(): void
+    {
+        $due = CarbonImmutable::today()->addDays(3);
+        $service = Service::factory()->create(['recurring_amount' => 0, 'next_due_date' => $due]);
+        $service->addons()->create(['name' => 'Daily backups', 'recurring_amount' => 500, 'status' => ServiceAddon::STATUS_ACTIVE]);
+        $service->addons()->create(['name' => 'Old extra', 'recurring_amount' => 900, 'status' => 'cancelled']);
+
+        $this->assertSame(1, app(RenewalGenerator::class)->generate());
+        $this->assertSame(0, app(RenewalGenerator::class)->generate());
+
+        $invoice = $service->client->invoices()->sole();
+        $this->assertSame(500, $invoice->total, 'Only the active add-on is billed.');
+
+        app(PaymentRecorder::class)->record($invoice, 500, 'banktransfer', 'bank-addon');
+        $this->assertTrue($service->fresh()->next_due_date->isSameDay($due->addMonthNoOverflow()));
+
+        // A free plan with no paid add-on is not invoiced.
+        $free = Service::factory()->create(['recurring_amount' => 0, 'next_due_date' => $due]);
+        app(RenewalGenerator::class)->generate();
+        $this->assertSame(0, $free->client->invoices()->count());
     }
 
     public function test_coupon_rules_are_checked(): void

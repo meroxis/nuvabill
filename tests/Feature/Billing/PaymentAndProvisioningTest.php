@@ -10,23 +10,27 @@ use App\Enums\InvoiceStatus;
 use App\Enums\OrderStatus;
 use App\Enums\ServiceStatus;
 use App\Extensions\ExtensionManager;
+use App\Jobs\ProvisionService;
 use App\Models\Client;
 use App\Models\Invoice;
+use App\Models\Order;
 use App\Models\Product;
 use App\Models\Server;
 use App\Models\Service;
+use App\Provisioning\Provisioner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class PaymentAndProvisioningTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function placeCpanelOrder(Server $server): Invoice
+    private function placeCpanelOrder(Server $server, string $email = 'raz@example.test'): Invoice
     {
-        $client = Client::factory()->create(['email' => 'raz@example.test']);
+        $client = Client::factory()->create(['email' => $email]);
         $product = Product::factory()->cpanel($server)->priced(899)->create();
 
         $cart = app(Cart::class);
@@ -88,6 +92,53 @@ class PaymentAndProvisioningTest extends TestCase
         $this->get(route('admin.dashboard'))->assertRedirect();
         $this->signInAdmin();
         $this->get(route('admin.dashboard'))->assertSee('waiting to be set up');
+    }
+
+    public function test_a_queued_setup_does_not_bring_back_a_service_staff_cancelled(): void
+    {
+        Queue::fake();
+        Http::fake(['*/json-api/createacct*' => Http::response(['metadata' => ['result' => 1, 'reason' => 'Account Creation Ok']])]);
+        $invoice = $this->placeCpanelOrder(Server::factory()->create());
+        $order = Order::query()->sole();
+        app(PaymentRecorder::class)->record($invoice, 899, 'stripe', 'pi_queued');
+        Queue::assertPushed(ProvisionService::class);
+        $queued = $order->services()->sole();
+
+        $this->signInAdmin();
+        $this->post(route('admin.orders.cancel', $order))->assertRedirect();
+        (new ProvisionService($queued))->handle(app(Provisioner::class));
+
+        $this->assertSame(ServiceStatus::Cancelled, $queued->fresh()->status);
+        Http::assertNothingSent();
+
+        // A service still waiting is set up as usual.
+        $waiting = $this->placeCpanelOrder(Server::factory()->create(), 'mer@example.test')->items->first()->service;
+        (new ProvisionService($waiting))->handle(app(Provisioner::class));
+        $this->assertSame(ServiceStatus::Active, $waiting->fresh()->status);
+    }
+
+    public function test_a_new_account_never_goes_to_a_server_that_is_turned_off(): void
+    {
+        Http::fake(['*/json-api/createacct*' => Http::response(['metadata' => ['result' => 1, 'reason' => 'Account Creation Ok']])]);
+        $off = Server::factory()->create(['hostname' => 'old.example.test', 'is_active' => false]);
+        $invoice = $this->placeCpanelOrder($off);
+        $service = $invoice->items->first()->service;
+        $this->assertSame($off->id, $service->server_id);
+
+        app(PaymentRecorder::class)->record($invoice, 899, 'stripe', 'pi_off');
+
+        // No other server: the service waits, and staff see why.
+        $this->assertSame(ServiceStatus::Pending, $service->fresh()->status);
+        $this->assertDatabaseHas('activity_logs', ['action' => 'service.module_failed', 'subject_id' => $service->id]);
+        Http::assertNothingSent();
+
+        // With an active server for the same module, the account goes there instead.
+        Server::factory()->create(['hostname' => 'new.example.test']);
+        $this->assertTrue(app(Provisioner::class)->create($service->fresh())->success);
+
+        $this->assertSame(ServiceStatus::Active, $service->fresh()->status);
+        $this->assertSame('new.example.test', $service->fresh()->server->hostname);
+        Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'old.example.test'));
     }
 
     public function test_the_same_gateway_payment_is_only_recorded_once(): void

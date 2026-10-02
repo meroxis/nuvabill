@@ -15,6 +15,7 @@ use App\Models\Coupon;
 use App\Models\Domain;
 use App\Models\InvoiceItem;
 use App\Models\Order;
+use App\Models\Product;
 use App\Models\Service;
 use App\Models\ServiceAddon;
 use App\Support\Activity;
@@ -39,6 +40,8 @@ class OrderPlacer
     /**
      * @param  Collection<int, CartLine>  $lines  Lines from the cart. With a coupon, they already carry their discounts.
      * @param  string|null  $ipCountry  The visitor's country from a trusted proxy, for the fraud check.
+     *
+     * @throws SoldOut When the order wants more of a product than is left; nothing is made then.
      */
     public function place(Client $client, Collection $lines, ?string $ipAddress = null, ?string $ipCountry = null, ?Coupon $coupon = null): Order
     {
@@ -53,6 +56,7 @@ class OrderPlacer
         $fraudReasons = $this->fraud->reasons($client, $ipAddress, $ipCountry);
 
         $order = DB::transaction(function () use ($client, $lines, $ipAddress, $fraudReasons, $coupon): Order {
+            $this->reserveStock($lines);
             $today = CarbonImmutable::today();
 
             $order = Order::create([
@@ -211,6 +215,33 @@ class OrderPlacer
         $fromServer = $lines->first(fn (CartLine $line): bool => ! $line->isDomain() && $line->product?->server?->nameservers)?->product->server->nameservers;
 
         return array_values(array_filter((array) ($fromServer ?: DomainProvisioner::defaultNameservers())));
+    }
+
+    /**
+     * Products with a stock limit are locked until the order is made, so two checkouts at once
+     * cannot both take the last one. Run inside the order's database transaction.
+     *
+     * @param  Collection<int, CartLine>  $lines
+     *
+     * @throws SoldOut
+     */
+    private function reserveStock(Collection $lines): void
+    {
+        $wanted = $lines->reject(fn (CartLine $line): bool => $line->isDomain())->countBy(fn (CartLine $line): int => $line->product->id);
+
+        if ($wanted->isEmpty()) {
+            return;
+        }
+
+        $limited = Product::query()->whereKey($wanted->keys()->all())->whereNotNull('stock')->orderBy('id')->lockForUpdate()->get();
+
+        foreach ($limited as $product) {
+            $left = (int) $product->stockLeft();
+
+            if ($wanted[$product->id] > $left) {
+                throw new SoldOut($product, $left);
+            }
+        }
     }
 
     private function uniqueOrderNumber(): string

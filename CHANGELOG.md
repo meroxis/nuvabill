@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.6.12](https://github.com/meroxis/nuvabill/releases/tag/v0.6.12) | 2 Oct 2026 | Fixes from a full code review: Stripe automatic payments, wallet, renewals, stock and security |
 | [0.6.11](https://github.com/meroxis/nuvabill/releases/tag/v0.6.11) | 30 Sep 2026 | Sign in from an order and come back to it; themes and order forms bring their own translations |
 | [0.6.10](https://github.com/meroxis/nuvabill/releases/tag/v0.6.10) | 30 Sep 2026 | Webhooks for add-ons |
 | [0.6.9](https://github.com/meroxis/nuvabill/releases/tag/v0.6.9) | 30 Sep 2026 | Choose the order clients see payment methods in |
@@ -51,6 +52,35 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.6.12
+
+Fixes from a full review of billing, payments and security.
+
+- **Security:** a password set by staff, by the client or with a reset link now replaces a password imported from
+  another billing system for good. Before, the imported password kept working too.
+- **Security:** when two-factor login is required for staff, staff who have not turned it on cannot make API keys,
+  and their older API keys stop working until they turn it on.
+- **Stripe automatic payments are never charged twice.** A card payment the bank is still processing, or a charge
+  Stripe did not answer, is kept on the invoice and checked before the next try. Add the event
+  `payment_intent.succeeded` to your Stripe webhook, so these payments are marked paid as soon as they finish.
+- Moving to a smaller plan gives back only what the client really paid for the days left: nothing after a free
+  coupon, half after a 50% coupon.
+- Taking back funds a client added to their wallet now takes them out of the wallet too, and only while the wallet
+  still holds them. Before, a credit note to the wallet could double them.
+- A second payment on an invoice that is already paid goes into the client's wallet. An overpayment in another
+  currency goes in at your exchange rate, or stays on the invoice for you to settle when there is no rate.
+- Renewals that a 100% coupon makes free are paid at once, so the service renews and never goes overdue. Free plans
+  with a paid add-on are renewed too.
+- One checkout can no longer buy more than is left in stock, also when two clients check out at the same moment.
+- A service that staff cancelled while it waited to be set up is no longer set up anyway. New accounts never go to a
+  server that is turned off: another server for the same module is used, or the service waits.
+- When a marketplace update fails while it changes the database, the previous version comes back and the update is
+  shown as failed.
+- The dashboard counts money when it comes in: funds added to a wallet count once, not again when they pay an invoice.
+- **For developers:** release zips leave out login files (`auth.json`, `.npmrc`) and private keys, the signing key
+  too. Gateways can say what became of an unclear automatic payment with the new `ChecksSavedCharges` contract.
+- In 10 languages.
 
 ## 0.6.11
 

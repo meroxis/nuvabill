@@ -101,7 +101,8 @@ class PhoneAppController extends Controller
             $invoicesPaid = (clone $payments)->whereNotNull('invoice_id')->distinct()->count('invoice_id');
             $numbers[] = [
                 'label' => __('Payments'),
-                'value' => money((int) (clone $payments)->sum('amount'), $currency),
+                // Money that came in today; paying from the wallet only moves money already received.
+                'value' => money((int) (clone $payments)->revenue()->sum('amount'), $currency),
                 'note' => trans_choice(':count invoice paid|:count invoices paid', $invoicesPaid, ['count' => $invoicesPaid]),
                 'url' => route('admin.invoices.index', ['status' => 'paid']),
             ];

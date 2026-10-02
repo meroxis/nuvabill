@@ -90,8 +90,12 @@ class PlanChanges
 
         $old = (int) $service->recurring_amount;
         $new = (int) $product->priceFor($service->currency, $service->billing_cycle)?->price;
-        $credit = (int) round($old * $daysLeft / $periodDays);
-        $cost = (int) round($new * $daysLeft / $periodDays);
+        $share = $this->paidShare($service);
+        // Unused time is worth what the client really paid for it: nothing after a free coupon or trial.
+        $credit = (int) round($old * $share * $daysLeft / $periodDays);
+        // A bigger plan costs its full price for the days left. A smaller one gets the same discount as
+        // the period, so moving down never costs money and never pays out more than was paid.
+        $cost = (int) round($new * ($new >= $old ? 1 : $share) * $daysLeft / $periodDays);
 
         return [
             'old' => $old,
@@ -102,6 +106,37 @@ class PlanChanges
             'cost' => $cost,
             'difference' => $cost - $credit,
         ];
+    }
+
+    /**
+     * The share of the plan's price the client paid for the current period, from 0 to 1: the latest
+     * paid line for the service, less the coupon on the same invoice. A free trial or a 100% coupon
+     * is 0. A service with no paid invoice here (imported, or made by staff) keeps its full price.
+     */
+    private function paidShare(Service $service): float
+    {
+        $line = InvoiceItem::query()
+            ->where('service_id', $service->id)
+            ->where('type', InvoiceItem::TYPE_SERVICE)
+            ->whereHas('invoice', fn ($query) => $query->where('status', InvoiceStatus::Paid))
+            ->latest('id')
+            ->first();
+
+        if ($line === null) {
+            return 1.0;
+        }
+
+        if ($line->amount <= 0) {
+            return 0.0;
+        }
+
+        $discount = -(int) InvoiceItem::query()
+            ->where('invoice_id', $line->invoice_id)
+            ->where('service_id', $service->id)
+            ->where('type', InvoiceItem::TYPE_DISCOUNT)
+            ->sum('amount');
+
+        return max(0.0, min(1.0, ($line->amount - $discount) / $line->amount));
     }
 
     /**

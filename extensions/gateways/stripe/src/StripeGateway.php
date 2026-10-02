@@ -2,6 +2,7 @@
 
 namespace Nuvabill\Extensions\Stripe;
 
+use App\Contracts\ChecksSavedCharges;
 use App\Contracts\SavesPaymentMethods;
 use App\Extensions\Gateways\ChargeResult;
 use App\Extensions\Gateways\Gateway;
@@ -22,9 +23,10 @@ use RuntimeException;
 /**
  * Stripe Checkout. The client pays on a page hosted by Stripe, so card numbers never reach this server.
  * A client can keep the card at Stripe for automatic renewals; Nuvabill then charges it by its
- * reference without the client.
+ * reference without the client. A charge the bank is still processing is settled by the
+ * payment_intent.succeeded webhook, or checked by the next nightly run.
  */
-class StripeGateway extends Gateway implements SavesPaymentMethods
+class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentMethods
 {
     private const API = 'https://api.stripe.com/v1';
 
@@ -60,7 +62,7 @@ class StripeGateway extends Gateway implements SavesPaymentMethods
                 'label' => 'Webhook signing secret',
                 'type' => 'password',
                 'required' => true,
-                'help' => 'Add a webhook for the URL shown on this page with the event checkout.session.completed, then paste its signing secret (whsec_...).',
+                'help' => 'Add a webhook for the URL shown on this page with the events checkout.session.completed and payment_intent.succeeded, then paste its signing secret (whsec_...).',
             ],
         ];
     }
@@ -138,6 +140,12 @@ class StripeGateway extends Gateway implements SavesPaymentMethods
         }
 
         $event = json_decode($payload, true);
+
+        if (($event['type'] ?? null) === 'payment_intent.succeeded') {
+            $result = $this->resultFromSavedCharge((array) ($event['data']['object'] ?? []));
+
+            return $result ? WebhookResult::paid($result) : WebhookResult::ignored('Not an automatic payment of this site.');
+        }
 
         if (! in_array($event['type'] ?? null, ['checkout.session.completed', 'checkout.session.async_payment_succeeded'], true)) {
             return WebhookResult::ignored();
@@ -292,31 +300,101 @@ class StripeGateway extends Gateway implements SavesPaymentMethods
                 'off_session' => 'true',
                 'confirm' => 'true',
                 'description' => __('Invoice :number', ['number' => $invoice->displayNumber()]),
-                'metadata' => ['invoice_id' => (string) $invoice->id, 'autopay' => '1'],
+                // The attempt key finds this payment again when Stripe's answer is lost.
+                'metadata' => ['invoice_id' => (string) $invoice->id, 'autopay' => '1', 'attempt' => $attemptKey],
             ]);
 
-        $intent = $response->successful() ? $response->json() : (array) $response->json('error.payment_intent', []);
-
-        if ($response->successful() && ($intent['status'] ?? null) === 'succeeded') {
-            return ChargeResult::paid(new PaymentResult(
-                invoiceId: $invoice->id,
-                amount: (int) ($intent['amount_received'] ?? $intent['amount'] ?? 0),
-                currency: strtoupper((string) ($intent['currency'] ?? $invoice->currency)),
-                reference: (string) $intent['id'],
-                meta: ['autopay' => true],
-            ));
-        }
-
-        if (($intent['status'] ?? null) === 'requires_action' || $response->json('error.code') === 'authentication_required') {
-            return ChargeResult::needsClient(__('Your bank wants you to confirm this payment yourself.'));
+        // No answer to trust (a Stripe error, too many requests, or the same key still running):
+        // the card may have been charged, so the payment is checked before the next try.
+        if ($response->serverError() || in_array($response->status(), [409, 429], true)) {
+            return ChargeResult::pending(__('The payment service did not answer. The payment is checked before the next try.'));
         }
 
         if ($response->successful()) {
-            return ChargeResult::failed(__('The card could not be charged.'));
+            return $this->resultFromIntent($response->json(), $invoice);
+        }
+
+        if ($response->json('error.code') === 'authentication_required' || $response->json('error.payment_intent.status') === 'requires_action') {
+            return ChargeResult::needsClient(__('Your bank wants you to confirm this payment yourself.'));
         }
 
         // Stripe's own message is written for card holders, for example "Your card has insufficient funds."
         return ChargeResult::failed((string) ($response->json('error.message') ?: __('The card could not be charged.')));
+    }
+
+    public function checkSavedCharge(Invoice $invoice, string $attemptKey, ?string $reference, ?string $customer): ?ChargeResult
+    {
+        if ($reference !== null && str_starts_with($reference, 'pi_')) {
+            $response = $this->api()->get(self::API.'/payment_intents/'.rawurlencode($reference));
+            $intent = $response->successful() ? $response->json() : null;
+        } elseif ($customer !== null && $customer !== '') {
+            // Without its ID, the payment is found by the attempt key it was sent with.
+            $response = $this->api()->get(self::API.'/payment_intents', ['customer' => $customer, 'limit' => 100]);
+            $intent = collect((array) $response->json('data', []))->first(fn (mixed $intent): bool => is_array($intent) && ($intent['metadata']['attempt'] ?? null) === $attemptKey);
+        } else {
+            return null;
+        }
+
+        if ($response->failed() && $response->status() !== 404) {
+            throw new RuntimeException('Stripe could not be asked about the payment: '.($response->json('error.message') ?? $response->status()));
+        }
+
+        if (! is_array($intent) || (string) ($intent['metadata']['invoice_id'] ?? '') !== (string) $invoice->id) {
+            return null;
+        }
+
+        return $this->resultFromIntent($intent, $invoice);
+    }
+
+    /**
+     * @param  array<string, mixed>  $intent  The PaymentIntent of a saved card charge.
+     */
+    private function resultFromIntent(array $intent, Invoice $invoice): ChargeResult
+    {
+        $id = is_string($intent['id'] ?? null) ? $intent['id'] : null;
+
+        return match ($intent['status'] ?? null) {
+            'succeeded' => $id === null ? ChargeResult::failed(__('The card could not be charged.')) : ChargeResult::paid(new PaymentResult(
+                invoiceId: $invoice->id,
+                amount: (int) ($intent['amount_received'] ?? $intent['amount'] ?? 0),
+                currency: strtoupper((string) ($intent['currency'] ?? $invoice->currency)),
+                reference: $id,
+                meta: ['autopay' => true],
+            )),
+            'processing' => ChargeResult::pending(__('The bank is still processing this payment.'), $id),
+            'requires_action' => ChargeResult::needsClient(__('Your bank wants you to confirm this payment yourself.')),
+            default => ChargeResult::failed((string) ($intent['last_payment_error']['message'] ?? __('The card could not be charged.'))),
+        };
+    }
+
+    /**
+     * A saved card charge that finished after the nightly run (the bank was still processing it).
+     *
+     * @param  array<string, mixed>  $intent
+     */
+    private function resultFromSavedCharge(array $intent): ?PaymentResult
+    {
+        $invoice = ($intent['metadata']['autopay'] ?? null) === '1' ? Invoice::query()->find((int) ($intent['metadata']['invoice_id'] ?? 0)) : null;
+
+        if ($invoice === null || ($intent['status'] ?? null) !== 'succeeded' || ! $this->isClientsCustomer($intent['customer'] ?? null, $invoice)) {
+            return null;
+        }
+
+        return $this->resultFromIntent($intent, $invoice)->payment;
+    }
+
+    /**
+     * Whether the Stripe customer is the invoice's client: the one the unclear charge went to, or
+     * the owner of one of the client's saved cards.
+     */
+    private function isClientsCustomer(mixed $customer, Invoice $invoice): bool
+    {
+        if (! is_string($customer) || $customer === '') {
+            return false;
+        }
+
+        return ($invoice->autopay_pending['customer'] ?? null) === $customer
+            || PaymentMethod::query()->where('client_id', $invoice->client_id)->where('gateway', $this->slug())->where('customer_reference', $customer)->exists();
     }
 
     public function forgetSaved(PaymentMethod $method): void

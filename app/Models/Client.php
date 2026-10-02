@@ -86,6 +86,17 @@ class Client extends Authenticatable
         ];
     }
 
+    protected static function booted(): void
+    {
+        // A password set on purpose (by staff, by the client or through a reset) replaces an imported
+        // one for good, so the password from the old billing system stops working.
+        static::saving(function (Client $client): void {
+            if ($client->exists && $client->isDirty('password') && ! $client->isDirty('legacy_password')) {
+                $client->legacy_password = null;
+            }
+        });
+    }
+
     /**
      * Whether staff erased this client's personal data. The name and address stay only when
      * invoices need them.

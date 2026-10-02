@@ -41,7 +41,13 @@ class PackageRelease extends Command
      *
      * @var list<string>
      */
-    private const HIDDEN_FILES = ['.htaccess', '.env.example', '.editorconfig', '.gitattributes', '.gitignore', '.npmrc'];
+    private const HIDDEN_FILES = ['.htaccess', '.env.example', '.editorconfig', '.gitattributes', '.gitignore'];
+
+    /**
+     * Files that hold logins or keys, in any folder: Composer and npm logins and private keys.
+     * Git leaving them out is not enough, because the zip is made from the folder, not from Git.
+     */
+    private const SECRET_FILE = '#(^|/)(auth\.json|\.npmrc|\.netrc|id_(rsa|dsa|ecdsa|ed25519)|[^/]+\.(key|p12|pfx|ppk|jks))$#i';
 
     public function handle(): int
     {
@@ -61,7 +67,12 @@ class PackageRelease extends Command
         $zipPath = $output.DIRECTORY_SEPARATOR."nuvabill-{$version}.zip";
         $zip = new ZipArchive;
         $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $keyFile = $this->option('key') ? realpath((string) $this->option('key')) : false;
         $key = $this->option('key') ? trim((string) file_get_contents((string) $this->option('key'))) : (string) getenv('NUVABILL_SIGNING_KEY');
+
+        if ($keyFile !== false && str_starts_with(str_replace('\\', '/', $keyFile), str_replace('\\', '/', base_path()).'/')) {
+            $this->components->warn('The signing key is inside the project folder. It is left out of the zip, but keep it outside the folder.');
+        }
 
         $files = 0;
         $fingerprints = [];
@@ -72,6 +83,13 @@ class PackageRelease extends Command
             $relative = ltrim(str_replace('\\', '/', substr($file->getPathname(), strlen(base_path()))), '/');
 
             if (! $file->isFile() || self::isExcluded($relative) || in_array($relative, [CoreFiles::LIST_FILE, CoreFiles::SIGNATURE_FILE], true)) {
+                continue;
+            }
+
+            // A private key never ships, whatever its file is called: the signing key above all.
+            if ($file->getRealPath() === $keyFile || self::holdsPrivateKey($file->getPathname(), $key)) {
+                $this->components->warn("Left out {$relative}: it holds a private key.");
+
                 continue;
             }
 
@@ -143,6 +161,10 @@ class PackageRelease extends Command
             return true;
         }
 
+        if (preg_match(self::SECRET_FILE, $relative)) {
+            return true;
+        }
+
         foreach (self::EXCLUDED as $excluded) {
             if ($relative === $excluded || str_starts_with($relative, $excluded.'/')) {
                 return true;
@@ -150,5 +172,22 @@ class PackageRelease extends Command
         }
 
         return false;
+    }
+
+    /**
+     * Whether a file holds a private key: a PEM key block, or the release signing key itself.
+     */
+    public static function holdsPrivateKey(string $path, string $signingKey = ''): bool
+    {
+        $size = filesize($path);
+
+        if ($size === false || $size > 1_048_576) {
+            return false;
+        }
+
+        $content = (string) file_get_contents($path);
+
+        return ($signingKey !== '' && str_contains($content, $signingKey))
+            || preg_match('/-----BEGIN [A-Z ]*PRIVATE KEY-----\r?\n[A-Za-z0-9+\/=\r\n]{64,}/', $content) === 1;
     }
 }

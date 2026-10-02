@@ -17,10 +17,17 @@ final readonly class ChargeResult
      */
     public const NEEDS_CLIENT = 'needs_client';
 
+    /**
+     * The result is not known yet: the bank is still processing the payment, or the gateway did
+     * not answer. Nuvabill checks it before it charges the invoice again, so it is never paid twice.
+     */
+    public const PENDING = 'pending';
+
     private function __construct(
         public string $status,
         public ?PaymentResult $payment = null,
         public string $message = '',
+        public ?string $reference = null,
     ) {}
 
     public static function paid(PaymentResult $payment): self
@@ -49,8 +56,21 @@ final readonly class ChargeResult
         return new self(self::NEEDS_CLIENT, message: $message);
     }
 
+    /**
+     * @param  string|null  $reference  The gateway's ID for the payment, when it sent one.
+     */
+    public static function pending(string $message, ?string $reference = null): self
+    {
+        return new self(self::PENDING, message: $message, reference: $reference);
+    }
+
     public function isPaid(): bool
     {
         return $this->status === self::PAID;
+    }
+
+    public function isPending(): bool
+    {
+        return $this->status === self::PENDING;
     }
 }

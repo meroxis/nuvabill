@@ -63,7 +63,9 @@
             @if ($autoPay && $status === \App\Enums\InvoiceStatus::Unpaid)
                 <section class="card" style="display:grid;gap:.7rem">
                     <div class="card-header" style="margin:0"><h2>{{ __('Automatic payment') }}</h2>
-                        @if ($invoice->autopay_error)
+                        @if ($invoice->autopay_pending && $invoice->autopay_error)
+                            <x-pill tone="info">{{ __('Payment not finished') }}</x-pill>
+                        @elseif ($invoice->autopay_error)
                             <x-pill tone="crit">{{ __('Charge failed') }}</x-pill>
                         @elseif ($autoPay['automatic'])
                             <x-pill tone="info">{{ __('Charged on :date', ['date' => $autoPay['date']->translatedFormat('d M Y')]) }}</x-pill>
@@ -129,7 +131,7 @@
                     </form>
                 </section>
 
-                <section class="card" x-data="{ method: @js(old('method', $invoice->currency === $invoice->client->currency ? 'wallet' : 'refund')) }">
+                <section class="card" x-data="{ method: @js(old('method', $creditToWallet ? 'wallet' : 'refund')) }">
                     <div class="card-header"><h2>{{ __('Issue a credit note') }}</h2></div>
                     <form method="POST" action="{{ route('admin.invoices.credit-notes.store', $invoice) }}" style="display:grid;gap:.9rem">
                         @csrf
@@ -138,7 +140,7 @@
                         <div class="field">
                             <label for="f-credit-method">{{ __('What happens to the money') }}</label>
                             <select id="f-credit-method" name="method" class="select" x-model="method">
-                                @if ($invoice->currency === $invoice->client->currency)
+                                @if ($creditToWallet)
                                     <option value="wallet">{{ __('Add it to the client\'s wallet') }}</option>
                                 @endif
                                 <option value="refund">{{ __('Send it back to the client') }}</option>

@@ -2,14 +2,19 @@
 
 namespace Tests\Feature\Billing;
 
+use App\Billing\Cart;
+use App\Billing\OrderPlacer;
+use App\Billing\SoldOut;
 use App\Enums\BillingCycle;
 use App\Enums\InvoiceStatus;
 use App\Enums\OrderStatus;
 use App\Enums\ServiceStatus;
 use App\Mail\TemplatedMessage;
 use App\Models\Client;
+use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Service;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
@@ -109,6 +114,48 @@ class CheckoutTest extends TestCase
         $this->assertSame(InvoiceStatus::Paid, $order->invoice->status);
         $this->assertSame(ServiceStatus::Active, $order->services()->first()->status);
         $this->assertSame(OrderStatus::Active, $order->fresh()->status);
+    }
+
+    public function test_one_checkout_cannot_take_more_than_is_in_stock(): void
+    {
+        $product = Product::factory()->priced()->withoutDomain()->create(['stock' => 1]);
+        $this->actingAs(Client::factory()->create(), 'web');
+
+        $this->post(route('cart.store'), ['product_id' => $product->id, 'billing_cycle' => 'monthly'])->assertSessionHasNoErrors();
+        $this->post(route('cart.store'), ['product_id' => $product->id, 'billing_cycle' => 'monthly'])
+            ->assertSessionHasErrors(['product_id' => 'Your cart already has all of this product that is left.']);
+
+        // Even with two lines in the cart, only what is in stock is ordered.
+        app(Cart::class)->add($product, BillingCycle::Monthly, null);
+        $this->assertCount(2, session('cart.items'));
+        $this->assertCount(1, app(Cart::class)->lines('USD'));
+
+        $this->post(route('checkout.store'))->assertRedirect();
+        $this->assertSame(1, $product->services()->count());
+        $this->assertFalse($product->fresh()->isInStock());
+    }
+
+    public function test_an_order_that_lost_the_last_one_to_another_checkout_makes_nothing(): void
+    {
+        $product = Product::factory()->priced()->withoutDomain()->create(['stock' => 1, 'name' => 'Last Server']);
+        $client = Client::factory()->create(['currency' => 'USD']);
+        $cart = app(Cart::class);
+        $cart->add($product, BillingCycle::Monthly, null);
+        $lines = $cart->lines('USD');
+
+        // Another checkout takes the last one before this order is made.
+        Service::factory()->create(['product_id' => $product->id]);
+
+        try {
+            app(OrderPlacer::class)->place($client, $lines);
+            $this->fail('The order should not be made.');
+        } catch (SoldOut $exception) {
+            $this->assertSame('Last Server is sold out. Remove it from your cart.', $exception->getMessage());
+        }
+
+        $this->assertSame(0, Order::query()->count());
+        $this->assertSame(0, Invoice::query()->count());
+        $this->assertSame(1, $product->services()->count());
     }
 
     public function test_terms_must_be_accepted_when_configured(): void

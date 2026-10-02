@@ -3,8 +3,12 @@
 namespace Tests\Feature;
 
 use App\Console\Commands\PackageRelease;
+use App\Updates\Signature;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
+use ZipArchive;
 
 /**
  * What goes into the release zip: the application and its documents, never local settings,
@@ -38,6 +42,12 @@ class PackageReleaseFilesTest extends TestCase
             'installed add-on' => ['extensions/addons/free-trial/extension.json', true],
             'local database' => ['database/database.sqlite', true],
             'storage file' => ['storage/logs/laravel.log', true],
+            'composer login' => ['auth.json', true],
+            'composer login in a folder' => ['packages/tools/auth.json', true],
+            'npm login' => ['.npmrc', true],
+            'a key file' => ['keys/release.key', true],
+            'an ssh key' => ['deploy/id_ed25519', true],
+            'a certificate bundle' => ['vendor/composer/ca-bundle/res/cacert.pem', false],
         ];
     }
 
@@ -45,5 +55,60 @@ class PackageReleaseFilesTest extends TestCase
     public function test_only_the_application_ships(string $path, bool $excluded): void
     {
         $this->assertSame($excluded, PackageRelease::isExcluded($path));
+    }
+
+    public function test_a_real_release_zip_has_no_logins_or_keys_and_is_signed(): void
+    {
+        $parent = storage_path('framework/testing/release-'.Str::random(8));
+        $project = $parent.'/project';
+        $keys = Signature::generateKeyPair();
+        $files = [
+            'public/build/manifest.json' => '{}',
+            'app/Billing/OrderPlacer.php' => '<?php // the application',
+            'vendor/composer/ca-bundle/res/cacert.pem' => "-----BEGIN CERTIFICATE-----\nMIIBfake\n-----END CERTIFICATE-----\n",
+            'auth.json' => '{"http-basic":{"repo.example.test":{"username":"fixture","password":"FAKE_LOGIN"}}}',
+            '.npmrc' => '//registry.npmjs.org/:_authToken=FAKE_TOKEN',
+            'keys/release.key' => $keys['secret'],
+            'notes/signing.txt' => 'Key: '.$keys['secret'],
+            'certs/server.pem' => "-----BEGIN PRIVATE KEY-----\n".str_repeat('QUJDRA==', 20)."\n-----END PRIVATE KEY-----\n",
+        ];
+
+        foreach ($files as $path => $content) {
+            File::ensureDirectoryExists(dirname($project.'/'.$path));
+            file_put_contents($project.'/'.$path, $content);
+        }
+
+        $base = $this->app->basePath();
+        $public = $this->app->publicPath();
+
+        try {
+            $this->app->setBasePath($project);
+            $this->app->usePublicPath($project.'/public');
+            $this->artisan('nuvabill:package', ['--key' => $project.'/keys/release.key'])->assertExitCode(0);
+
+            $version = (string) config('nuvabill.version');
+            $zipPath = $project."/dist/nuvabill-{$version}.zip";
+            $zip = new ZipArchive;
+            $this->assertTrue($zip->open($zipPath));
+            $names = [];
+
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $names[] = $zip->getNameIndex($i);
+                $this->assertStringNotContainsString($keys['secret'], (string) $zip->getFromIndex($i));
+            }
+
+            $zip->close();
+            sort($names);
+
+            $this->assertSame([
+                'app/Billing/OrderPlacer.php', 'public/build/manifest.json', 'release-files.json', 'release-files.json.sig', 'vendor/composer/ca-bundle/res/cacert.pem',
+            ], $names);
+            $this->assertTrue(Signature::verify($version, $zipPath, (string) file_get_contents($zipPath.'.sig'), $keys['public']));
+            $this->assertStringStartsWith(hash_file('sha256', $zipPath), (string) file_get_contents($zipPath.'.sha256'));
+        } finally {
+            $this->app->setBasePath($base);
+            $this->app->usePublicPath($public);
+            File::deleteDirectory($parent);
+        }
     }
 }

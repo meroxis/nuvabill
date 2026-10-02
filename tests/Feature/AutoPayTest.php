@@ -11,10 +11,12 @@ use App\Models\Client;
 use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
 class AutoPayTest extends TestCase
@@ -293,6 +295,141 @@ class AutoPayTest extends TestCase
         $this->assertFalse(setting('billing.autopay_offer_save'));
     }
 
+    public function test_a_payment_the_bank_is_still_processing_is_settled_by_the_webhook_once(): void
+    {
+        Http::fake(['api.stripe.com/v1/payment_intents' => Http::response(['id' => 'pi_slow', 'status' => 'processing', 'amount' => 1299, 'currency' => 'usd'])]);
+        $client = $this->client();
+        $this->saveCard($client);
+        $invoice = $this->renewalInvoice($client);
+
+        $this->assertSame(0, app(DailyAutomation::class)->run()['charge_failed']);
+
+        $invoice->refresh();
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->status);
+        $this->assertSame(0, $invoice->autopay_attempts);
+        $this->assertSame('pi_slow', $invoice->autopay_pending['reference']);
+        Mail::assertNotSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => str_contains($mail->subjectLine, 'We could not charge'));
+
+        $event = $this->intentSucceededEvent('pi_slow', $invoice);
+        $this->postStripeWebhook($event)->assertOk();
+        $this->postStripeWebhook($event)->assertOk();
+
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertSame(['pi_slow'], $invoice->transactions()->pluck('reference')->all());
+
+        Carbon::setTestNow('2026-10-13 00:15:00');
+        app(DailyAutomation::class)->run();
+        Http::assertSentCount(1);
+    }
+
+    public function test_a_processing_payment_is_checked_before_the_next_try(): void
+    {
+        Http::fake(fn (Request $request) => $request->method() === 'POST'
+            ? Http::response(['id' => 'pi_slow', 'status' => 'processing', 'amount' => 1299, 'currency' => 'usd'])
+            : Http::response(['id' => 'pi_slow', 'status' => 'succeeded', 'amount_received' => 1299, 'currency' => 'usd', 'metadata' => ['invoice_id' => '1']]));
+        $client = $this->client();
+        $this->saveCard($client);
+        $invoice = $this->renewalInvoice($client);
+
+        app(DailyAutomation::class)->run();
+        Carbon::setTestNow('2026-10-13 00:15:00');
+        $this->assertSame(1, app(DailyAutomation::class)->run()['charged']);
+
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertSame(['pi_slow'], $invoice->transactions()->pluck('reference')->all());
+        $this->assertNull($invoice->fresh()->autopay_pending);
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'GET' && $request->url() === 'https://api.stripe.com/v1/payment_intents/pi_slow');
+        $this->assertCount(1, Http::recorded(fn (Request $request): bool => $request->method() === 'POST'));
+    }
+
+    public function test_a_processing_payment_that_fails_later_follows_the_retry_schedule(): void
+    {
+        Http::fake(fn (Request $request) => $request->method() === 'POST'
+            ? Http::response(['id' => 'pi_slow', 'status' => 'processing', 'amount' => 1299, 'currency' => 'usd'])
+            : Http::response(['id' => 'pi_slow', 'status' => 'requires_payment_method', 'metadata' => ['invoice_id' => '1'], 'last_payment_error' => ['message' => 'Your bank account has insufficient funds.']]));
+        $client = $this->client();
+        $this->saveCard($client);
+        $invoice = $this->renewalInvoice($client);
+
+        app(DailyAutomation::class)->run();
+        Carbon::setTestNow('2026-10-13 00:15:00');
+        app(DailyAutomation::class)->run();
+
+        $invoice->refresh();
+        $this->assertSame(1, $invoice->autopay_attempts);
+        $this->assertSame('2026-10-16', $invoice->autopay_retry_at->toDateString());
+        $this->assertSame('Your bank account has insufficient funds.', $invoice->autopay_error);
+        $this->assertNull($invoice->autopay_pending);
+        Mail::assertSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => str_contains($mail->subjectLine, 'We could not charge'));
+    }
+
+    public function test_no_answer_from_stripe_is_checked_and_sent_again_with_the_same_key(): void
+    {
+        $keys = [];
+        Http::fake(function (Request $request) use (&$keys) {
+            if ($request->method() === 'POST') {
+                $keys[] = $request->header('Idempotency-Key')[0];
+
+                return count($keys) === 1
+                    ? throw new ConnectionException('Operation timed out')
+                    : Http::response(['id' => 'pi_auto', 'status' => 'succeeded', 'amount_received' => 1299, 'currency' => 'usd']);
+            }
+
+            // Stripe never got the first try.
+            return Http::response(['data' => []]);
+        });
+        $client = $this->client();
+        $this->saveCard($client);
+        $invoice = $this->renewalInvoice($client);
+
+        app(DailyAutomation::class)->run();
+        $this->assertSame(0, $invoice->fresh()->autopay_attempts);
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->fresh()->status);
+
+        Carbon::setTestNow('2026-10-13 00:15:00');
+        app(DailyAutomation::class)->run();
+
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'GET' && $request['customer'] === 'cus_raz');
+        $this->assertSame(['nuvabill-invoice-1-1299-try-0', 'nuvabill-invoice-1-1299-try-0'], $keys);
+    }
+
+    public function test_a_try_stripe_took_before_the_answer_was_lost_is_found_and_not_charged_again(): void
+    {
+        Http::fake(fn (Request $request) => $request->method() === 'POST'
+            ? Http::response(['error' => ['type' => 'api_error', 'message' => 'Something went wrong.']], 500)
+            : Http::response(['data' => [
+                ['id' => 'pi_other', 'status' => 'succeeded', 'amount_received' => 500, 'currency' => 'usd', 'metadata' => ['invoice_id' => '9', 'attempt' => 'invoice-9-500-try-0']],
+                ['id' => 'pi_lost', 'status' => 'succeeded', 'amount_received' => 1299, 'currency' => 'usd', 'metadata' => ['invoice_id' => '1', 'attempt' => 'invoice-1-1299-try-0']],
+            ]]));
+        $client = $this->client();
+        $this->saveCard($client);
+        $invoice = $this->renewalInvoice($client);
+
+        app(DailyAutomation::class)->run();
+        Mail::assertNotSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => str_contains($mail->subjectLine, 'We could not charge'));
+
+        Carbon::setTestNow('2026-10-13 00:15:00');
+        app(DailyAutomation::class)->run();
+
+        $this->assertSame(['pi_lost'], $invoice->transactions()->pluck('reference')->all());
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertCount(1, Http::recorded(fn (Request $request): bool => $request->method() === 'POST'));
+    }
+
+    public function test_a_payment_webhook_for_another_stripe_customer_is_ignored(): void
+    {
+        Http::fake();
+        $client = $this->client();
+        $this->saveCard($client);
+        $invoice = $this->renewalInvoice($client);
+
+        $this->postStripeWebhook($this->intentSucceededEvent('pi_stranger', $invoice, customer: 'cus_stranger'))->assertOk();
+
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->fresh()->status);
+        $this->assertSame(0, $invoice->transactions()->count());
+    }
+
     /**
      * @param  array<string, mixed>  $attributes
      */
@@ -310,6 +447,25 @@ class AutoPayTest extends TestCase
             'client_id' => $client->id, 'gateway' => 'stripe', 'type' => PaymentMethod::TYPE_CARD, 'reference' => 'pm_visa',
             'customer_reference' => 'cus_raz', 'brand' => 'visa', 'last4' => '4242', 'expires_month' => 8, 'expires_year' => 2028, 'is_default' => true,
         ]);
+    }
+
+    private function intentSucceededEvent(string $id, Invoice $invoice, string $customer = 'cus_raz'): string
+    {
+        return (string) json_encode(['type' => 'payment_intent.succeeded', 'data' => ['object' => [
+            'id' => $id, 'status' => 'succeeded', 'amount_received' => $invoice->total, 'currency' => 'usd', 'customer' => $customer,
+            'metadata' => ['invoice_id' => (string) $invoice->id, 'autopay' => '1'],
+        ]]]);
+    }
+
+    private function postStripeWebhook(string $payload): TestResponse
+    {
+        $timestamp = time();
+        $signature = hash_hmac('sha256', $timestamp.'.'.$payload, 'whsec_test');
+
+        return $this->call('POST', route('webhooks.gateway', 'stripe'), [], [], [], [
+            'HTTP_STRIPE_SIGNATURE' => "t={$timestamp},v1={$signature}",
+            'CONTENT_TYPE' => 'application/json',
+        ], $payload);
     }
 
     private function renewalInvoice(Client $client, int $dueIn = 0, ?string $key = null): Invoice

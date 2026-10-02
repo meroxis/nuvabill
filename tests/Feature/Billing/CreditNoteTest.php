@@ -2,17 +2,22 @@
 
 namespace Tests\Feature\Billing;
 
+use App\Billing\CreditNotes;
 use App\Billing\PaymentRecorder;
+use App\Billing\RefundIssuer;
+use App\Billing\Wallet;
 use App\Enums\InvoiceStatus;
 use App\Mail\TemplatedMessage;
 use App\Models\Admin;
 use App\Models\Client;
 use App\Models\CreditNote;
+use App\Models\CreditTransaction;
 use App\Models\Invoice;
 use Database\Seeders\DefaultDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
@@ -106,6 +111,82 @@ class CreditNoteTest extends TestCase
         $this->get(route('client.credit-notes.pdf', $creditNote))->assertOk()->assertHeader('Content-Type', 'application/pdf');
 
         $this->actingAs(Client::factory()->create(), 'web')->get(route('client.credit-notes.pdf', $creditNote))->assertNotFound();
+    }
+
+    public function test_funds_added_to_the_wallet_are_not_credited_to_the_wallet_again(): void
+    {
+        $this->signInAdmin(Admin::factory()->withPermissions(['billing.manage'])->create());
+        $invoice = $this->paidTopUp(1000);
+
+        $this->get(route('admin.invoices.show', $this->paidInvoice(1000)))->assertOk()->assertSee('Add it to the client&#039;s wallet', false);
+        $this->get(route('admin.invoices.show', $invoice))->assertOk()->assertDontSee('Add it to the client&#039;s wallet', false);
+
+        $this->post(route('admin.invoices.credit-notes.store', $invoice), ['amount' => '10.00', 'method' => 'wallet'])
+            ->assertSessionHasErrors('amount');
+
+        $this->assertSame(1000, $invoice->client->fresh()->credit);
+        $this->assertSame(0, CreditNote::query()->count());
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+    }
+
+    public function test_refunding_added_funds_takes_them_out_of_the_wallet(): void
+    {
+        $this->signInAdmin(Admin::factory()->withPermissions(['billing.manage'])->create());
+        $invoice = $this->paidTopUp(1000);
+
+        $this->post(route('admin.invoices.credit-notes.store', $invoice), ['amount' => '4.00', 'method' => 'refund'])->assertSessionHas('status');
+        $this->assertSame(600, $invoice->client->fresh()->credit);
+        $this->assertSame(-400, (int) $invoice->transactions()->where('type', 'refund')->sum('amount'));
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+
+        $this->post(route('admin.invoices.refund', $invoice))->assertSessionHas('status');
+        $this->assertSame(0, $invoice->client->fresh()->credit);
+        $this->assertSame(-1000, (int) $invoice->transactions()->where('type', 'refund')->sum('amount'));
+        $this->assertSame(InvoiceStatus::Refunded, $invoice->fresh()->status);
+        $this->assertSame([1000, -400, -600], CreditTransaction::query()->orderBy('id')->pluck('amount')->all());
+    }
+
+    public function test_funds_the_client_already_spent_cannot_be_taken_back(): void
+    {
+        $this->signInAdmin(Admin::factory()->withPermissions(['billing.manage'])->create());
+        $invoice = $this->paidTopUp(1000);
+        app(Wallet::class)->change($invoice->client, -700, 'Paid another invoice');
+
+        $this->post(route('admin.invoices.credit-notes.store', $invoice), ['amount' => '10.00', 'method' => 'refund'])
+            ->assertSessionHasErrors(['amount' => 'The client already spent part of these funds. Their wallet holds $3.00, so take back at most that much.']);
+        $this->assertSame(0, (int) $invoice->transactions()->where('type', 'refund')->sum('amount'));
+        $this->assertSame(300, $invoice->client->fresh()->credit);
+
+        // What is left can still be settled another way.
+        $this->post(route('admin.invoices.credit-notes.store', $invoice), ['amount' => '3.00', 'method' => 'none'])->assertSessionHas('status');
+        $this->assertSame(0, $invoice->client->fresh()->credit);
+        $this->assertSame(700, $invoice->fresh()->creditableAmount());
+    }
+
+    public function test_a_refused_refund_puts_the_funds_back_into_the_wallet(): void
+    {
+        $invoice = $this->paidTopUp(1000);
+        $this->mock(RefundIssuer::class)->shouldReceive('refundAmount')->andThrow(new RuntimeException('Card closed'));
+
+        try {
+            app(CreditNotes::class)->issue($invoice, 1000, CreditNote::METHOD_REFUND);
+            $this->fail('The refund should fail.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Card closed', $exception->getMessage());
+        }
+
+        $this->assertSame(1000, $invoice->client->fresh()->credit);
+        $this->assertSame([1000, -1000, 1000], CreditTransaction::query()->orderBy('id')->pluck('amount')->all());
+        $this->assertSame(0, CreditNote::query()->count());
+    }
+
+    private function paidTopUp(int $amount): Invoice
+    {
+        $this->setSettings(['wallet.enabled' => true]);
+        $invoice = app(Wallet::class)->topUp(Client::factory()->create(['currency' => 'USD']), $amount);
+        app(PaymentRecorder::class)->record($invoice, $amount, 'banktransfer', 'BANK-'.$invoice->id);
+
+        return $invoice->fresh();
     }
 
     private function paidInvoice(int $total, int $tax = 0, string $currency = 'USD'): Invoice

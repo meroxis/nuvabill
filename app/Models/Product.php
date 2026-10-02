@@ -151,13 +151,23 @@ class Product extends Model
 
     public function isInStock(): bool
     {
+        $left = $this->stockLeft();
+
+        return $left === null || $left > 0;
+    }
+
+    /**
+     * How many more can be sold, or null when the product has no stock limit.
+     */
+    public function stockLeft(): ?int
+    {
         if ($this->stock === null) {
-            return true;
+            return null;
         }
 
         $used = $this->services()->whereNotIn('status', [ServiceStatus::Terminated, ServiceStatus::Cancelled])->count();
 
-        return $used < $this->stock;
+        return max(0, $this->stock - $used);
     }
 
     /**

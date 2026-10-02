@@ -63,6 +63,7 @@ class Invoice extends Model
             'autopay_attempts' => 'integer',
             'autopay_retry_at' => 'datetime',
             'autopay_notice_at' => 'datetime',
+            'autopay_pending' => 'array',
         ];
     }
 

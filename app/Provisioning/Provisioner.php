@@ -45,7 +45,9 @@ class Provisioner
             return $this->failed($service, 'create', $module);
         }
 
-        if ($module !== null && $service->server === null) {
+        // A new account goes only to a server that is on and has room: the one picked at order time,
+        // or another server for the same module when that one was turned off or is full.
+        if ($module !== null && ($service->server === null || ! $this->takesNewAccount($service->server, $service))) {
             $server = $this->pickServer($service);
 
             if ($server === null) {
@@ -345,6 +347,21 @@ class Provisioner
         Activity::log('service.module_failed', "Could not {$action} service #{$service->id} ({$service->label()}): {$result->message}", $service);
 
         return $result;
+    }
+
+    /**
+     * Whether the server can take this service as a new account: it is on and has room for it.
+     */
+    private function takesNewAccount(Server $server, Service $service): bool
+    {
+        if (! $server->is_active) {
+            return false;
+        }
+
+        return $server->max_accounts === null || $server->services()
+            ->whereKeyNot($service->id)
+            ->whereIn('status', [ServiceStatus::Active, ServiceStatus::Suspended, ServiceStatus::Pending])
+            ->count() < $server->max_accounts;
     }
 
     private function pickServer(Service $service): ?Server

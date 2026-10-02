@@ -142,9 +142,11 @@ class Cart
         $addons = ProductAddon::query()->visible()->with('prices')->whereIn('id', collect($items)->pluck('addons')->flatten()->filter()->all())->get()->keyBy('id');
         $tlds = TldPrice::query()->enabled($currency)->get();
         $coupon = $this->coupon($currency, $client);
+        // Lines past what is left in stock are dropped, so the cart never holds more than can be sold.
+        $stockLeft = $products->map(fn (Product $product): ?int => $product->stockLeft())->all();
 
         return collect($items)
-            ->map(function (array $item, int $index) use ($products, $addons, $tlds, $currency): ?CartLine {
+            ->map(function (array $item, int $index) use ($products, $addons, $tlds, $currency, &$stockLeft): ?CartLine {
                 if (($item['kind'] ?? CartLine::KIND_PRODUCT) === CartLine::KIND_DOMAIN) {
                     return $this->domainLine($index, $item, $tlds);
                 }
@@ -152,7 +154,7 @@ class Cart
                 $product = $products->get($item['product_id'] ?? 0);
                 $cycle = BillingCycle::tryFrom((string) ($item['billing_cycle'] ?? ''));
 
-                if ($product === null || $cycle === null || ! $product->is_visible || ! $product->isInStock()) {
+                if ($product === null || $cycle === null || ! $product->is_visible || $stockLeft[$product->id] === 0) {
                     return null;
                 }
 
@@ -160,6 +162,10 @@ class Cart
 
                 if ($price === null) {
                     return null;
+                }
+
+                if ($stockLeft[$product->id] !== null) {
+                    $stockLeft[$product->id]--;
                 }
 
                 return new CartLine($index, $product, $cycle, $item['domain'] ?? null, $price->price, $price->setup_fee, addons: $this->addonLines($item, $product, $cycle, $currency, $addons));
@@ -247,6 +253,14 @@ class Cart
     /**
      * @return list<array<string, mixed>>
      */
+    /**
+     * How many lines of this product are in the cart.
+     */
+    public function quantityOf(Product $product): int
+    {
+        return collect($this->rawItems())->where('product_id', $product->id)->count();
+    }
+
     private function rawItems(): array
     {
         return array_values((array) $this->session->get(self::SESSION_KEY, []));

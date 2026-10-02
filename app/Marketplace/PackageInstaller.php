@@ -20,7 +20,11 @@ use Throwable;
 /**
  * Installs, updates and removes marketplace packages: download, check the checksum and the
  * store's signature, unpack into a temporary folder, then swap it into place. When anything
- * fails the old version stays (or comes back) as it was.
+ * fails the old version stays (or comes back) as it was, and so does its install record.
+ *
+ * Database changes run after the files are in place, while the old files are still kept aside.
+ * When they fail, the old files come back. Changes the database made before the error stay,
+ * because MySQL cannot undo table changes; the next try of the update skips the steps that finished.
  */
 class PackageInstaller
 {
@@ -105,21 +109,31 @@ class PackageInstaller
                 ExtensionManifest::fromFile($unpacked.'/extension.json');
             }
 
-            $this->swapInto($unpacked, $type->directory($slug), $work);
+            $backup = $this->swapInto($unpacked, $type->directory($slug), $work);
             $this->steps[] = __('Installed the files');
+            $install = MarketplaceInstall::query()->firstOrNew(['slug' => $slug]);
+            $previous = $install->exists ? $install->version : null;
+
+            if ($hasMigrations) {
+                try {
+                    $this->migrate($type->directory($slug).DIRECTORY_SEPARATOR.'database'.DIRECTORY_SEPARATOR.'migrations');
+                } catch (Throwable $exception) {
+                    report($exception);
+                    $this->putBack($type->directory($slug), $backup);
+                    Activity::log('marketplace.failed', "Database changes of {$slug} {$download['version']} failed, so ".($previous ? "version {$previous} was put back" : 'it was not installed').": {$exception->getMessage()}");
+
+                    throw new RuntimeException($previous
+                        ? __('The update could not change the database, so version :version was put back: :reason', ['version' => $previous, 'reason' => $exception->getMessage()])
+                        : __('The package could not make its database tables, so it was not installed: :reason', ['reason' => $exception->getMessage()]));
+                }
+            }
         } finally {
             $archive = null;
             File::deleteDirectory($work);
         }
 
-        $this->extensions->refresh();
+        $this->refreshCode();
 
-        if (function_exists('opcache_reset')) {
-            @opcache_reset();
-        }
-
-        $install = MarketplaceInstall::query()->firstOrNew(['slug' => $slug]);
-        $previous = $install->exists ? $install->version : null;
         $install->fill([
             'type' => $type,
             'name' => $this->nameFromDisk($type, $slug),
@@ -130,10 +144,6 @@ class PackageInstaller
             'file_hashes' => MarketplaceInstall::fingerprint($type->directory($slug)),
         ])->save();
         Cache::forget(LicenseChecker::UNLICENSED_CACHE_KEY);
-
-        if ($hasMigrations) {
-            $this->migrate($type->directory($slug).DIRECTORY_SEPARATOR.'database'.DIRECTORY_SEPARATOR.'migrations');
-        }
 
         Activity::log($previous ? 'marketplace.updated' : 'marketplace.installed', $previous
             ? "Updated {$install->name} from {$previous} to {$install->version}"
@@ -183,21 +193,40 @@ class PackageInstaller
      */
     private function migrate(string $path): void
     {
-        try {
-            Artisan::call('migrate', ['--path' => $path, '--realpath' => true, '--force' => true]);
-        } catch (Throwable $exception) {
-            report($exception);
-
-            throw new RuntimeException(__('The files are installed, but the database tables could not be made: :reason', ['reason' => $exception->getMessage()]));
-        }
+        Artisan::call('migrate', ['--path' => $path, '--realpath' => true, '--force' => true]);
 
         $this->steps[] = __('Made the database tables');
     }
 
     /**
-     * Move the new files in. An existing folder is moved aside first and put back if the move fails.
+     * Take the new files out again and bring the old ones back, if there were any.
      */
-    private function swapInto(string $source, string $destination, string $work): void
+    private function putBack(string $destination, ?string $backup): void
+    {
+        File::deleteDirectory($destination);
+
+        if ($backup !== null && ! File::moveDirectory($backup, $destination)) {
+            File::copyDirectory($backup, $destination);
+        }
+
+        $this->refreshCode();
+    }
+
+    private function refreshCode(): void
+    {
+        $this->extensions->refresh();
+
+        if (function_exists('opcache_reset')) {
+            @opcache_reset();
+        }
+    }
+
+    /**
+     * Move the new files in. An existing folder is moved aside first and put back if the move fails.
+     *
+     * @return string|null Where the old folder is kept until the update is done, or null for a new install.
+     */
+    private function swapInto(string $source, string $destination, string $work): ?string
     {
         File::ensureDirectoryExists(dirname($destination));
         $backup = null;
@@ -223,6 +252,8 @@ class PackageInstaller
 
             throw $exception;
         }
+
+        return $backup;
     }
 
     private function nameFromDisk(PackageType $type, string $slug): string
