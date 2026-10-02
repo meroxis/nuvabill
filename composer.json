@@ -22,7 +22,6 @@
         "laravel/tinker": "^3.0"
     },
     "require-dev": {
-        "laravel/boost": "^2.10",
         "laravel/pail": "^1.2.5",
         "laravel/pao": "^1.0.6",
         "laravel/pint": "^1.27",

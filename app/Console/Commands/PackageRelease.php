@@ -24,10 +24,24 @@ class PackageRelease extends Command
      * @var list<string>
      */
     private const EXCLUDED = [
-        '.git', '.github', '.ai', '.claude', '.idea', '.vscode', 'node_modules', 'tests', 'dist',
-        '.env', '.env.backup', '.phpunit.result.cache', 'phpunit.xml', 'boost.json', 'CLAUDE.md', 'AGENTS.md', 'install.sh',
+        'node_modules', 'tests', 'dist',
+        '.env', '.env.backup', '.phpunit.result.cache', 'phpunit.xml', 'install.sh',
         'database/database.sqlite', 'public/hot', 'public/storage',
     ];
+
+    /**
+     * The only Markdown files at the top level that ship; other ones there are a developer's own notes.
+     *
+     * @var list<string>
+     */
+    private const DOCUMENTS = ['README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'ROADMAP.md', 'SECURITY.md'];
+
+    /**
+     * The only hidden files at the top level that ship; other ones there are local settings.
+     *
+     * @var list<string>
+     */
+    private const HIDDEN_FILES = ['.htaccess', '.env.example', '.editorconfig', '.gitattributes', '.gitignore', '.npmrc'];
 
     public function handle(): int
     {
@@ -57,7 +71,7 @@ class PackageRelease extends Command
         foreach ($iterator as $file) {
             $relative = ltrim(str_replace('\\', '/', substr($file->getPathname(), strlen(base_path()))), '/');
 
-            if (! $file->isFile() || $this->isExcluded($relative) || in_array($relative, [CoreFiles::LIST_FILE, CoreFiles::SIGNATURE_FILE], true)) {
+            if (! $file->isFile() || self::isExcluded($relative) || in_array($relative, [CoreFiles::LIST_FILE, CoreFiles::SIGNATURE_FILE], true)) {
                 continue;
             }
 
@@ -98,7 +112,10 @@ class PackageRelease extends Command
         return self::SUCCESS;
     }
 
-    private function isExcluded(string $relative): bool
+    /**
+     * Whether a path (relative to the project, with forward slashes) stays out of the release zip.
+     */
+    public static function isExcluded(string $relative): bool
     {
         if (str_starts_with($relative, 'storage/') && basename($relative) !== '.gitignore') {
             return true;
@@ -110,6 +127,19 @@ class PackageRelease extends Command
 
         // Marketplace packages installed on this copy (paid ones must never ship) and local databases.
         if (preg_match('#^(themes/(?!nova/)|orderforms/(?!\.gitkeep$)|extensions/addons/)|^database/.+\.sqlite(-journal|-wal|-shm)?$#', $relative)) {
+            return true;
+        }
+
+        // Hidden folders at the top (.git, .github, editor and tool settings) never ship.
+        if (preg_match('#^\.[^/]+/#', $relative)) {
+            return true;
+        }
+
+        if (! str_contains($relative, '/') && str_ends_with(strtolower($relative), '.md') && ! in_array($relative, self::DOCUMENTS, true)) {
+            return true;
+        }
+
+        if (! str_contains($relative, '/') && str_starts_with($relative, '.') && ! in_array($relative, self::HIDDEN_FILES, true)) {
             return true;
         }
 
