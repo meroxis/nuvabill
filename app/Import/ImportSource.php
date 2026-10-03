@@ -5,7 +5,9 @@ namespace App\Import;
 use App\Auth\LegacyPassword;
 use App\Billing\RenewalGenerator;
 use App\Billing\Wallet;
+use App\Enums\DomainStatus;
 use App\Enums\InvoiceStatus;
+use App\Enums\ServiceStatus;
 use App\Extensions\ExtensionManager;
 use App\Extensions\ExtensionManifest;
 use App\Models\ActivityLog;
@@ -49,6 +51,14 @@ use Throwable;
 abstract class ImportSource
 {
     public const CONNECTION = 'import_source';
+
+    /**
+     * Activity entries written when Nuvabill changes the status of a service or domain.
+     */
+    private const STATUS_ACTIONS = [
+        'service.created', 'service.suspended', 'service.unsuspended', 'service.terminated', 'service.updated',
+        'domain.registered', 'domain.renewed', 'domain.expired', 'domain.transfer_started', 'domain.transferred', 'domain.updated',
+    ];
 
     /**
      * The mapping source name, for example "whmcs".
@@ -372,7 +382,7 @@ abstract class ImportSource
         $record = $localId !== null ? $model::query()->find($localId) : null;
 
         if ($record !== null) {
-            $record->forceFill($this->keepLocalProgress($record, $attributes))->save();
+            $record->forceFill($this->keepLocalProgress($record, $attributes, $entity, $sourceId))->save();
             $this->counts['updated']++;
 
             return $record;
@@ -389,13 +399,14 @@ abstract class ImportSource
 
     /**
      * The old system never sees what happens in Nuvabill after the switch, so a later run must not undo it:
-     * an invoice paid, cancelled or published here stays so, and due and expiry dates never move back. The
-     * source can still move an invoice on (unpaid to paid or cancelled, paid to refunded).
+     * an invoice paid, cancelled or published here stays so, due and expiry dates never move back, and a
+     * service or domain keeps the status Nuvabill gave it (see {@see self::keepLocalStatus()}). The source
+     * can still move an invoice on (unpaid to paid or cancelled, paid to refunded).
      *
      * @param  array<string, mixed>  $attributes
      * @return array<string, mixed>
      */
-    protected function keepLocalProgress(Model $record, array $attributes): array
+    protected function keepLocalProgress(Model $record, array $attributes, string $entity, int $sourceId): array
     {
         if ($record instanceof Invoice) {
             $source = InvoiceStatus::tryFrom((string) ($attributes['status'] ?? ''));
@@ -424,9 +435,64 @@ abstract class ImportSource
                     $attributes[$column] = $this->laterDate($attributes[$column], $record->getAttribute($column));
                 }
             }
+
+            return $this->keepLocalStatus($record, $attributes, $entity, $sourceId);
         }
 
         return $attributes;
+    }
+
+    /**
+     * A service or domain that Nuvabill set up, suspended, unsuspended, terminated, renewed, expired or that
+     * staff edited here keeps the status Nuvabill gave it, with its suspension and termination details. The
+     * server account and the client's next payment follow that status, not the old system's one. The old
+     * system can still end it (terminated, cancelled, transferred away or fraud). Until Nuvabill changes it,
+     * every run brings the old system's status across.
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    private function keepLocalStatus(Service|Domain $record, array $attributes, string $entity, int $sourceId): array
+    {
+        $columns = array_keys(Arr::only($attributes, ['status', 'suspended_at', 'suspension_reason', 'terminated_at']));
+
+        if ($columns === [] || ! (clone $record)->forceFill(Arr::only($attributes, $columns))->isDirty($columns) || ! $this->statusChangedHere($record, $entity, $sourceId)) {
+            return $attributes;
+        }
+
+        [$source, $ended] = $record instanceof Service
+            ? [ServiceStatus::tryFrom((string) ($attributes['status'] ?? '')), [ServiceStatus::Terminated, ServiceStatus::Cancelled, ServiceStatus::Fraud]]
+            : [DomainStatus::tryFrom((string) ($attributes['status'] ?? '')), [DomainStatus::Cancelled, DomainStatus::TransferredAway, DomainStatus::Fraud]];
+
+        if (in_array($record->status, $ended, true)) {
+            return Arr::except($attributes, [...$columns, 'next_due_date']);
+        }
+
+        return in_array($source, $ended, true) ? $attributes : Arr::except($attributes, $columns);
+    }
+
+    /**
+     * Whether Nuvabill changed the status of this service or domain after it was imported. Remembered, so
+     * it still counts once the activity log is cleaned up.
+     */
+    private function statusChangedHere(Service|Domain $record, string $entity, int $sourceId): bool
+    {
+        if ($this->localId($entity.'_managed', $sourceId) !== null) {
+            return true;
+        }
+
+        $changed = ($record instanceof Service && $record->cancelled_at !== null)
+            || ActivityLog::query()
+                ->where('subject_type', $record->getMorphClass())
+                ->where('subject_id', $record->getKey())
+                ->whereIn('action', self::STATUS_ACTIONS)
+                ->exists();
+
+        if ($changed) {
+            $this->remember($entity.'_managed', $sourceId, (int) $record->getKey());
+        }
+
+        return $changed;
     }
 
     /**
@@ -508,8 +574,9 @@ abstract class ImportSource
     }
 
     /**
-     * Client emails that are not valid, or already used by a Nuvabill client that did not come from this
-     * source: both are skipped. Also clients an earlier version linked by email, which are not changed.
+     * Client emails that are not valid, used by more than one source client, or already used by a Nuvabill
+     * client that did not come from this source: all of those are skipped. Also clients an earlier version
+     * linked by email, which are not changed.
      *
      * @param  Collection<int, mixed>  $emails
      */
@@ -517,6 +584,7 @@ abstract class ImportSource
     {
         $emails = $emails->map(fn (mixed $email): string => strtolower((string) $this->text($email)));
         $invalid = $emails->reject(fn (string $email): bool => (bool) filter_var($email, FILTER_VALIDATE_EMAIL));
+        $shared = $emails->diff($invalid)->duplicates();
         // A subquery, so the number of bound values stays the same however many clients came across.
         $imported = ImportMapping::query()->select('local_id')->where(['source' => static::key(), 'entity' => 'client']);
         $taken = collect();
@@ -525,24 +593,43 @@ abstract class ImportSource
             $taken = $taken->merge(Client::query()->whereIn('email', $chunk->values())->whereNotIn('id', $imported)->pluck('email'));
         }
 
+        $unproven = $this->linkedClients()->where(fn (EloquentBuilder $query) => $query
+            ->whereIn('source_id', ImportMapping::query()->select('source_id')->where(['source' => static::key(), 'entity' => 'client_unproven']))
+            ->orWhereIn('local_id', $this->unprovenAccounts()->select('id')));
+        $emailsOf = fn (EloquentBuilder $mappings): array => Client::query()->whereIn('id', $mappings->select('local_id'))->orderBy('id')->limit(5)->pluck('email')->all();
+
         $report->problem(Preflight::WARNING, $invalid->count(), 'Clients without a valid email address: :count. They are skipped.', examples: $invalid->map(fn (string $email): string => $email === '' ? '(empty)' : $email)->all());
+        $report->problem(Preflight::WARNING, $shared->count(), 'Clients with the same email as another :system client: :count. Only the first one is imported; give the others their own email in :system.', ['system' => static::name()], $shared->unique()->all());
         $report->problem(Preflight::WARNING, $taken->count(), 'Clients whose email is already used by a Nuvabill account: :count. They are skipped until you change the email of that account or delete it.', examples: $taken->all());
-        $report->problem(Preflight::WARNING, $this->linkedClients()->count(), 'Clients an earlier import linked by email to a Nuvabill account: :count. They are not changed; check that each account belongs to the same person.', examples: Client::query()->whereIn('id', $this->linkedClients()->select('local_id'))->orderBy('id')->limit(5)->pluck('email')->all());
+        $report->problem(Preflight::WARNING, $this->linkedClients()->count(), 'Clients an earlier import linked by email to a Nuvabill account: :count. They are not changed; check that each account belongs to the same person.', examples: $emailsOf($this->linkedClients()));
+        $report->problem(Preflight::WARNING, (clone $unproven)->count(), 'Clients an earlier import linked by email to an account that signed up by itself, without proving the email is theirs: :count. Those accounts get no new services, domains, invoices or tickets; check them and add these by hand.', examples: $emailsOf($unproven));
     }
 
     /**
-     * Mappings of clients that an import before 0.6.12 linked by email to an account made in Nuvabill
-     * (by sign-up, staff or the API), instead of creating them.
+     * Mappings of clients that an import before 0.6.12 linked by email to an account it did not create: one
+     * made in Nuvabill (by sign-up, staff or the API), or one made for another client with the same email.
      *
      * @return EloquentBuilder<ImportMapping>
      */
     protected function linkedClients(): EloquentBuilder
     {
+        $links = ImportMapping::query()->select('source_id')->where(['source' => static::key(), 'entity' => 'client_link']);
+        $madeInNuvabill = ActivityLog::query()->select('subject_id')->where('subject_type', (new Client)->getMorphClass())->whereIn('action', ['client.registered', 'client.created']);
+
         return ImportMapping::query()
-            ->where(['source' => static::key(), 'entity' => 'client'])
+            ->where('source', static::key())
             ->where(fn (EloquentBuilder $query) => $query
-                ->whereIn('source_id', ImportMapping::query()->select('source_id')->where(['source' => static::key(), 'entity' => 'client_link']))
-                ->orWhereIn('local_id', ActivityLog::query()->select('subject_id')->where('subject_type', (new Client)->getMorphClass())->whereIn('action', ['client.registered', 'client.created'])));
+                ->where('entity', 'client_link')
+                ->orWhere(fn (EloquentBuilder $query) => $query
+                    ->where('entity', 'client')
+                    ->whereNotIn('source_id', $links)
+                    ->where(fn (EloquentBuilder $query) => $query
+                        ->whereIn('local_id', $madeInNuvabill)
+                        ->orWhereExists(fn (Builder $query) => $query
+                            ->from('import_mappings as earlier')
+                            ->where('earlier.entity', 'client')
+                            ->whereColumn('earlier.local_id', 'import_mappings.local_id')
+                            ->whereColumn('earlier.id', '<', 'import_mappings.id')))));
     }
 
     /**
@@ -689,8 +776,7 @@ abstract class ImportSource
     protected function clientEmailToImport(int $sourceId, mixed $email, ?string $currency = null): ?string
     {
         if ($this->isLinkedClient($sourceId)) {
-            $this->holdOtherCurrency($sourceId, $currency);
-            $this->counts['updated']++;
+            $this->counts[$this->holdLink($sourceId, $currency) ? 'skipped' : 'updated']++;
 
             return null;
         }
@@ -705,7 +791,9 @@ abstract class ImportSource
 
         if ($this->localId('client', $sourceId) === null && ($existing = Client::query()->where('email', $email)->value('id')) !== null) {
             $this->counts['skipped']++;
-            $this->errors[] = ['id' => $sourceId, 'error' => __('The email :email is already used by Nuvabill client #:id. Change the email of that account or delete it, then run the import again.', ['email' => $email, 'id' => $existing])];
+            $this->errors[] = ['id' => $sourceId, 'error' => ImportMapping::query()->where(['source' => static::key(), 'entity' => 'client', 'local_id' => $existing])->exists()
+                ? __('Another :system client with this email was imported as Nuvabill client #:id. Give this client its own email in :system, then run the import again.', ['system' => static::name(), 'id' => $existing])
+                : __('The email :email is already used by Nuvabill client #:id. Change the email of that account or delete it, then run the import again.', ['email' => $email, 'id' => $existing])];
 
             return null;
         }
@@ -714,7 +802,8 @@ abstract class ImportSource
     }
 
     /**
-     * A client an import before 0.6.12 linked by email to an account made in Nuvabill. Every run since then
+     * A client an import before 0.6.12 linked by email to an account it did not create: one made in Nuvabill,
+     * or one made for another client of this or another source with the same email. Every run since then
      * would have overwritten that account's details and wallet; now it is never changed.
      */
     private function isLinkedClient(int $sourceId): bool
@@ -727,36 +816,68 @@ abstract class ImportSource
             return false;
         }
 
-        $madeInNuvabill = ActivityLog::query()
-            ->where('subject_type', (new Client)->getMorphClass())
-            ->where('subject_id', $localId)
-            ->whereIn('action', ['client.registered', 'client.created'])
-            ->exists();
+        $first = ImportMapping::query()->where(['entity' => 'client', 'local_id' => $localId])->orderBy('id')->first(['source', 'source_id']);
+        $linked = ($first !== null && ($first->source !== static::key() || $first->source_id !== $sourceId))
+            || ActivityLog::query()
+                ->where('subject_type', (new Client)->getMorphClass())
+                ->where('subject_id', $localId)
+                ->whereIn('action', ['client.registered', 'client.created'])
+                ->exists();
 
-        if ($madeInNuvabill) {
+        if ($linked) {
             $this->remember('client_link', $sourceId, $localId);
         }
 
-        return $madeInNuvabill;
+        return $linked;
     }
 
     /**
-     * A linked account in another currency than the source client: its services, domains and invoices
-     * would keep the source's amounts under the account's currency. They are no longer imported (the
-     * client is no longer found), and staff are told on every run.
+     * Whether new records stop coming across to a linked account, which keeps what it already has. Staff are
+     * told on every run. That is so for an account in another currency than the source client, which would
+     * get the source's amounts unconverted, and for an account that signed up by itself without proving the
+     * email is theirs, which would get the source client's hosting, domains, invoices and tickets.
      */
-    private function holdOtherCurrency(int $sourceId, ?string $currency): void
+    private function holdLink(int $sourceId, ?string $currency): bool
     {
         $localId = $this->localId('client_link', $sourceId);
-        $local = $localId !== null ? Client::query()->whereKey($localId)->value('currency') : null;
+        $account = $localId !== null ? Client::query()->find($localId, ['id', 'currency', 'email_verified_at']) : null;
 
-        if ($currency === null || $local === null || strtoupper($currency) === strtoupper((string) $local)) {
-            return;
+        if ($account === null) {
+            return false;
+        }
+
+        if ($currency !== null && strtoupper($currency) !== strtoupper((string) $account->currency)) {
+            $error = __('This client uses :source, but the Nuvabill account #:id it was linked to uses :local. Its services, domains and invoices are not imported; add them by hand.', ['source' => strtoupper($currency), 'id' => $account->id, 'local' => strtoupper((string) $account->currency)]);
+        } elseif ($this->localId('client_unproven', $sourceId) !== null || $this->unprovenAccounts()->whereKey($account->id)->exists()) {
+            if ($this->localId('client_unproven', $sourceId) === null) {
+                $this->remember('client_unproven', $sourceId, $account->id);
+            }
+
+            $error = __('An earlier import linked this client by email to Nuvabill account #:id, which signed up by itself without proving the email is theirs. New services, domains, invoices and tickets are not imported; check the account and add them by hand.', ['id' => $account->id]);
+        } else {
+            return false;
         }
 
         ImportMapping::query()->where(['source' => static::key(), 'entity' => 'client', 'source_id' => $sourceId])->delete();
         $this->mappings['client'][$sourceId] = null;
-        $this->errors[] = ['id' => $sourceId, 'error' => __('This client uses :source, but the Nuvabill account #:id it was linked to uses :local. Its services, domains and invoices are not imported; add them by hand.', ['source' => strtoupper($currency), 'id' => $localId, 'local' => strtoupper((string) $local)])];
+        $this->errors[] = ['id' => $sourceId, 'error' => $error];
+
+        return true;
+    }
+
+    /**
+     * Accounts that signed up by themselves and never proved they own their email: no sign-in provider
+     * confirmed it, or the client may have changed it since on their account page.
+     *
+     * @return EloquentBuilder<Client>
+     */
+    protected function unprovenAccounts(): EloquentBuilder
+    {
+        $logged = fn (string $action): EloquentBuilder => ActivityLog::query()->select('subject_id')->where('subject_type', (new Client)->getMorphClass())->where('action', $action);
+
+        return Client::query()
+            ->whereIn('id', $logged('client.registered'))
+            ->where(fn (EloquentBuilder $query) => $query->whereNull('email_verified_at')->orWhereIn('id', $logged('client.profile')));
     }
 
     /**
@@ -802,14 +923,14 @@ abstract class ImportSource
         $entries = fn () => CreditTransaction::query()->where('client_id', $client->id)->where('description', $description);
 
         // Imported before 0.4.9, when the balance was copied without a wallet entry. Every change in Nuvabill
-        // writes an entry, so only money that no entry explains came from the source.
+        // writes an entry, so the money no entry explains is what was copied, even if part of it is spent.
         if (! $client->wasRecentlyCreated && ! $entries()->exists()) {
             $untracked = $client->credit - (int) CreditTransaction::query()->where('client_id', $client->id)->sum('amount');
 
             if ($untracked > 0) {
                 CreditTransaction::create([
                     'client_id' => $client->id,
-                    'amount' => min($untracked, $client->credit),
+                    'amount' => $untracked,
                     'balance' => $client->credit,
                     'currency' => $client->currency,
                     'description' => $description,

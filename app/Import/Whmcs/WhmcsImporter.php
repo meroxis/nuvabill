@@ -494,7 +494,8 @@ class WhmcsImporter extends ImportSource
                 },
             ]);
 
-            $service->suspended_at = $status === ServiceStatus::Suspended ? ($service->suspended_at ?? now()) : null;
+            // The status Nuvabill kept, which may not be the source's one (see keepLocalStatus()).
+            $service->suspended_at = $service->status === ServiceStatus::Suspended ? ($service->suspended_at ?? now()) : null;
 
             if (blank($service->password) && ($password = $this->decrypt($row->password ?? null)) !== null) {
                 $service->password = $password;

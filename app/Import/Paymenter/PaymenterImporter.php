@@ -386,7 +386,8 @@ class PaymenterImporter extends ImportSource
                 'currency' => strtoupper((string) ($row->currency_code ?? '')) ?: $this->clientCurrency($clientId),
             ]);
 
-            $service->suspended_at = $status === ServiceStatus::Suspended ? ($service->suspended_at ?? now()) : null;
+            // The status Nuvabill kept, which may not be the source's one (see keepLocalStatus()).
+            $service->suspended_at = $service->status === ServiceStatus::Suspended ? ($service->suspended_at ?? now()) : null;
             $service->save();
         }
     }

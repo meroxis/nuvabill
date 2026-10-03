@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Import;
 
+use App\Billing\InvoicePaidHandler;
 use App\Billing\PaymentRecorder;
 use App\Billing\RenewalGenerator;
 use App\Billing\Wallet;
@@ -14,6 +15,7 @@ use App\Enums\TicketStatus;
 use App\Import\Whmcs\WhmcsCrypt;
 use App\Import\Whmcs\WhmcsImporter;
 use App\Jobs\RunImport;
+use App\Models\ActivityLog;
 use App\Models\Admin;
 use App\Models\Client;
 use App\Models\CreditTransaction;
@@ -223,6 +225,27 @@ class WhmcsImportTest extends TestCase
         $this->assertSame(1, $raz->creditTransactions()->count());
     }
 
+    public function test_a_client_imported_before_who_spent_part_of_the_balance_keeps_the_rest(): void
+    {
+        $this->seedWhmcs();
+        $this->runImport();
+
+        // How 0.4.8 left it: 12.50 copied with no wallet entry. Raz then pays 10.00 of an invoice with it.
+        $raz = Client::query()->where('email', 'raz@example.com')->firstOrFail();
+        CreditTransaction::query()->delete();
+        app(Wallet::class)->change($raz, -1000, 'Paid invoice');
+
+        $this->runImport();
+
+        $this->assertSame(250, $raz->fresh()->credit, 'The spent money does not come back');
+        $this->assertSame(1250, (int) $raz->creditTransactions()->where('description', 'Balance from WHMCS')->sum('amount'));
+
+        DB::connection(self::CONNECTION)->table('tblclients')->where('id', 1)->update(['credit' => '15.00']);
+        $this->runImport();
+
+        $this->assertSame(500, $raz->fresh()->credit, 'Only the change in WHMCS is added');
+    }
+
     public function test_imported_renewals_are_not_invoiced_again(): void
     {
         $this->seedWhmcs();
@@ -377,6 +400,126 @@ class WhmcsImportTest extends TestCase
 
         $this->runImport();
         $this->assertSame(0, Service::query()->count(), 'Later runs keep it out too');
+    }
+
+    public function test_an_account_that_signed_up_itself_and_was_linked_before_gets_no_new_records(): void
+    {
+        Mail::fake();
+        $this->seedWhmcs();
+
+        // An earlier version linked WHMCS client Raz by email to an account someone signed up with.
+        $this->post(route('client.register'), [
+            'first_name' => 'Raz',
+            'last_name' => 'Las',
+            'email' => 'raz@example.com',
+            'country' => 'IQ',
+            'password' => 'taken-pass-1',
+            'password_confirmation' => 'taken-pass-1',
+        ])->assertRedirect();
+        auth('web')->logout();
+        $account = Client::query()->where('email', 'raz@example.com')->firstOrFail();
+        $account->forceFill(['currency' => 'IQD'])->save();
+        ImportMapping::query()->create(['source' => 'whmcs', 'entity' => 'client', 'source_id' => 1, 'local_id' => $account->id]);
+
+        $texts = collect((new WhmcsImporter(self::CONNECTION))->preflight()->toArray()['problems'])->keyBy('text');
+        $this->assertSame(['raz@example.com'], $texts['Clients an earlier import linked by email to an account that signed up by itself, without proving the email is theirs: :count. Those accounts get no new services, domains, invoices or tickets; check them and add these by hand.']['examples']);
+
+        $errors = $this->runImport();
+
+        $this->assertStringContainsString('signed up by itself', (string) collect($errors)->where('step', 'clients')->firstWhere('id', 1)['error']);
+        $this->assertSame(0, Service::query()->where('client_id', $account->id)->count());
+        $this->assertSame(0, Domain::query()->where('client_id', $account->id)->count());
+        $this->assertSame(0, Invoice::query()->where('client_id', $account->id)->count());
+        $this->assertSame(0, Ticket::query()->where('client_id', $account->id)->count());
+        $this->assertFalse(ImportMapping::query()->where(['source' => 'whmcs', 'entity' => 'client', 'source_id' => 1])->exists());
+        $this->assertTrue(ImportMapping::query()->where(['source' => 'whmcs', 'entity' => 'client_link', 'source_id' => 1])->exists());
+
+        // A service added in WHMCS between runs does not reach the account either, and staff are told again.
+        DB::connection(self::CONNECTION)->table('tblhosting')->insert(['id' => 11, 'userid' => 1, 'packageid' => 3, 'server' => 1, 'regdate' => '2026-10-02', 'domain' => 'raz.example', 'firstpaymentamount' => '5.00', 'amount' => '5.00', 'billingcycle' => 'Monthly', 'nextduedate' => '2026-11-02', 'domainstatus' => 'Active', 'username' => 'razex', 'suspendreason' => '']);
+        $errors = $this->runImport();
+
+        $this->assertSame(0, Service::query()->where('client_id', $account->id)->count());
+        $this->assertNotNull(collect($errors)->where('step', 'clients')->firstWhere('id', 1));
+        $this->assertSame(0, $account->fresh()->credit);
+    }
+
+    public function test_an_account_that_proved_its_email_and_was_linked_before_still_gets_records(): void
+    {
+        $this->seedWhmcs();
+        // Signed up with a sign-in provider, which confirmed the email, and never changed it.
+        $account = Client::factory()->create(['email' => 'raz@example.com', 'currency' => 'IQD', 'email_verified_at' => now()]);
+        Activity::log('client.registered', 'Signed up', $account, $account, $account);
+        ImportMapping::query()->create(['source' => 'whmcs', 'entity' => 'client', 'source_id' => 1, 'local_id' => $account->id]);
+
+        $this->assertSame([], $this->runImport());
+
+        $this->assertSame(1, Service::query()->where('client_id', $account->id)->count());
+        $this->assertSame(1, Domain::query()->where('client_id', $account->id)->count());
+
+        // Changing the details on the account page could have changed the email, so it no longer counts.
+        Activity::log('client.profile', 'Client updated their details', $account);
+        DB::connection(self::CONNECTION)->table('tblhosting')->insert(['id' => 11, 'userid' => 1, 'packageid' => 3, 'server' => 1, 'regdate' => '2026-10-02', 'domain' => 'raz.example', 'firstpaymentamount' => '5.00', 'amount' => '5.00', 'billingcycle' => 'Monthly', 'nextduedate' => '2026-11-02', 'domainstatus' => 'Active', 'username' => 'razex', 'suspendreason' => '']);
+
+        $this->assertNotSame([], $this->runImport());
+        $this->assertSame(1, Service::query()->where('client_id', $account->id)->count());
+    }
+
+    public function test_a_service_status_set_in_nuvabill_is_kept_on_a_rerun(): void
+    {
+        $this->seedWhmcs();
+        $this->runImport();
+        $whmcs = DB::connection(self::CONNECTION);
+        $service = Service::query()->firstOrFail();
+
+        // Nuvabill suspends it for an unpaid invoice; WHMCS still shows it active.
+        $service->forceFill(['status' => ServiceStatus::Suspended, 'suspended_at' => now()->subDay(), 'suspension_reason' => InvoicePaidHandler::OVERDUE_REASON])->save();
+        Activity::log('service.suspended', 'Suspended', $service);
+        $this->runImport();
+
+        $service->refresh();
+        $this->assertSame(ServiceStatus::Suspended, $service->status, 'The panel account is suspended, so the record says so');
+        $this->assertSame(InvoicePaidHandler::OVERDUE_REASON, $service->suspension_reason, 'Paying the invoice still unsuspends it');
+        $this->assertNotNull($service->suspended_at);
+
+        // The client pays and Nuvabill unsuspends it; WHMCS suspends it later, never having seen the payment.
+        $service->forceFill(['status' => ServiceStatus::Active, 'suspended_at' => null, 'suspension_reason' => null])->save();
+        Activity::log('service.unsuspended', 'Unsuspended', $service);
+        $whmcs->table('tblhosting')->where('id', 10)->update(['domainstatus' => 'Suspended', 'suspendreason' => 'Overdue']);
+        $this->runImport();
+
+        $service->refresh();
+        $this->assertSame(ServiceStatus::Active, $service->status);
+        $this->assertNull($service->suspended_at);
+        $this->assertNull($service->suspension_reason);
+
+        // Still so after the activity log is cleaned up.
+        ActivityLog::query()->delete();
+        $this->runImport();
+        $this->assertSame(ServiceStatus::Active, $service->fresh()->status);
+
+        // WHMCS can still end it.
+        $whmcs->table('tblhosting')->where('id', 10)->update(['domainstatus' => 'Terminated']);
+        $this->runImport();
+        $this->assertSame(ServiceStatus::Terminated, $service->fresh()->status);
+        $this->assertNotNull($service->fresh()->terminated_at);
+    }
+
+    public function test_a_domain_renewed_in_nuvabill_stays_active_on_a_rerun(): void
+    {
+        $this->seedWhmcs();
+        DB::connection(self::CONNECTION)->table('tbldomains')->where('id', 20)->update(['status' => 'Expired']);
+        $this->runImport();
+
+        $domain = Domain::query()->firstOrFail();
+        $this->assertSame(DomainStatus::Expired, $domain->status);
+        $domain->forceFill(['status' => DomainStatus::Active, 'expires_at' => '2027-10-01'])->save();
+        Activity::log('domain.renewed', 'Renewed', $domain);
+
+        $this->runImport();
+
+        $domain->refresh();
+        $this->assertSame(DomainStatus::Active, $domain->status);
+        $this->assertSame('2027-10-01', $domain->expires_at->toDateString());
     }
 
     public function test_a_rerun_keeps_wallet_money_added_in_nuvabill(): void

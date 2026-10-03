@@ -438,7 +438,8 @@ class FossbillingImporter extends ImportSource
                 'currency' => $this->currencyCode($row->currency ?? null, $this->clientCurrency($clientId)),
             ]);
 
-            $service->suspended_at = $status === ServiceStatus::Suspended ? ($this->date($row->suspended_at ?? null) ?? $service->suspended_at ?? now()) : null;
+            // The status Nuvabill kept, which may not be the source's one (see keepLocalStatus()).
+            $service->suspended_at = $service->status === ServiceStatus::Suspended ? ($service->suspended_at ?? $this->date($row->suspended_at ?? null) ?? now()) : null;
 
             if (blank($service->password) && ($password = $this->printable($account->pass ?? null)) !== null) {
                 $service->password = $password;

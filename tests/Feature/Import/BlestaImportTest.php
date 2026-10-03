@@ -2,9 +2,11 @@
 
 namespace Tests\Feature\Import;
 
+use App\Billing\InvoicePaidHandler;
 use App\Billing\PaymentRecorder;
 use App\Billing\RenewalGenerator;
 use App\Enums\BillingCycle;
+use App\Enums\ClientStatus;
 use App\Enums\DomainStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\ServiceStatus;
@@ -14,6 +16,7 @@ use App\Import\Blesta\BlestaImporter;
 use App\Models\Admin;
 use App\Models\Client;
 use App\Models\Domain;
+use App\Models\ImportMapping;
 use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Server;
@@ -21,6 +24,7 @@ use App\Models\Service;
 use App\Models\Ticket;
 use App\Models\TldPrice;
 use App\Models\Transaction;
+use App\Support\Activity;
 use App\Support\Settings;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Schema\Blueprint;
@@ -217,19 +221,92 @@ class BlestaImportTest extends TestCase
         $this->assertLessThan(5, $queries, 'Not two queries per client');
     }
 
-    private function runImport(): void
+    public function test_a_service_suspended_in_nuvabill_stays_suspended_on_a_rerun(): void
+    {
+        $this->runImport();
+        $service = Service::query()->firstOrFail();
+        $service->forceFill(['status' => ServiceStatus::Suspended, 'suspended_at' => '2026-10-03 08:00:00', 'suspension_reason' => InvoicePaidHandler::OVERDUE_REASON])->save();
+        Activity::log('service.suspended', 'Suspended', $service);
+
+        // Blesta still shows it active.
+        $this->runImport();
+
+        $service->refresh();
+        $this->assertSame(ServiceStatus::Suspended, $service->status);
+        $this->assertSame('2026-10-03 08:00:00', $service->suspended_at->toDateTimeString());
+        $this->assertSame(InvoicePaidHandler::OVERDUE_REASON, $service->suspension_reason);
+    }
+
+    public function test_clients_that_share_an_email_are_imported_once_with_the_right_advice(): void
+    {
+        $db = DB::connection(self::CONNECTION);
+        $db->table('clients')->insert(['id' => 2, 'user_id' => null, 'status' => 'active']);
+        $db->table('contacts')->insert(['id' => 2, 'client_id' => 2, 'contact_type' => 'primary', 'first_name' => 'Mer', 'last_name' => 'Las', 'email' => 'RAZ@example.com', 'country' => 'IQ', 'date_added' => '2024-03-04 10:00:00']);
+
+        $texts = collect((new BlestaImporter(self::CONNECTION, self::SYSTEM_KEY))->preflight()->toArray()['problems'])->keyBy('text');
+        $shared = $texts['Clients with the same email as another :system client: :count. Only the first one is imported; give the others their own email in :system.'];
+        $this->assertSame('warning', $shared['level']);
+        $this->assertSame(1, $shared['params']['count']);
+        $this->assertSame(['raz@example.com'], $shared['examples']);
+
+        $errors = $this->runImport(allowErrors: true);
+
+        $raz = Client::query()->where('email', 'raz@example.com')->firstOrFail();
+        $this->assertSame(1, Client::query()->count());
+        $this->assertSame('Raz', $raz->first_name);
+        $error = (string) collect($errors)->where('step', 'clients')->firstWhere('id', 2)['error'];
+        $this->assertStringContainsString("Another Blesta client with this email was imported as Nuvabill client #{$raz->id}", $error);
+        $this->assertStringNotContainsString('delete it', $error, 'The account belongs to the other Blesta client');
+    }
+
+    public function test_a_client_an_earlier_version_merged_into_another_with_the_same_email_is_never_changed(): void
+    {
+        $this->runImport();
+        $raz = Client::query()->where('email', 'raz@example.com')->firstOrFail();
+
+        // An earlier version joined a second Blesta client with the same email to Raz's account.
+        $db = DB::connection(self::CONNECTION);
+        $db->table('clients')->insert(['id' => 2, 'user_id' => null, 'status' => 'inactive']);
+        $db->table('contacts')->insert(['id' => 2, 'client_id' => 2, 'contact_type' => 'primary', 'first_name' => 'Mer', 'last_name' => 'Las', 'email' => 'raz@example.com', 'country' => 'IQ', 'date_added' => '2024-03-04 10:00:00']);
+        ImportMapping::query()->create(['source' => 'blesta', 'entity' => 'client', 'source_id' => 2, 'local_id' => $raz->id]);
+
+        $this->runImport();
+        $this->runImport();
+
+        $raz->refresh();
+        $this->assertSame('Raz', $raz->first_name, 'Not overwritten by the other Blesta client');
+        $this->assertSame(ClientStatus::Active, $raz->status);
+        $this->assertSame(500, $raz->credit, "Not set to the other client's balance");
+        $this->assertTrue(ImportMapping::query()->where(['source' => 'blesta', 'entity' => 'client_link', 'source_id' => 2])->exists());
+    }
+
+    /**
+     * @return list<array{step: string, id: int, error: string}> The rows that were skipped with a reason.
+     */
+    private function runImport(bool $allowErrors = false): array
     {
         $importer = new BlestaImporter(self::CONNECTION, self::SYSTEM_KEY);
+        $errors = [];
 
         foreach (array_keys(BlestaImporter::STEPS) as $step) {
             $afterId = 0;
 
             do {
                 $result = $importer->run($step, $afterId, 1);
-                $this->assertSame([], $result['errors'], "Step {$step}");
+
+                if (! $allowErrors) {
+                    $this->assertSame([], $result['errors'], "Step {$step}");
+                }
+
+                foreach ($result['errors'] as $error) {
+                    $errors[] = ['step' => $step] + $error;
+                }
+
                 $afterId = $result['last_id'];
             } while (! $result['done']);
         }
+
+        return $errors;
     }
 
     private function seedBlesta(): void
