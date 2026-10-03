@@ -84,7 +84,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         // Links in pages and emails (such as password reset links) use the site's own address when a
-        // visitor sends another host name, so a faked Host header cannot point them at another site.
+        // visitor sends another host name or port, so a faked Host header cannot point them at another site.
         // The installer runs before the address is saved.
         if (Installation::isInstalled()) {
             URL::formatHostUsing(fn (string $root): string => self::linkRoot($root));
@@ -147,20 +147,44 @@ class AppServiceProvider extends ServiceProvider
 
     /**
      * The start of a link. The visitor's own host name is kept when it is this site's address
-     * (APP_URL, with or without "www."). Any other host name a visitor sent becomes APP_URL.
-     * A root set on purpose with URL::forceRootUrl() is kept.
+     * (APP_URL, with or without "www."), but always with APP_URL's port, so "Host: site:8080"
+     * cannot send links to another port. Any other host name a visitor sent becomes APP_URL.
+     * A root on another host name set on purpose with URL::forceRootUrl() is kept.
      */
     private static function linkRoot(string $root): string
     {
         $appUrl = rtrim((string) config('app.url'), '/');
-        $siteHost = strtolower((string) parse_url($appUrl, PHP_URL_HOST));
-        $host = strtolower((string) parse_url($root, PHP_URL_HOST));
+        $site = parse_url($appUrl);
+        $siteHost = strtolower((string) ($site['host'] ?? ''));
 
-        if ($siteHost === '' || $host === '' || in_array($siteHost, [$host, 'www.'.$host], true) || $host === 'www.'.$siteHost) {
+        if ($siteHost === '') {
             return $root;
         }
 
+        // A root that cannot be read, such as one with a port above 65535, is never trusted.
+        $host = strtolower((string) parse_url($root, PHP_URL_HOST));
+        if ($host === '') {
+            return $appUrl;
+        }
+
+        if (in_array($siteHost, [$host, 'www.'.$host], true) || $host === 'www.'.$siteHost) {
+            return self::linkPort($root) === self::linkPort($appUrl)
+                ? $root
+                : ($site['scheme'] ?? 'https').'://'.$host.(isset($site['port']) ? ':'.$site['port'] : '').($site['path'] ?? '');
+        }
+
         return $host === strtolower(request()->getHost()) ? $appUrl : $root;
+    }
+
+    /**
+     * The port written in a link root, or null when it is the usual port for its scheme.
+     */
+    private static function linkPort(string $url): ?int
+    {
+        $port = parse_url($url, PHP_URL_PORT);
+        $usual = strtolower((string) parse_url($url, PHP_URL_SCHEME)) === 'https' ? 443 : 80;
+
+        return $port === null || $port === $usual ? null : (int) $port;
     }
 
     /**
