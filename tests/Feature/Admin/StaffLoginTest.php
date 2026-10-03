@@ -198,6 +198,27 @@ class StaffLoginTest extends TestCase
         $this->assertNull(session('admin.reset_unlock'));
     }
 
+    public function test_another_spelling_of_the_email_never_gets_a_password_check_of_its_own(): void
+    {
+        $this->compareEmailsLikeMysql('admins');
+        $admin = Admin::factory()->create(['email' => 'owner@example.test']);
+
+        foreach (['öwner@example.test', 'ｏwner@example.test', 'owner@exämple.test', 'ÖWNER@example.test'] as $try => $spelling) {
+            // Like MySQL and MariaDB, the database finds the account for this spelling.
+            $this->assertTrue($admin->is(Admin::query()->where('email', $spelling)->first()));
+
+            // But each spelling has counts of its own, so it never signs in, even with the right password.
+            $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.'.($try + 1)])
+                ->post(route('admin.login'), ['email' => $spelling, 'password' => 'password'])
+                ->assertSessionHasErrors(['email' => 'The email or password is wrong.']);
+            $this->assertGuest('admin');
+        }
+
+        // The account's own address signs in, in any letter case.
+        $this->post(route('admin.login'), ['email' => 'OWNER@Example.test', 'password' => 'password'])->assertRedirect(route('admin.dashboard'));
+        $this->assertAuthenticatedAs($admin, 'admin');
+    }
+
     public function test_the_shared_demo_sign_in_cannot_be_locked_for_other_visitors(): void
     {
         config(['nuvabill.demo' => true]);

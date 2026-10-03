@@ -13,6 +13,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Illuminate\Support\Timebox;
 use Illuminate\View\View;
 
 class LoginController extends Controller
@@ -63,12 +64,11 @@ class LoginController extends Controller
             return back()->withInput($request->only('email'))->withErrors(['email' => $refused]);
         }
 
-        $guard = Auth::guard('web');
+        $client = $this->clientWithPassword($credentials['email'], $credentials['password'])
+            ?? $this->legacyClient($credentials['email'], $credentials['password'])
+            ?? $this->caseTwin($typed, $credentials);
 
-        if ($guard->validate($credentials)) {
-            /** @var Client $client */
-            $client = $guard->getLastAttempted();
-        } elseif (($client = $this->legacyClient($credentials['email'], $credentials['password']) ?? $this->caseTwin($typed, $credentials)) === null) {
+        if ($client === null) {
             SignInLimiter::passwordFailed($request, 'client', $credentials['email']);
 
             return back()->withInput($request->only('email'))->withErrors(['email' => __('The email or password is wrong.')]);
@@ -81,10 +81,36 @@ class LoginController extends Controller
         }
 
         if (config('hashing.rehash_on_login', true)) {
-            $guard->getProvider()->rehashPasswordIfRequired($client, $credentials);
+            Auth::guard('web')->getProvider()->rehashPasswordIfRequired($client, $credentials);
         }
 
         return self::signIn($request, $client, $request->boolean('remember'), 'to the client area');
+    }
+
+    /**
+     * The client with this email and password, or null.
+     *
+     * MySQL and MariaDB also find "owner@example.test" for "öwner@example.test". Every count in
+     * SignInLimiter is kept per address typed, so such a spelling is treated as an unknown email and
+     * its password is never checked. Like Laravel's own check, a wrong answer takes at least as long
+     * whether or not the email has an account, so the timing gives no account away.
+     */
+    private function clientWithPassword(string $email, string $password): ?Client
+    {
+        return (new Timebox)->call(function (Timebox $timebox) use ($email, $password): ?Client {
+            $provider = Auth::guard('web')->getProvider();
+            $client = $provider->retrieveByCredentials(['email' => $email]);
+
+            if (! $client instanceof Client
+                || ! SignInLimiter::sameEmail($email, (string) $client->email)
+                || ! $provider->validateCredentials($client, ['password' => $password])) {
+                return null;
+            }
+
+            $timebox->returnEarly();
+
+            return $client;
+        }, (int) config('auth.timebox_duration', 200000));
     }
 
     /**
@@ -93,9 +119,11 @@ class LoginController extends Controller
      */
     private function legacyClient(string $email, string $password): ?Client
     {
-        $client = Client::query()->where('email', strtolower($email))->whereNotNull('legacy_password')->first();
+        $client = Client::query()->where('email', Str::lower($email))->whereNotNull('legacy_password')->first();
 
-        if ($client === null || ! LegacyPassword::check((string) $client->legacy_password, $password)) {
+        if ($client === null
+            || ! SignInLimiter::sameEmail($email, (string) $client->email)
+            || ! LegacyPassword::check((string) $client->legacy_password, $password)) {
             return null;
         }
 
@@ -119,14 +147,7 @@ class LoginController extends Controller
             return null;
         }
 
-        $guard = Auth::guard('web');
-
-        if (! $guard->validate(['email' => $typed, 'password' => $credentials['password']])) {
-            return null;
-        }
-
-        /** @var Client */
-        return $guard->getLastAttempted();
+        return $this->clientWithPassword($typed, $credentials['password']);
     }
 
     public function destroy(Request $request): RedirectResponse

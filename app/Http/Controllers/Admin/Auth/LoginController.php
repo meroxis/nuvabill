@@ -48,6 +48,13 @@ class LoginController extends Controller
         }
 
         $admin = Admin::query()->where('email', $credentials['email'])->first();
+
+        // MySQL and MariaDB also find the account for "öwner@example.test". Only the account's own
+        // address has its password checked, so another spelling cannot get a fresh count of guesses.
+        if ($admin !== null && ! SignInLimiter::sameEmail($credentials['email'], (string) $admin->email)) {
+            $admin = null;
+        }
+
         $hash = $admin?->password ?: self::DUMMY_HASH;
         $passwordMatches = Hash::check($credentials['password'], $hash) && $hash !== self::DUMMY_HASH;
 

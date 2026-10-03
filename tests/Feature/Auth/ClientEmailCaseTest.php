@@ -104,6 +104,42 @@ class ClientEmailCaseTest extends TestCase
         $this->assertGuest('web');
     }
 
+    public function test_another_spelling_of_the_email_never_gets_a_password_check_of_its_own(): void
+    {
+        Sleep::fake();
+        $this->compareEmailsLikeMysql('clients');
+        $client = Client::factory()->create(['email' => 'raz@example.com', 'password' => 'raz-password-1']);
+        $imported = Client::factory()->create(['email' => 'mer.las@example.com']);
+        $imported->forceFill(['legacy_password' => 'md5-salt:'.md5('salt-1'.'old-password').':salt-1'])->save();
+
+        // Plain, wide, accented, and accented with capitals (which also tries the exact spelling typed).
+        foreach (['ｒaz@example.com', 'räz@example.com', 'raz@exämple.com', 'Räz@Example.com'] as $try => $spelling) {
+            // Like MySQL and MariaDB, the database finds the account for this spelling.
+            $this->assertTrue($client->is(Client::query()->where('email', $spelling)->first()));
+
+            // But each spelling has counts of its own, so it never signs in, even with the right password.
+            $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.'.($try + 1)])
+                ->post(route('client.login'), ['email' => $spelling, 'password' => 'raz-password-1'])
+                ->assertSessionHasErrors(['email' => 'The email or password is wrong.']);
+            $this->assertGuest('web');
+        }
+
+        // The same goes for a password imported from another billing system.
+        $this->post(route('client.login'), ['email' => 'mër.las@example.com', 'password' => 'old-password'])
+            ->assertSessionHasErrors(['email' => 'The email or password is wrong.']);
+        $this->assertGuest('web');
+        $this->assertNotNull($imported->fresh()->legacy_password);
+
+        // The account's own address signs in, in any letter case.
+        $this->post(route('client.login'), ['email' => 'RAZ@Example.com', 'password' => 'raz-password-1'])->assertRedirect(route('client.dashboard'));
+        $this->assertAuthenticatedAs($client->fresh(), 'web');
+        $this->post(route('client.logout'));
+
+        $this->post(route('client.login'), ['email' => 'Mer.Las@example.com', 'password' => 'old-password'])->assertRedirect(route('client.dashboard'));
+        $this->assertAuthenticatedAs($imported->fresh(), 'web');
+        $this->assertNull($imported->fresh()->legacy_password);
+    }
+
     public function test_site_health_lists_clients_that_share_an_email(): void
     {
         $lower = Client::factory()->create();

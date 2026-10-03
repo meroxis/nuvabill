@@ -101,6 +101,19 @@ final class SignInLimiter
         return null;
     }
 
+    /**
+     * Whether the account found for the typed email has that same address, in any letter case.
+     *
+     * Every password count and the one-at-a-time lock are kept per address typed. MySQL and MariaDB
+     * also find "owner@example.test" for "öwner@example.test" or a wide "ｏwner@example.test", and
+     * each such spelling would get fresh counts of its own. So sign-in treats another spelling as an
+     * unknown email and never checks its password: every password check for one account shares one count.
+     */
+    public static function sameEmail(string $typed, string $accountEmail): bool
+    {
+        return hash_equals(self::emailHash($accountEmail), self::emailHash($typed));
+    }
+
     public static function passwordFailed(Request $request, string $area, string $email): void
     {
         RateLimiter::hit(self::passwordKey($area, $email, $request), self::WAIT);

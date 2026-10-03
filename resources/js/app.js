@@ -4,6 +4,7 @@ import { aiMessage, productAi, ticketAi } from './ai-help';
 import { whatsappConnect } from './chat-apps';
 import { showCopied } from './copy-button';
 import { kbSuggest } from './kb-suggest';
+import { passkeySubmitButton } from './passkey-form';
 import { phoneApp, registerAdminApp } from './phone-app';
 
 /**
@@ -128,7 +129,7 @@ function passkeyCredentialJson(credential) {
 
 async function runPasskeyForm(form) {
     const error = form.querySelector('[data-passkey-error]');
-    const button = form.querySelector('button[type="submit"]');
+    const button = passkeySubmitButton(form);
     const showError = (message) => {
         if (error) {
             error.textContent = message;
