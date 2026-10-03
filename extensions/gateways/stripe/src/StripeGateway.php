@@ -62,7 +62,7 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
                 'label' => 'Webhook signing secret',
                 'type' => 'password',
                 'required' => true,
-                'help' => 'Add a webhook for the URL shown on this page with the events checkout.session.completed and payment_intent.succeeded, then paste its signing secret (whsec_...).',
+                'help' => 'Add a webhook for the URL shown on this page with the events checkout.session.completed, checkout.session.async_payment_succeeded and payment_intent.succeeded, then paste its signing secret (whsec_...).',
             ],
         ];
     }
@@ -70,6 +70,17 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
     public function supportsCurrency(string $currency): bool
     {
         return ! in_array(strtoupper($currency), self::UNSUPPORTED_CURRENCIES, true);
+    }
+
+    /**
+     * Stripe charges the invoice in its own currency and never converts it, so an exchange rate
+     * does not make another currency payable.
+     */
+    public function chargeCurrencyFor(string $currency): ?string
+    {
+        $currency = strtoupper($currency);
+
+        return $this->supportsCurrency($currency) ? $currency : null;
     }
 
     public function startPayment(Invoice $invoice, string $returnUrl, string $cancelUrl): PaymentStart
@@ -101,8 +112,9 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
                     'product_data' => ['name' => __('Invoice :number', ['number' => $invoice->displayNumber()])],
                 ],
             ]],
-            'metadata' => ['invoice_id' => (string) $invoice->id] + ($save ? ['save' => '1'] : []),
-            'payment_intent_data' => ['metadata' => ['invoice_id' => (string) $invoice->id]] + ($save ? ['setup_future_usage' => 'off_session'] : []),
+            // The site marker tells this site's payments apart from other payments on the same Stripe account.
+            'metadata' => ['invoice_id' => (string) $invoice->id, 'nuvabill_site' => $this->siteMarker()] + ($save ? ['save' => '1'] : []),
+            'payment_intent_data' => ['metadata' => ['invoice_id' => (string) $invoice->id, 'nuvabill_site' => $this->siteMarker()]] + ($save ? ['setup_future_usage' => 'off_session'] : []),
         ]);
 
         if ($response->failed() || ! is_string($response->json('url'))) {
@@ -153,7 +165,7 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
 
         $result = $this->resultFromSession($event['data']['object'] ?? []);
 
-        return $result ? WebhookResult::paid($result) : WebhookResult::ignored('Session not paid yet.');
+        return $result ? WebhookResult::paid($result) : WebhookResult::ignored('Session not paid yet, or not started by this site.');
     }
 
     public function supportsRefunds(): bool
@@ -221,20 +233,31 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
     }
 
     /**
+     * A paid Checkout session this site started. Stripe sends the sessions of the whole account,
+     * for example Payment Links or another site's payments, so only sessions with this site's
+     * marker count. client_reference_id is never trusted: a buyer can set it on a Payment Link.
+     *
      * @param  array<string, mixed>  $session
      */
     private function resultFromSession(array $session): ?PaymentResult
     {
-        $invoiceId = (int) ($session['metadata']['invoice_id'] ?? $session['client_reference_id'] ?? 0);
+        $metadata = is_array($session['metadata'] ?? null) ? $session['metadata'] : [];
+        $invoiceId = (string) ($metadata['invoice_id'] ?? '');
 
-        if ($invoiceId === 0 || ($session['payment_status'] ?? null) !== 'paid') {
+        if (! ctype_digit($invoiceId) || (int) $invoiceId === 0 || ($session['payment_status'] ?? null) !== 'paid') {
+            return null;
+        }
+
+        $invoiceId = (int) $invoiceId;
+
+        if (! hash_equals($this->siteMarker(), (string) ($metadata['nuvabill_site'] ?? '')) && ! $this->returnsHere($session, $invoiceId)) {
             return null;
         }
 
         $paymentIntent = $session['payment_intent'] ?? null;
         $reference = is_array($paymentIntent) ? ($paymentIntent['id'] ?? null) : $paymentIntent;
 
-        $saved = ($session['metadata']['save'] ?? null) === '1' ? $this->savedFromIntent($paymentIntent, $session['customer'] ?? null) : null;
+        $saved = ($metadata['save'] ?? null) === '1' ? $this->savedFromIntent($paymentIntent, $session['customer'] ?? null) : null;
 
         return new PaymentResult(
             invoiceId: $invoiceId,
@@ -243,6 +266,29 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
             reference: (string) ($reference ?: $session['id']),
             meta: array_filter(['checkout_session' => $session['id'] ?? null, 'saved_method' => $saved?->toArray()]),
         );
+    }
+
+    /**
+     * Sessions started before Nuvabill 0.6.12 have no site marker. They still count when they send
+     * the client back to this invoice on this site, which no other payment on the account does.
+     * Stripe ends unpaid sessions after a day, so this can go in a later release.
+     *
+     * @param  array<string, mixed>  $session
+     */
+    private function returnsHere(array $session, int $invoiceId): bool
+    {
+        $successUrl = (string) ($session['success_url'] ?? '');
+
+        return $successUrl !== '' && str_starts_with($successUrl, route('client.invoices.return', [$invoiceId, $this->slug()]).'?');
+    }
+
+    /**
+     * Marks this site's Checkout sessions and payments at Stripe. Made from the app key, so every
+     * site has its own and staff never need to enter one.
+     */
+    private function siteMarker(): string
+    {
+        return substr(hash_hmac('sha256', 'nuvabill-stripe-checkout', (string) config('app.key')), 0, 32);
     }
 
     public function startSavingMethod(Client $client, string $returnUrl, string $cancelUrl): PaymentStart
@@ -301,7 +347,7 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
                 'confirm' => 'true',
                 'description' => __('Invoice :number', ['number' => $invoice->displayNumber()]),
                 // The attempt key finds this payment again when Stripe's answer is lost.
-                'metadata' => ['invoice_id' => (string) $invoice->id, 'autopay' => '1', 'attempt' => $attemptKey],
+                'metadata' => ['invoice_id' => (string) $invoice->id, 'autopay' => '1', 'attempt' => $attemptKey, 'nuvabill_site' => $this->siteMarker()],
             ]);
 
         // No answer to trust (a Stripe error, too many requests, or the same key still running):

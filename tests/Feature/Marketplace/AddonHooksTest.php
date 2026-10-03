@@ -4,6 +4,7 @@ namespace Tests\Feature\Marketplace;
 
 use App\Extensions\ExtensionManager;
 use App\Models\Admin;
+use App\Models\Extension;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
@@ -66,6 +67,26 @@ class AddonHooksTest extends TestCase
         $settings = app(ExtensionManager::class)->settings('probe');
         $this->assertSame('Second', $settings['label']);
         $this->assertSame('secret-token', $settings['token']);
+    }
+
+    public function test_values_an_addon_remembers_do_not_undo_newer_settings(): void
+    {
+        $extensions = app(ExtensionManager::class);
+        $addon = $extensions->addon('probe');
+        // Read once, like a long job that started before staff changed anything.
+        $this->assertSame('First', $extensions->settings('probe')['label']);
+
+        // Staff save the settings form in another request meanwhile.
+        Extension::query()->where('slug', 'probe')->firstOrFail()->update(['settings' => ['label' => 'Changed by staff']]);
+
+        // The long job now keeps its own value.
+        (fn () => $this->remember(['token' => 'secret-token']))->call($addon);
+
+        $stored = Extension::query()->where('slug', 'probe')->firstOrFail();
+        $this->assertSame(['label' => 'Changed by staff', 'token' => 'secret-token'], $stored->settings);
+        $this->assertTrue($stored->is_enabled);
+        $this->assertSame('secret-token', $extensions->settings('probe')['token']);
+        $this->assertTrue($extensions->isEnabled('probe'));
     }
 
     public function test_staff_without_the_marketplace_permission_cannot_open_addon_pages(): void

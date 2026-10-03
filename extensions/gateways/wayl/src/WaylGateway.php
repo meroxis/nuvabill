@@ -12,6 +12,7 @@ use App\Support\Money;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use RuntimeException;
 
@@ -46,6 +47,7 @@ class WaylGateway extends Gateway
                 'label' => 'Mode',
                 'type' => 'select',
                 'options' => ['live' => 'Live', 'test' => 'Test'],
+                'help' => 'Test payments mark real invoices paid. Use Test only on a staging site. Links made in Test mode stop working once Wayl is live.',
             ],
         ];
     }
@@ -60,9 +62,10 @@ class WaylGateway extends Gateway
         $quote = $this->quote($invoice);
         $amount = $this->wholeUnits($quote['amount']);
         $reference = 'NB-'.$invoice->id.'-'.Str::lower(Str::random(10));
+        $env = $this->setting('mode') === 'test' ? 'test' : 'live';
 
         $response = $this->api()->post(self::API.'/api/v1/links', [
-            'env' => $this->setting('mode') === 'test' ? 'test' : 'live',
+            'env' => $env,
             'referenceId' => $reference,
             'total' => $amount,
             'currency' => 'IQD',
@@ -92,7 +95,7 @@ class WaylGateway extends Gateway
             'amount' => $invoice->balance(),
             'currency' => $invoice->currency,
             'status' => PaymentIntent::STATUS_PENDING,
-            'meta' => ['link_id' => $response->json('data.id'), 'code' => $response->json('data.code')] + $this->chargeDetails($quote, $amount * 100),
+            'meta' => ['link_id' => $response->json('data.id'), 'code' => $response->json('data.code'), 'env' => $env] + $this->chargeDetails($quote, $amount * 100),
         ]);
 
         return PaymentStart::redirect($url);
@@ -131,6 +134,18 @@ class WaylGateway extends Gateway
 
     private function confirm(PaymentIntent $intent): ?PaymentResult
     {
+        // Wayl uses the same address and token in both modes, so a link made in Test mode would
+        // still confirm after the switch to Live. Payments on live links always count, even while
+        // staff try Test mode.
+        if (($intent->meta['env'] ?? null) === 'test' && $this->setting('mode') !== 'test') {
+            if ($intent->status === PaymentIntent::STATUS_PENDING) {
+                $intent->update(['status' => PaymentIntent::STATUS_FAILED]);
+                Log::warning("Wayl test link {$intent->reference} was ignored because Wayl is live now.");
+            }
+
+            return null;
+        }
+
         $response = $this->api()->get(self::API.'/api/v1/links/'.rawurlencode($intent->reference));
 
         if (! $response->successful() || ! in_array(strtolower((string) $response->json('data.status')), self::PAID_STATUSES, true)) {

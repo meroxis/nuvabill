@@ -39,7 +39,8 @@ class AutoPayTest extends TestCase
             'api.stripe.com/v1/checkout/sessions' => Http::response(['id' => 'cs_1', 'url' => 'https://checkout.stripe.com/c/pay/cs_1']),
             'api.stripe.com/v1/checkout/sessions/cs_1*' => Http::response([
                 'id' => 'cs_1', 'payment_status' => 'paid', 'amount_total' => 1299, 'currency' => 'usd', 'customer' => 'cus_raz',
-                'metadata' => ['invoice_id' => '1', 'save' => '1'],
+                // The marker this site puts on its own Stripe sessions, made from the app key.
+                'metadata' => ['invoice_id' => '1', 'save' => '1', 'nuvabill_site' => substr(hash_hmac('sha256', 'nuvabill-stripe-checkout', (string) config('app.key')), 0, 32)],
                 'payment_intent' => ['id' => 'pi_1', 'payment_method' => ['id' => 'pm_visa', 'type' => 'card', 'card' => ['brand' => 'visa', 'last4' => '4242', 'exp_month' => 8, 'exp_year' => 2028]]],
             ]),
         ]);

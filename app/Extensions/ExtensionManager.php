@@ -13,6 +13,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Lang;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
@@ -147,6 +148,33 @@ class ExtensionManager
         $record->update(['settings' => $settings, 'is_enabled' => $enabled]);
         $this->records = null;
         $this->activeAddons = null;
+    }
+
+    /**
+     * Add values to an extension's stored settings and keep everything else as it is in the
+     * database now, so a long job never writes older settings back over newer changes. The row is
+     * locked while it is changed, and the switched-on flag is left alone.
+     *
+     * @param  array<string, mixed>  $values
+     * @return array<string, mixed> All settings after the change.
+     */
+    public function mergeSettings(string $slug, array $values): array
+    {
+        // Makes sure the row exists.
+        $this->record($slug);
+
+        $settings = DB::transaction(function () use ($slug, $values): array {
+            $record = Extension::query()->where('slug', $slug)->lockForUpdate()->firstOrFail();
+            $record->settings = array_merge($record->settings ?? [], $values);
+            $record->save();
+
+            return $record->settings;
+        });
+
+        $this->records = null;
+        $this->activeAddons = null;
+
+        return $settings;
     }
 
     public function gateway(string $slug): PaymentGateway

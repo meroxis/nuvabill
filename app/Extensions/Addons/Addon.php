@@ -183,13 +183,12 @@ abstract class Addon
     /**
      * Save values the add-on keeps for itself, such as a connection token or the time of the last run.
      * They are stored encrypted with the add-on's settings and survive saving the settings form.
+     * Only these values change: settings staff saved meanwhile are kept.
      *
      * @param  array<string, mixed>  $values
      */
     protected function remember(array $values): void
     {
-        $extensions = app(ExtensionManager::class);
-        $this->settings = array_merge($extensions->settings($this->slug()), $values);
-        $extensions->saveSettings($this->slug(), $this->settings, $extensions->isEnabled($this->slug()));
+        $this->settings = app(ExtensionManager::class)->mergeSettings($this->slug(), $values);
     }
 }

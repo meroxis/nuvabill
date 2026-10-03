@@ -64,12 +64,16 @@ connected to WhatsApp, Nuvabill sends its template to Meta for approval by itsel
 
 ## Gateway setup
 
-**Stripe.** Nothing new to set up: the same secret key and webhook (`checkout.session.completed`) are used. Cards are
+**Stripe.** Nothing new to set up: the same secret key and webhook are used. The webhook needs the events
+`checkout.session.completed`, `checkout.session.async_payment_succeeded` and `payment_intent.succeeded`. Cards are
 saved to a Stripe customer, and charges use the card the client saved.
 
 **PayPal.** Saving PayPal accounts needs PayPal's vault. In **developer.paypal.com → Apps & Credentials**, open your
 app and turn on **Save payment methods** (under Features). Without it, PayPal still takes normal payments, and saving
-shows an error.
+shows an error. A payment PayPal is still processing (for example an eCheck) is checked with PayPal every night, and
+the account is not charged again meanwhile. Also turn on **Block accidental payments** (block more than one payment per
+invoice ID) in your PayPal account's payment settings: when PayPal did not answer a charge, the next try then cannot
+take the money twice.
 
 ## Demo
 

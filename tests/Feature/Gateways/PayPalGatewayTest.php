@@ -2,7 +2,10 @@
 
 namespace Tests\Feature\Gateways;
 
+use App\Billing\ExchangeRates;
+use App\Billing\SavedMethods;
 use App\Enums\InvoiceStatus;
+use App\Extensions\ExtensionManager;
 use App\Models\Client;
 use App\Models\Invoice;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -73,6 +76,29 @@ class PayPalGatewayTest extends TestCase
             ->get(route('client.invoices.show', $invoice))
             ->assertOk()
             ->assertDontSee('value="paypal"', false);
+    }
+
+    public function test_an_exchange_rate_does_not_offer_paypal_for_a_currency_it_cannot_charge(): void
+    {
+        // PayPal never converts: with a rate it would still send dinar, which PayPal refuses.
+        app(ExchangeRates::class)->save(['IQD' => 1310]);
+        Http::fake();
+        $client = Client::factory()->create(['currency' => 'IQD']);
+        $invoice = Invoice::factory()->create(['client_id' => $client->id, 'currency' => 'IQD', 'total' => 1310000]);
+
+        $this->assertFalse(app(ExtensionManager::class)->activeGateways('IQD')->has('paypal'));
+        $this->assertFalse(app(SavedMethods::class)->gateways('IQD')->has('paypal'));
+        $this->assertTrue(app(ExtensionManager::class)->activeGateways('USD')->has('paypal'));
+
+        $this->actingAs($client, 'web')
+            ->get(route('client.invoices.show', $invoice))
+            ->assertOk()
+            ->assertDontSee('value="paypal"', false)
+            ->assertDontSee('You pay');
+
+        $this->post(route('client.invoices.pay', $invoice), ['gateway' => 'paypal'])->assertSessionHas('error', 'Choose one of the payment methods shown.');
+        $this->post(route('client.account.payment-methods.store', 'paypal'))->assertSessionHas('error', 'Choose one of the payment methods shown.');
+        Http::assertNothingSent();
     }
 
     public function test_an_unverified_paypal_webhook_is_rejected(): void

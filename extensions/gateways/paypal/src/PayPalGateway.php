@@ -2,6 +2,7 @@
 
 namespace Nuvabill\Extensions\PayPal;
 
+use App\Contracts\ChecksSavedCharges;
 use App\Contracts\SavesPaymentMethods;
 use App\Extensions\Gateways\ChargeResult;
 use App\Extensions\Gateways\Gateway;
@@ -16,19 +17,21 @@ use App\Models\PaymentMethod;
 use App\Models\Transaction;
 use App\Support\Money;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Sleep;
 use RuntimeException;
 
 /**
  * PayPal Checkout (Orders API v2). The client approves the payment on PayPal and is sent back,
  * then the order is captured. A webhook confirms captures that finish later. A client can keep
  * their PayPal account for automatic renewals (PayPal calls it vaulting; the PayPal business account
- * must allow it).
+ * must allow it). An automatic payment PayPal is still processing is checked by the next nightly run.
  */
-class PayPalGateway extends Gateway implements SavesPaymentMethods
+class PayPalGateway extends Gateway implements ChecksSavedCharges, SavesPaymentMethods
 {
     /**
      * Currencies PayPal accepts with two decimal places.
@@ -65,7 +68,7 @@ class PayPalGateway extends Gateway implements SavesPaymentMethods
             'webhook_id' => [
                 'label' => 'Webhook ID',
                 'type' => 'text',
-                'help' => 'Optional. Add a webhook for the URL shown on this page with the event PAYMENT.CAPTURE.COMPLETED and paste its ID.',
+                'help' => 'Recommended. Add a webhook for the URL shown on this page with the event PAYMENT.CAPTURE.COMPLETED and paste its ID. Without it, a checkout payment PayPal finishes later (for example an eCheck) must be marked paid by hand.',
             ],
         ];
     }
@@ -73,6 +76,17 @@ class PayPalGateway extends Gateway implements SavesPaymentMethods
     public function supportsCurrency(string $currency): bool
     {
         return in_array(strtoupper($currency), self::SUPPORTED_CURRENCIES, true);
+    }
+
+    /**
+     * PayPal charges the invoice in its own currency and never converts it, so an exchange rate
+     * does not make another currency payable.
+     */
+    public function chargeCurrencyFor(string $currency): ?string
+    {
+        $currency = strtoupper($currency);
+
+        return $this->supportsCurrency($currency) ? $currency : null;
     }
 
     public function startPayment(Invoice $invoice, string $returnUrl, string $cancelUrl): PaymentStart
@@ -308,26 +322,50 @@ class PayPalGateway extends Gateway implements SavesPaymentMethods
             return ChargeResult::failed(__('PayPal cannot be charged in :currency.', ['currency' => $invoice->currency]));
         }
 
-        $response = $this->api()
-            // The same attempt sent twice creates one payment.
-            ->withHeaders(['PayPal-Request-Id' => 'nuvabill-'.$attemptKey])
+        $api = $this->api();
+        $send = fn (): Response => $api
+            // The same attempt sent twice creates one payment. PayPal keeps this key for a few hours
+            // only, so the attempt is also the invoice ID: a PayPal account that blocks repeated
+            // invoice IDs refuses a later copy of the same attempt too.
+            ->withHeaders(['PayPal-Request-Id' => 'nuvabill-'.$attemptKey, 'Prefer' => 'return=representation'])
             ->post($this->baseUrl().'/v2/checkout/orders', [
                 'intent' => 'CAPTURE',
                 'purchase_units' => [[
                     'reference_id' => (string) $invoice->id,
                     'custom_id' => (string) $invoice->id,
+                    'invoice_id' => 'nuvabill-'.$attemptKey,
                     'description' => __('Invoice :number', ['number' => $invoice->displayNumber()]),
                     'amount' => ['currency_code' => $invoice->currency, 'value' => Money::toDecimal($invoice->balance())],
                 ]],
                 'payment_source' => ['paypal' => ['vault_id' => $method->reference]],
             ]);
 
+        $response = $send();
+
+        // No answer to trust: PayPal may have taken the payment. Asking again with the same key
+        // returns the first payment instead of making a second one.
+        if ($this->gaveNoAnswer($response)) {
+            Sleep::for(1)->second();
+            $response = $send();
+        }
+
+        if ($this->gaveNoAnswer($response)) {
+            return ChargeResult::pending(__('PayPal did not answer. The payment is checked before the next try.'));
+        }
+
         $capture = $response->json('purchase_units.0.payments.captures.0');
 
-        if ($response->successful() && is_array($capture) && ($capture['status'] ?? null) === 'COMPLETED') {
-            $result = $this->resultFromCapture($capture, $invoice->id);
+        if ($response->successful() && is_array($capture)) {
+            return $this->savedChargeResult($capture, $invoice);
+        }
 
-            return ChargeResult::paid(new PaymentResult($result->invoiceId, $result->amount, $result->currency, $result->reference, $result->fee, ['autopay' => true]));
+        // A finished order without the capture in the answer: the money may have been taken.
+        if ($response->successful() && $response->json('status') === 'COMPLETED') {
+            return ChargeResult::pending(__('PayPal did not say whether it took the payment. The payment is checked before the next try.'));
+        }
+
+        if ($response->json('details.0.issue') === 'DUPLICATE_INVOICE_ID') {
+            return ChargeResult::pending(__('PayPal says this payment was sent before. Check it in PayPal before you charge the invoice again.'));
         }
 
         if (in_array($response->json('details.0.issue'), ['PAYER_ACTION_REQUIRED', 'PAYEE_ACCOUNT_RESTRICTED'], true) || $response->json('status') === 'PAYER_ACTION_REQUIRED') {
@@ -335,6 +373,65 @@ class PayPalGateway extends Gateway implements SavesPaymentMethods
         }
 
         return ChargeResult::failed((string) ($response->json('details.0.description') ?: __('PayPal could not take the payment.')));
+    }
+
+    public function checkSavedCharge(Invoice $invoice, string $attemptKey, ?string $reference, ?string $customer): ?ChargeResult
+    {
+        // Without PayPal's ID the payment cannot be looked up. The next nightly try has the same key
+        // and invoice ID, so a PayPal account that blocks repeated invoice IDs refuses a second payment.
+        if ($reference === null || ! preg_match('/^[A-Z0-9]+$/', $reference)) {
+            return null;
+        }
+
+        $response = $this->api()->get($this->baseUrl().'/v2/payments/captures/'.$reference);
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException('PayPal could not be asked about the payment: '.($response->json('details.0.description') ?? $response->json('message') ?? $response->status()));
+        }
+
+        $capture = $response->json();
+
+        if (! is_array($capture) || (string) ($capture['custom_id'] ?? '') !== (string) $invoice->id) {
+            return null;
+        }
+
+        return $this->savedChargeResult($capture, $invoice);
+    }
+
+    /**
+     * What a capture of an automatic payment means for the invoice.
+     *
+     * @param  array<string, mixed>  $capture
+     */
+    private function savedChargeResult(array $capture, Invoice $invoice): ChargeResult
+    {
+        $id = is_string($capture['id'] ?? null) && preg_match('/^[A-Z0-9]+$/', $capture['id']) ? $capture['id'] : null;
+
+        return match ($capture['status'] ?? null) {
+            'COMPLETED' => $id === null ? ChargeResult::failed(__('PayPal could not take the payment.')) : ChargeResult::paid(new PaymentResult(
+                invoiceId: $invoice->id,
+                amount: Money::toMinor($capture['amount']['value'] ?? 0),
+                currency: (string) ($capture['amount']['currency_code'] ?? ''),
+                reference: $id,
+                fee: Money::toMinor($capture['seller_receivable_breakdown']['paypal_fee']['value'] ?? 0),
+                meta: ['autopay' => true],
+            )),
+            // For example an eCheck, or a payment PayPal reviews first: PayPal takes the money later.
+            'PENDING' => ChargeResult::pending(__('PayPal is still processing the payment.'), $id),
+            default => ChargeResult::failed(__('PayPal could not take the payment.')),
+        };
+    }
+
+    /**
+     * A PayPal error, a timeout or too many requests: the payment may or may not have been made.
+     */
+    private function gaveNoAnswer(Response $response): bool
+    {
+        return $response->serverError() || in_array($response->status(), [408, 429], true);
     }
 
     public function forgetSaved(PaymentMethod $method): void

@@ -10,8 +10,10 @@ Every gateway has a **Name shown to clients** field, so you can call it, for exa
 
 - Cards, Apple Pay and Google Pay through **Stripe Checkout**.
 - **Secret key**: from **Stripe Dashboard → Developers → API keys** (starts with `sk_live_` or `sk_test_`).
-- **Webhook signing secret**: add a webhook in Stripe for the URL shown on the gateway's settings page, with the event
-  `checkout.session.completed`, and paste its signing secret (`whsec_…`).
+- **Webhook signing secret**: add a webhook in Stripe for the URL shown on the gateway's settings page, with the events
+  `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `payment_intent.succeeded`, and paste
+  its signing secret (`whsec_…`). Without `checkout.session.async_payment_succeeded`, payments that take a few days
+  (for example SEPA Direct Debit) are never marked paid.
 - Refunds can be made from the invoice page.
 - Clients can save a card for [automatic payments](../automatic-payments.md). Nothing extra to set up.
 
@@ -20,8 +22,9 @@ Every gateway has a **Name shown to clients** field, so you can call it, for exa
 - PayPal balance, cards and Pay Later through **PayPal Checkout**.
 - **Mode**: live payments or sandbox (testing).
 - **Client ID** and **Secret**: from **developer.paypal.com → Apps & Credentials**.
-- **Webhook ID** (optional): add a webhook for the URL shown on the settings page with the event
-  `PAYMENT.CAPTURE.COMPLETED` and paste its ID.
+- **Webhook ID** (recommended): add a webhook for the URL shown on the settings page with the event
+  `PAYMENT.CAPTURE.COMPLETED` and paste its ID. Without it, a checkout payment PayPal finishes later (for example an
+  eCheck) must be marked paid by hand.
 - Refunds can be made from the invoice page.
 - Clients can save their PayPal account for [automatic payments](../automatic-payments.md). Turn on **Save payment
   methods** for your app in **Apps & Credentials** first.
@@ -43,7 +46,8 @@ Every gateway has a **Name shown to clients** field, so you can call it, for exa
 
 - Wayl payment links: cards, wallets and bank transfers in Iraq. Iraqi dinar only.
 - **API token**: email Wayl from your Wayl account to get one.
-- **Mode**: live or test.
+- **Mode**: live or test. Test payments mark real invoices paid, so use Test only on a staging site. Links made in
+  Test mode stop working once Wayl is live.
 
 ## Bank transfer
 
