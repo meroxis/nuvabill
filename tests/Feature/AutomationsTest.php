@@ -21,9 +21,12 @@ use App\Models\TicketDepartment;
 use App\Support\TicketDesk;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Log\Events\MessageLogged;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
+use Throwable;
 
 class AutomationsTest extends TestCase
 {
@@ -340,6 +343,35 @@ class AutomationsTest extends TestCase
         $this->assertSame(AutomationRun::FAILED, $run->status);
         $this->assertSame('The address could not be reached.', $run->error);
         $this->assertStringNotContainsString('cURL', $run->lastLog());
+    }
+
+    public function test_a_web_address_that_cannot_be_reached_is_logged_without_its_secret_path(): void
+    {
+        $logged = [];
+        Event::listen(MessageLogged::class, function (MessageLogged $event) use (&$logged): void {
+            $logged[] = $event;
+        });
+        // Like a real failure, the message ends with ' for <the full address>'.
+        Http::fake(Http::failedConnection());
+        $this->automation('client.registered', null, [['type' => 'webhook', 'config' => ['url' => 'https://hooks.example.test:8443/hooks/catch/123456/SECRETTOKEN?key=QUERYSECRET']]]);
+
+        ClientRegistered::dispatch(Client::factory()->create(['first_name' => 'Raz']));
+
+        $this->assertSame(AutomationRun::FAILED, AutomationRun::query()->sole()->status);
+        $this->assertNotEmpty($logged);
+
+        foreach ($logged as $event) {
+            $text = $event->message.' '.json_encode(array_map(fn ($value) => $value instanceof Throwable ? $value->getMessage() : $value, $event->context));
+            $this->assertStringNotContainsString('SECRETTOKEN', $text);
+            $this->assertStringNotContainsString('QUERYSECRET', $text);
+            $this->assertStringNotContainsString('/hooks/catch', $text);
+        }
+
+        $warning = collect($logged)->first(fn (MessageLogged $event): bool => $event->message === 'Automation web address could not be reached.');
+        $this->assertNotNull($warning, 'The failure is still written to the error log.');
+        $this->assertSame('hooks.example.test', $warning->context['host']);
+        $this->assertStringContainsString('Could not resolve host: hooks.example.test', $warning->context['error']);
+        $this->assertStringEndsWith('for hooks.example.test.', $warning->context['error']);
     }
 
     /**

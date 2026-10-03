@@ -6,6 +6,8 @@ use App\Automations\Context;
 use App\Automations\StepFailed;
 use Closure;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -68,8 +70,10 @@ class CallWebhook extends Step
         try {
             $response = Http::timeout(10)->withoutRedirecting()->withOptions($options)->acceptJson()->post($url, $context->webhookData());
         } catch (Throwable $exception) {
-            // The reason stays in the error log: on the run page it would tell which ports are open.
-            report($exception);
+            // The reason goes to the error log only: on the run page it would tell which ports are
+            // open. The full address is left out, because services such as Zapier, Slack and
+            // Discord keep their secret token in it.
+            Log::warning('Automation web address could not be reached.', ['host' => $host, 'error' => self::withoutAddresses($exception->getMessage())]);
 
             throw new StepFailed(__('The address could not be reached.'));
         }
@@ -115,6 +119,21 @@ class CallWebhook extends Step
         }
 
         return $addresses[0] ?? null;
+    }
+
+    /**
+     * An error message with every web address cut down to its host, so no path, query or
+     * password from the address reaches the log.
+     */
+    private static function withoutAddresses(string $message): string
+    {
+        $message = (string) preg_replace_callback(
+            '~([a-z][a-z0-9+.-]*://\S*?)([).,;:\'"]*)(?=\s|$)~i',
+            fn (array $match): string => ((string) parse_url($match[1], PHP_URL_HOST)).$match[2],
+            $message,
+        );
+
+        return Str::limit($message, 300);
     }
 
     /**
