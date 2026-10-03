@@ -15,6 +15,7 @@ use App\Marketplace\Store\LicenseService;
 use App\Marketplace\Store\SigningKey;
 use App\Marketplace\Store\StoreCatalog;
 use App\Marketplace\Store\VersionUploader;
+use App\Models\ActivityLog;
 use App\Models\Client;
 use App\Models\Coupon;
 use App\Models\CreditNote;
@@ -31,6 +32,7 @@ use App\Models\TaxRule;
 use App\Providers\MarketplaceStoreServiceProvider;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\URL;
 use Tests\TestCase;
@@ -354,6 +356,116 @@ class StoreTest extends TestCase
         // The same credit note again changes nothing.
         app(EarningsRecorder::class)->reverse($refund);
         $this->assertTrue($license->fresh()->updates_until->isSameDay($firstYear));
+        $this->assertSame(3237, $item->developer->balance('USD'));
+    }
+
+    public function test_part_of_an_invoice_with_more_lines_is_left_for_staff_to_check(): void
+    {
+        $swift = $this->liveItem('swift', 'orderform', 8000, 1500);
+        $glow = $this->liveItem('glow', 'theme', 2000, 1000);
+        $raz = Developer::create(['name' => 'Raz Studio', 'slug' => 'raz-studio', 'status' => Developer::STATUS_ACTIVE]);
+        $glow->update(['developer_id' => $raz->id]);
+        $nuvabill = $swift->developer;
+
+        $this->actingAs($this->client(), 'web')->post(route('cart.store'), ['product_id' => $swift->product_id, 'billing_cycle' => 'annually', 'domain' => 'billing.example.org']);
+        $this->post(route('cart.store'), ['product_id' => $glow->product_id, 'billing_cycle' => 'annually', 'domain' => 'billing.example.org']);
+        $this->post(route('checkout.store'))->assertRedirect();
+        $invoice = Order::query()->sole()->invoice;
+        $this->assertSame(10000, $invoice->total);
+        app(PaymentRecorder::class)->record($invoice, 10000, 'banktransfer', 'wire-1');
+        $this->assertSame(6640, $nuvabill->balance('USD'));
+        $this->assertSame(1660, $raz->balance('USD'));
+
+        // $20 back, perhaps for the theme: the credit note cannot say, so no developer pays for a guess.
+        $part = app(CreditNotes::class)->issue($invoice->fresh(), 2000, CreditNote::METHOD_NONE, 'Theme refund', null, false);
+        $this->assertSame(6640, $nuvabill->balance('USD'));
+        $this->assertSame(1660, $raz->balance('USD'));
+        $this->assertSame(2, License::query()->where('status', License::STATUS_ACTIVE)->count());
+        $review = ActivityLog::query()->where('action', 'earning.review')->sole();
+        $this->assertSame($invoice->id, $review->subject_id);
+        $this->assertStringContainsString($part->number, $review->description);
+
+        // The rest back as well: everything is taken back and both keys stop working.
+        app(CreditNotes::class)->issue($invoice->fresh(), 8000, CreditNote::METHOD_REFUND, 'Refund', null, false);
+        $this->assertSame(0, $nuvabill->balance('USD'));
+        $this->assertSame(0, $raz->balance('USD'));
+        $this->assertSame(0, License::query()->where('status', License::STATUS_ACTIVE)->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'earning.review')->count());
+
+        // Part of an invoice without marketplace items is not for the store to check.
+        $hosting = Invoice::factory()->paid()->create(['client_id' => $invoice->client_id, 'total' => 3000, 'subtotal' => 3000]);
+        $hosting->items()->create(['description' => 'Web hosting', 'amount' => 2000]);
+        $hosting->items()->create(['description' => 'Backups', 'amount' => 1000]);
+        app(CreditNotes::class)->issue($hosting, 1000, CreditNote::METHOD_NONE, 'Backups refund', null, false);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'earning.review')->count());
+    }
+
+    public function test_two_licenses_of_the_same_item_on_one_invoice_each_earn_a_share(): void
+    {
+        $item = $this->liveItem('swift', 'orderform', 3900, 1500);
+        $developer = $item->developer;
+
+        $this->actingAs($this->client(), 'web')->post(route('cart.store'), ['product_id' => $item->product_id, 'billing_cycle' => 'annually', 'domain' => 'one.example.org']);
+        $this->post(route('cart.store'), ['product_id' => $item->product_id, 'billing_cycle' => 'annually', 'domain' => 'two.example.org']);
+        $this->post(route('checkout.store'))->assertRedirect();
+        $invoice = Order::query()->sole()->invoice;
+        $this->assertSame(7800, $invoice->total);
+
+        app(PaymentRecorder::class)->record($invoice, 7800, 'banktransfer', 'wire-1');
+        $licenses = License::query()->orderBy('id')->get();
+        $this->assertCount(2, $licenses);
+        $this->assertSame(2, DeveloperEarning::query()->count());
+        $this->assertSame(2 * 3237, $developer->balance('USD'), 'Each license earns 83% of $39.00.');
+
+        // Paying the same invoice again records nothing new.
+        app(EarningsRecorder::class)->record($invoice->fresh());
+        $this->assertSame(2, DeveloperEarning::query()->count());
+
+        // Both keys renew on the same day, on one invoice: each renewal earns its own share.
+        $firstYear = $licenses->first()->updates_until;
+        $this->travelTo($licenses->first()->service->next_due_date);
+        $this->assertSame(1, app(RenewalGenerator::class)->generate());
+        $renewal = Invoice::query()->whereKeyNot($invoice->id)->sole();
+        $this->assertSame(3000, $renewal->total);
+        app(PaymentRecorder::class)->record($renewal, 3000, 'banktransfer', 'wire-2');
+        $this->assertSame(2 * 3237 + 2 * 1245, $developer->balance('USD'));
+
+        // The renewal refunded: both extra years and both shares are taken back.
+        app(CreditNotes::class)->issue($renewal->fresh(), 3000, CreditNote::METHOD_REFUND, 'Refund', null, false);
+        $this->assertSame(2 * 3237, $developer->balance('USD'));
+
+        foreach ($licenses as $license) {
+            $this->assertTrue($license->fresh()->updates_until->isSameDay($firstYear));
+        }
+
+        // The purchase refunded: nothing is left and both keys stop working.
+        app(CreditNotes::class)->issue($invoice->fresh(), 7800, CreditNote::METHOD_REFUND, 'Refund', null, false);
+        $this->assertSame(0, $developer->balance('USD'));
+        $this->assertSame(0, License::query()->where('status', License::STATUS_ACTIVE)->count());
+        $this->assertSame(4, DeveloperEarning::query()->whereNotNull('credit_note_id')->count(), 'One take-back for each earning.');
+    }
+
+    public function test_earnings_from_before_the_update_find_their_service(): void
+    {
+        $item = $this->liveItem('swift', 'orderform', 3900, 1500);
+        $invoice = $this->buy($item);
+        app(PaymentRecorder::class)->record($invoice, 3900, 'banktransfer', 'wire-1');
+        $license = License::query()->sole();
+
+        // Before the update: no service on the earning, and the key was made after the payment.
+        $migration = require database_path('migrations/2027_07_02_000001_add_marketplace_store_fixes.php');
+        $migration->down();
+        DB::table('developer_earnings')->update(['license_id' => null]);
+        $migration->up();
+
+        $earning = DeveloperEarning::query()->sole();
+        $this->assertSame($license->service_id, $earning->service_id);
+        $this->assertSame($license->id, $earning->license_id);
+
+        // An old earning without its service still counts as paid when the invoice is paid again.
+        $earning->update(['service_id' => null]);
+        app(EarningsRecorder::class)->record($invoice->fresh());
+        $this->assertSame(1, DeveloperEarning::query()->count());
         $this->assertSame(3237, $item->developer->balance('USD'));
     }
 

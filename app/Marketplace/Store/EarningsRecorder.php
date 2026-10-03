@@ -17,8 +17,9 @@ use Illuminate\Support\Facades\DB;
 /**
  * When an invoice with marketplace purchases is paid, each item's developer gets their share
  * (83% by default) of what the client paid for it without tax, including yearly update renewals.
- * When a credit note gives money back, the same share of it is taken back. A refunded
- * purchase also cancels its license key, and a refunded renewal takes back its extra time.
+ * Every license on the invoice (two of the same item too) earns its own share. When a credit
+ * note gives money back, the same share of it is taken back. A refunded purchase also cancels
+ * its license key, and a refunded renewal takes back its extra time.
  */
 class EarningsRecorder
 {
@@ -39,7 +40,7 @@ class EarningsRecorder
             // A renewal that cost nothing, for example with a 100% coupon, still buys a year of updates.
             $this->licenses->extendFor($service->refresh());
 
-            if (DeveloperEarning::query()->where('invoice_id', $invoice->id)->where('marketplace_item_id', $item->id)->exists()) {
+            if ($this->recorded($invoice, $service->id, $item->id)) {
                 continue;
             }
 
@@ -56,6 +57,7 @@ class EarningsRecorder
             DeveloperEarning::create([
                 'developer_id' => $developer->id,
                 'marketplace_item_id' => $item->id,
+                'service_id' => $service->id,
                 'license_id' => License::query()->where('service_id', $service->id)->value('id'),
                 'invoice_id' => $invoice->id,
                 'gross' => $gross,
@@ -72,6 +74,9 @@ class EarningsRecorder
      * invoice shrinks by the part of the invoice credited so far, so all credit notes together
      * take back exactly what was earned. Unpaid shares go down; a share already paid out is
      * taken from the next payout. When the whole purchase is credited, its key stops working.
+     *
+     * A credit note does not say which line it gives back. Part of an invoice is only taken back
+     * when the whole invoice is one marketplace purchase; otherwise staff are asked to check it.
      */
     public function reverse(CreditNote $creditNote): void
     {
@@ -83,11 +88,15 @@ class EarningsRecorder
 
         $credited = min($invoice->total, (int) CreditNote::query()->where('invoice_id', $invoice->id)->where('id', '<=', $creditNote->id)->sum('total'));
 
+        if ($credited < $invoice->total && ! $this->onePurchase($invoice, $creditNote)) {
+            return;
+        }
+
         DB::transaction(function () use ($invoice, $creditNote, $credited): void {
             $earnings = DeveloperEarning::query()->where('invoice_id', $invoice->id)->whereNull('credit_note_id')->where('gross', '>', 0)->lockForUpdate()->get();
 
             foreach ($earnings as $earning) {
-                $taken = DeveloperEarning::query()->where('invoice_id', $invoice->id)->where('marketplace_item_id', $earning->marketplace_item_id)->whereNotNull('credit_note_id')->get();
+                $taken = DeveloperEarning::query()->where('reverses_id', $earning->id)->get();
 
                 if ($taken->contains('credit_note_id', $creditNote->id)) {
                     continue;
@@ -103,9 +112,11 @@ class EarningsRecorder
                 DeveloperEarning::create([
                     'developer_id' => $earning->developer_id,
                     'marketplace_item_id' => $earning->marketplace_item_id,
+                    'service_id' => $earning->service_id,
                     'license_id' => $earning->license_id,
                     'invoice_id' => $invoice->id,
                     'credit_note_id' => $creditNote->id,
+                    'reverses_id' => $earning->id,
                     'gross' => -$gross,
                     'developer_share' => -$developerShare,
                     'fee' => -($gross - $developerShare),
@@ -118,6 +129,46 @@ class EarningsRecorder
         if ($credited >= $invoice->total) {
             $this->takeBackKeys($invoice, $creditNote);
         }
+    }
+
+    /**
+     * Whether this service already earned its share of the invoice. Earnings from before they
+     * named their service count once for each item on the invoice, as they were made then.
+     */
+    private function recorded(Invoice $invoice, int $serviceId, int $itemId): bool
+    {
+        return DeveloperEarning::query()
+            ->where('invoice_id', $invoice->id)
+            ->whereNull('credit_note_id')
+            ->where(fn ($query) => $query
+                ->where('service_id', $serviceId)
+                ->orWhere(fn ($query) => $query->whereNull('service_id')->where('marketplace_item_id', $itemId)))
+            ->exists();
+    }
+
+    /**
+     * Whether part of this invoice can be matched to a developer's share: the invoice is one
+     * marketplace purchase and nothing else. With more lines, a guess could take money from a
+     * developer whose item was not refunded and leave the refunded item's key working, so
+     * nothing changes and staff are asked to check it.
+     */
+    private function onePurchase(Invoice $invoice, CreditNote $creditNote): bool
+    {
+        $earnings = DeveloperEarning::query()->where('invoice_id', $invoice->id)->whereNull('credit_note_id')->where('gross', '>', 0)->count();
+
+        if ($earnings === 0) {
+            return false;
+        }
+
+        $services = InvoiceItem::query()->where('invoice_id', $invoice->id)->where('amount', '>', 0)->pluck('service_id')->unique();
+
+        if ($earnings === 1 && $services->count() === 1 && $services->first() !== null) {
+            return true;
+        }
+
+        Activity::log('earning.review', "Credit note {$creditNote->number} gives back part of invoice {$invoice->displayNumber()}, which has more than one line, so developer shares and keys were not changed. Check which item was refunded and revoke its key if needed.", $invoice);
+
+        return false;
     }
 
     /**
