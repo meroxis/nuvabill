@@ -5,6 +5,7 @@ namespace App\Security;
 use App\Mail\TemplateMailer;
 use App\Models\Client;
 use Illuminate\Contracts\Session\Session;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Six-digit codes sent by email for two-factor sign-in. Only a hash is kept (in the session);
@@ -17,6 +18,9 @@ class EmailCode
     private const TRIES = 5;
 
     private const RESEND_SECONDS = 60;
+
+    /** The purpose of codes that confirm an account change, see confirm(). */
+    public const CONFIRM = 'confirm';
 
     public function __construct(private Session $session, private TemplateMailer $mailer) {}
 
@@ -75,6 +79,20 @@ class EmailCode
         $this->session->forget($this->key($purpose));
 
         return true;
+    }
+
+    /**
+     * Clients without a password prove a change is theirs (a new email, a first password, turning
+     * off two-factor sign-in) with a code sent to their current email, so a stolen session alone
+     * cannot do it. Stops with a form error under "email_code" when the code is wrong.
+     *
+     * @throws ValidationException
+     */
+    public function confirm(Client $client, mixed $code): void
+    {
+        if (! is_string($code) || ! $this->check($client, self::CONFIRM, $code)) {
+            throw ValidationException::withMessages(['email_code' => __('That code is not right, or it is too old. Ask for a new code.')]);
+        }
     }
 
     private function key(string $purpose): string

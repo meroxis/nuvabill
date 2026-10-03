@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Auth;
 
+use App\Mail\TemplatedMessage;
 use App\Models\Client;
 use App\Models\SocialAccount;
 use App\Support\Settings;
@@ -10,6 +11,8 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Testing\TestResponse;
 use Tests\TestCase;
 
@@ -51,7 +54,7 @@ class SocialLoginTest extends TestCase
 
     public function test_signing_in_from_an_order_form_comes_back_to_the_same_order(): void
     {
-        $client = Client::factory()->create(['email' => 'raz@example.com']);
+        $client = Client::factory()->create(['email' => 'raz@example.com', 'email_verified_at' => now()]);
         $this->enable('google');
         $this->fakeGoogle(['sub' => 'g-9', 'email' => 'raz@example.com', 'email_verified' => true]);
 
@@ -68,9 +71,9 @@ class SocialLoginTest extends TestCase
         }
     }
 
-    public function test_a_verified_email_signs_in_to_the_existing_account(): void
+    public function test_a_verified_email_signs_in_to_an_existing_account_with_a_confirmed_email(): void
     {
-        $client = Client::factory()->create(['email' => 'raz@example.com']);
+        $client = Client::factory()->create(['email' => 'raz@example.com', 'email_verified_at' => now()]);
         $this->enable('google');
         $this->fakeGoogle(['sub' => 'g-9', 'email' => 'raz@example.com', 'email_verified' => true]);
 
@@ -78,6 +81,63 @@ class SocialLoginTest extends TestCase
 
         $this->assertAuthenticatedAs($client, 'web');
         $this->assertSame(1, Client::query()->count());
+    }
+
+    public function test_google_does_not_take_over_an_account_whose_email_was_never_confirmed(): void
+    {
+        // Anyone can sign up with someone else's address, so this account may not belong to the owner of the mailbox.
+        Client::factory()->create(['email' => 'raz@example.com', 'password' => 'known-pass-1']);
+        $this->enable('google');
+        $this->fakeGoogle(['sub' => 'g-9', 'email' => 'raz@example.com', 'email_verified' => true]);
+
+        $this->completeSignIn('google')
+            ->assertRedirect(route('client.login'))
+            ->assertSessionHas('error', 'An account with this email already exists. Sign in with your password, then connect Google on your Account page.');
+
+        $this->assertGuest('web');
+        $this->assertSame(0, SocialAccount::query()->count());
+        $this->assertSame(1, Client::query()->count());
+    }
+
+    public function test_a_password_reset_confirms_the_email_so_google_signs_in_later(): void
+    {
+        $client = Client::factory()->create(['email' => 'raz@example.com']);
+        $token = Password::broker('clients')->createToken($client);
+
+        // The reset link went to the account's inbox, which proves the client owns the address.
+        $this->post(route('client.password.update'), ['token' => $token, 'email' => 'Raz@Example.com', 'password' => 'new-password-1', 'password_confirmation' => 'new-password-1'])
+            ->assertRedirect(route('client.login'));
+        $this->assertNotNull($client->fresh()->email_verified_at);
+
+        $this->enable('google');
+        $this->fakeGoogle(['sub' => 'g-9', 'email' => 'raz@example.com', 'email_verified' => true]);
+        $this->completeSignIn('google')->assertRedirect(route('client.dashboard'));
+        $this->assertAuthenticatedAs($client, 'web');
+    }
+
+    public function test_connecting_google_with_the_same_email_confirms_it(): void
+    {
+        $client = Client::factory()->create(['email' => 'raz@example.com']);
+        $this->enable('google');
+        $this->fakeGoogle(['sub' => 'g-1', 'email' => 'raz@example.com', 'email_verified' => true]);
+
+        $this->actingAs($client, 'web');
+        $this->completeSignIn('google')->assertRedirect(route('client.account.edit'))->assertSessionHas('status');
+
+        $this->assertNotNull($client->fresh()->email_verified_at);
+    }
+
+    public function test_connecting_google_with_another_email_does_not_confirm_the_account_email(): void
+    {
+        $client = Client::factory()->create(['email' => 'mer.las@example.com']);
+        $this->enable('google');
+        $this->fakeGoogle(['sub' => 'g-2', 'email' => 'raz@example.com', 'email_verified' => true]);
+
+        $this->actingAs($client, 'web');
+        $this->completeSignIn('google')->assertRedirect(route('client.account.edit'))->assertSessionHas('status');
+
+        $this->assertTrue($client->socialAccounts()->where('provider', 'google')->exists());
+        $this->assertNull($client->fresh()->email_verified_at);
     }
 
     public function test_facebook_never_takes_over_an_existing_account_by_email(): void
@@ -136,15 +196,20 @@ class SocialLoginTest extends TestCase
 
     public function test_social_sign_ups_set_a_password_without_an_old_one(): void
     {
+        Mail::fake();
         $client = Client::factory()->create();
         $client->forceFill(['has_password' => false])->save();
         $client->socialAccounts()->create(['provider' => 'google', 'provider_user_id' => 'g-1']);
         $this->actingAs($client, 'web');
 
-        $this->get(route('client.account.edit'))->assertSee('Set a password');
+        $this->get(route('client.account.edit'))->assertSee('Set a password')->assertSee('Email me a code');
         $this->delete(route('client.account.social.destroy', 'google'))->assertSessionHas('error', 'Set a password first, so you can still sign in.');
 
-        $this->put(route('client.account.password'), ['password' => 'new-password-1', 'password_confirmation' => 'new-password-1'])->assertSessionHas('status');
+        // A stolen session alone cannot add a password: it needs the code sent to the client's email.
+        $this->put(route('client.account.password'), ['password' => 'new-password-1', 'password_confirmation' => 'new-password-1'])->assertSessionHasErrors('email_code');
+        $this->assertFalse($client->fresh()->has_password);
+
+        $this->put(route('client.account.password'), ['email_code' => $this->emailedCode(), 'password' => 'new-password-1', 'password_confirmation' => 'new-password-1'])->assertSessionHas('status');
 
         $client->refresh();
         $this->assertTrue($client->has_password);
@@ -176,6 +241,17 @@ class SocialLoginTest extends TestCase
         $this->assertSame(['enabled' => true, 'client_id' => 'id-2', 'client_secret' => 'google-secret'], setting('social.google'));
         $this->assertStringNotContainsString('google-secret', (string) DB::table('settings')->where('key', 'social.google')->value('value'));
         $this->get(route('admin.settings.social.edit'))->assertDontSee('google-secret');
+    }
+
+    /**
+     * Ask for the code that confirms an account change, and read it from the email.
+     */
+    private function emailedCode(): string
+    {
+        $this->post(route('client.account.email-code'))->assertSessionHas('status');
+        preg_match('/\b(\d{6})\b/', Mail::sent(TemplatedMessage::class)->last()->bodyHtml, $match);
+
+        return $match[1];
     }
 
     private function enable(string $provider): void

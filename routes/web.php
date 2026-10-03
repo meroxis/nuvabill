@@ -67,10 +67,10 @@ Route::get('preview/{kind}/{slug}', [PreviewController::class, 'start'])->whereI
 
 Route::get('store-api/domains', [QuickOrderController::class, 'domains'])->middleware('throttle:30,1')->name('store.api.domains');
 Route::post('store-api/quote', [QuickOrderController::class, 'quote'])->middleware('throttle:120,1')->name('store.api.quote');
-Route::post('order', [QuickOrderController::class, 'store'])->middleware(['throttle:10,1', 'client.active', 'client.two-factor', 'captcha:checkout'])->name('order.store');
+Route::post('order', [QuickOrderController::class, 'store'])->middleware(['throttle:10,1', 'auth.session', 'client.active', 'client.two-factor', 'captcha:checkout'])->name('order.store');
 
 Route::get('checkout', [CheckoutController::class, 'show'])->name('checkout.show');
-Route::post('checkout', [CheckoutController::class, 'store'])->middleware(['auth:web', 'client.active', 'client.two-factor', 'captcha:checkout'])->name('checkout.store');
+Route::post('checkout', [CheckoutController::class, 'store'])->middleware(['auth:web', 'auth.session', 'client.active', 'client.two-factor', 'captcha:checkout'])->name('checkout.store');
 
 /*
 |--------------------------------------------------------------------------
@@ -132,7 +132,8 @@ Route::middleware('throttle:20,1')->whereIn('provider', array_keys(SocialLogin::
 |--------------------------------------------------------------------------
 */
 
-Route::middleware(['auth:web', 'client.active', 'client.two-factor'])->prefix('client')->name('client.')->group(function (): void {
+// auth.session: a new password signs out every other session of that client.
+Route::middleware(['auth:web', 'auth.session', 'client.active', 'client.two-factor'])->prefix('client')->name('client.')->group(function (): void {
     Route::get('/', DashboardController::class)->name('dashboard');
 
     Route::get('services', [ServiceController::class, 'index'])->name('services.index');
@@ -179,13 +180,15 @@ Route::middleware(['auth:web', 'client.active', 'client.two-factor'])->prefix('c
     Route::post('tickets/{ticket}/close', [TicketController::class, 'close'])->name('tickets.close');
 
     Route::get('account', [AccountController::class, 'edit'])->name('account.edit');
-    Route::put('account', [AccountController::class, 'update'])->name('account.update');
-    Route::put('account/password', [AccountController::class, 'password'])->name('account.password');
+    // Routes that check the current password (or an emailed code) share one limit per client, so a stolen session cannot guess it.
+    Route::put('account', [AccountController::class, 'update'])->middleware('throttle:6,1,client-reauth')->name('account.update');
+    Route::post('account/email-code', [AccountController::class, 'sendCode'])->middleware('throttle:3,1,client-code')->name('account.email-code');
+    Route::put('account/password', [AccountController::class, 'password'])->middleware('throttle:6,1,client-reauth')->name('account.password');
     Route::post('account/two-factor/app', [TwoFactorController::class, 'startApp'])->name('account.two-factor.app');
     Route::post('account/two-factor/app/confirm', [TwoFactorController::class, 'confirmApp'])->middleware('throttle:6,1')->name('account.two-factor.app.confirm');
     Route::post('account/two-factor/email', [TwoFactorController::class, 'startEmail'])->middleware('throttle:3,1')->name('account.two-factor.email');
     Route::post('account/two-factor/email/confirm', [TwoFactorController::class, 'confirmEmail'])->middleware('throttle:6,1')->name('account.two-factor.email.confirm');
-    Route::delete('account/two-factor', [TwoFactorController::class, 'destroy'])->name('account.two-factor.destroy');
+    Route::delete('account/two-factor', [TwoFactorController::class, 'destroy'])->middleware('throttle:6,1,client-reauth')->name('account.two-factor.destroy');
     Route::get('account/data', [PrivacyController::class, 'export'])->middleware('throttle:3,10')->name('account.data');
     Route::post('account/erase-request', [PrivacyController::class, 'requestErasure'])->middleware('throttle:3,60')->name('account.erase-request');
     Route::post('account/passkeys/options', [PasskeyController::class, 'options'])->middleware('throttle:6,1')->name('account.passkeys.options');

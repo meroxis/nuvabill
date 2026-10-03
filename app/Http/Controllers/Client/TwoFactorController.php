@@ -85,7 +85,7 @@ class TwoFactorController extends Controller
     /**
      * Turn off two-factor sign-in, or cancel a setup that was not finished.
      */
-    public function destroy(Request $request): RedirectResponse
+    public function destroy(Request $request, EmailCode $codes): RedirectResponse
     {
         $client = $request->user('web');
 
@@ -94,8 +94,12 @@ class TwoFactorController extends Controller
                 return back()->with('error', __('Two-factor sign-in is required for all accounts.'));
             }
 
+            // The password, or for clients without one a code sent to their email: a stolen session
+            // alone cannot turn it off.
             if ($client->has_password) {
                 $request->validate(['current_password' => ['required', 'current_password:web']]);
+            } else {
+                $codes->confirm($client, $request->input('email_code'));
             }
 
             Activity::log('client.two_factor_off', "{$client->name} turned off two-factor sign-in", $client, $client, $client);

@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Str;
 
 /**
  * A customer of the hosting company. Signs in to the client area.
@@ -94,6 +95,12 @@ class Client extends Authenticatable
             if ($client->exists && $client->isDirty('password') && ! $client->isDirty('legacy_password')) {
                 $client->legacy_password = null;
             }
+
+            // A new email address is not confirmed yet, whoever changed it, so Google or GitHub
+            // sign-in cannot take over the account through it.
+            if ($client->exists && $client->isDirty('email') && ! $client->isDirty('email_verified_at')) {
+                $client->email_verified_at = null;
+            }
         });
     }
 
@@ -167,6 +174,17 @@ class Client extends Authenticatable
     protected function name(): Attribute
     {
         return Attribute::get(fn (): string => trim($this->first_name.' '.$this->last_name));
+    }
+
+    /**
+     * Emails are saved in lowercase, so "Raz@Example.com" and "raz@example.com" are one mailbox and
+     * one account on every database (SQLite compares letter case).
+     *
+     * @return Attribute<never, ?string>
+     */
+    protected function email(): Attribute
+    {
+        return Attribute::set(fn (?string $value): ?string => $value === null ? null : Str::lower(trim($value)));
     }
 
     /**

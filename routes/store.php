@@ -27,7 +27,7 @@ Route::middleware('web')->group(function (): void {
     Route::get('developers', [MarketplacePageController::class, 'developers'])->name('marketplace.developers');
     Route::get('white-label', [MarketplacePageController::class, 'whiteLabel'])->name('marketplace.white-label');
 
-    Route::middleware(['auth:web', 'client.active', 'client.two-factor'])->group(function (): void {
+    Route::middleware(['auth:web', 'auth.session', 'client.active', 'client.two-factor'])->group(function (): void {
         Route::post('client/licenses/{license}/move', [LicenseController::class, 'move'])->middleware('throttle:5,1')->name('client.licenses.move');
 
         Route::prefix('developer')->name('developer.')->group(function (): void {
@@ -45,7 +45,7 @@ Route::middleware('web')->group(function (): void {
         });
     });
 
-    Route::middleware(['auth:admin', 'admin.can:marketplace.review', 'admin.two-factor'])
+    Route::middleware(['auth:admin', 'auth.session', 'admin.can:marketplace.review', 'admin.two-factor'])
         ->prefix(config('nuvabill.admin_path').'/store')
         ->name('admin.store.')
         ->group(function (): void {

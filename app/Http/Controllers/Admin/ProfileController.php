@@ -8,6 +8,7 @@ use App\Security\Totp;
 use App\Support\Activity;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\View\View;
 
@@ -45,7 +46,10 @@ class ProfileController extends Controller
             'password' => ['required', 'confirmed', Password::min(10)],
         ]);
 
-        $request->user('admin')->update(['password' => $request->input('password')]);
+        // The guard's own copy gets the new password, so this device stays signed in while every
+        // other session and remember-me cookie stops working (the auth.session middleware).
+        $request->user('admin')->forceFill(['password' => $request->input('password'), 'remember_token' => Str::random(60)])->save();
+        $request->session()->regenerate();
         Activity::log('admin.password', 'Changed own password');
 
         return back()->with('status', __('Password changed.'));

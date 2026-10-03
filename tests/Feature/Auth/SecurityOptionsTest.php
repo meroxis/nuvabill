@@ -3,6 +3,7 @@
 namespace Tests\Feature\Auth;
 
 use App\Mail\TemplatedMessage;
+use App\Models\ActivityLog;
 use App\Models\Client;
 use App\Security\Totp;
 use App\Support\Settings;
@@ -136,9 +137,113 @@ class SecurityOptionsTest extends TestCase
             $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.'.$try])->post(route('client.two-factor.challenge'), ['code' => $match[1] === '111111' ? '222222' : '111111']);
         }
 
+        // The fifth wrong code also ended the half-done sign-in, so the right code no longer helps.
         $last = $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.99'])->post(route('client.two-factor.challenge'), ['code' => $match[1]]);
-        $last->assertSessionHasErrors('code');
+        $last->assertRedirect(route('client.login'))->assertSessionHasErrors('email');
         $this->assertGuest('web');
+    }
+
+    public function test_app_codes_are_limited_per_account_whichever_ip_they_come_from(): void
+    {
+        $secret = Totp::generateSecret();
+        $client = $this->clientWithTwoFactor(['two_factor_method' => 'totp', 'two_factor_secret' => $secret]);
+        $this->post(route('client.login'), ['email' => $client->email, 'password' => 'right-password-1']);
+
+        foreach (range(1, 4) as $try) {
+            // A new IP each time, so the rate limit for each IP never answers first.
+            $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.'.$try])
+                ->post(route('client.two-factor.challenge'), ['code' => $this->wrongCode($secret)])
+                ->assertSessionHasErrors('code');
+        }
+
+        // The fifth wrong code ends the half-done sign-in.
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.5'])
+            ->post(route('client.two-factor.challenge'), ['code' => $this->wrongCode($secret)])
+            ->assertRedirect(route('client.login'))
+            ->assertSessionHasErrors('email');
+        $this->assertNull(session('client.two_factor'));
+
+        // A new sign-in with the password, from yet another address, still cannot use the right code for now.
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.6'])->post(route('client.login'), ['email' => $client->email, 'password' => 'right-password-1']);
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.7'])
+            ->post(route('client.two-factor.challenge'), ['code' => Totp::codeAt($secret, intdiv(time(), 30))])
+            ->assertRedirect(route('client.login'));
+        $this->assertGuest('web');
+        $this->assertSame(5, ActivityLog::query()->where('action', 'client.two_factor_failed')->where('client_id', $client->id)->count());
+        $this->assertTrue(ActivityLog::query()->where('action', 'client.two_factor_locked')->exists());
+
+        // After the wait, the right code works again.
+        $this->travel(16)->minutes();
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.8'])->post(route('client.login'), ['email' => $client->email, 'password' => 'right-password-1']);
+        $this->post(route('client.two-factor.challenge'), ['code' => Totp::codeAt($secret, intdiv(time(), 30))])->assertRedirect(route('client.dashboard'));
+        $this->assertAuthenticatedAs($client, 'web');
+    }
+
+    public function test_passwords_are_limited_per_account_whichever_ip_they_come_from(): void
+    {
+        $client = Client::factory()->create(['email' => 'raz@example.test', 'password' => 'right-password-1']);
+
+        foreach (range(1, 10) as $try) {
+            $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.'.$try])
+                ->post(route('client.login'), ['email' => 'raz@example.test', 'password' => 'wrong-password-'.$try])
+                ->assertSessionHasErrors('email');
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.99'])
+            ->post(route('client.login'), ['email' => 'RAZ@example.test', 'password' => 'right-password-1'])
+            ->assertSessionHasErrors(['email' => 'Too many tries. Wait 15 minutes, then try again.']);
+        $this->assertGuest('web');
+    }
+
+    public function test_a_used_app_code_is_refused_even_with_spaces_inside(): void
+    {
+        $secret = Totp::generateSecret();
+        $client = $this->clientWithTwoFactor(['two_factor_method' => 'totp', 'two_factor_secret' => $secret]);
+        $code = Totp::codeAt($secret, intdiv(time(), 30));
+
+        $this->post(route('client.login'), ['email' => $client->email, 'password' => 'right-password-1']);
+        $this->post(route('client.two-factor.challenge'), ['code' => $code])->assertRedirect(route('client.dashboard'));
+        $this->post(route('client.logout'));
+
+        // Someone who saw the code types it again with a space or a tab inside.
+        foreach ([substr($code, 0, 3).' '.substr($code, 3), substr($code, 0, 2)."\t".substr($code, 2)] as $try => $spaced) {
+            $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.'.$try])->post(route('client.login'), ['email' => $client->email, 'password' => 'right-password-1']);
+            $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.'.$try])->post(route('client.two-factor.challenge'), ['code' => $spaced])->assertSessionHasErrors('code');
+            $this->assertGuest('web');
+        }
+    }
+
+    public function test_clients_who_turned_two_factor_on_are_still_asked_when_staff_set_it_to_off(): void
+    {
+        $client = $this->clientWithTwoFactor(['two_factor_method' => 'email']);
+        app(Settings::class)->set('security.client_two_factor', 'off');
+
+        // Off only stops new set-ups: the account page truthfully says it is on.
+        $this->actingAs($client, 'web')->get(route('client.account.edit'))
+            ->assertOk()
+            ->assertSee('When you sign in, we email you a code to enter after your password.');
+
+        auth('web')->logout();
+        $this->post(route('client.login'), ['email' => $client->email, 'password' => 'right-password-1'])
+            ->assertRedirect(route('client.two-factor.challenge'));
+        $this->assertGuest('web');
+    }
+
+    public function test_clients_without_a_password_turn_off_two_factor_with_a_code_from_their_email(): void
+    {
+        Mail::fake();
+        $client = $this->clientWithTwoFactor(['two_factor_method' => 'totp', 'two_factor_secret' => Totp::generateSecret()]);
+        $client->forceFill(['has_password' => false])->save();
+        $this->actingAs($client, 'web');
+
+        $this->delete(route('client.account.two-factor.destroy'))->assertSessionHasErrors('email_code');
+        $this->assertTrue($client->fresh()->hasTwoFactorEnabled());
+
+        $this->post(route('client.account.email-code'))->assertSessionHas('status');
+        preg_match('/\b(\d{6})\b/', Mail::sent(TemplatedMessage::class)->last()->bodyHtml, $match);
+
+        $this->delete(route('client.account.two-factor.destroy'), ['email_code' => $match[1]])->assertSessionHas('status');
+        $this->assertFalse($client->fresh()->hasTwoFactorEnabled());
     }
 
     public function test_clients_turn_on_an_authenticator_app_from_their_account(): void
@@ -222,6 +327,23 @@ class SecurityOptionsTest extends TestCase
             'security.captcha_forms' => $forms,
             'security.captcha_checked_key' => 'site-key',
         ]);
+    }
+
+    /**
+     * A six-digit code that is not valid around now (the app code of this, the last or the next 30 seconds).
+     */
+    private function wrongCode(string $secret): string
+    {
+        $step = intdiv(time(), 30);
+        $valid = [Totp::codeAt($secret, $step - 1), Totp::codeAt($secret, $step), Totp::codeAt($secret, $step + 1)];
+
+        foreach (['111111', '222222', '333333', '444444'] as $code) {
+            if (! in_array($code, $valid, true)) {
+                return $code;
+            }
+        }
+
+        return '555555';
     }
 
     /**

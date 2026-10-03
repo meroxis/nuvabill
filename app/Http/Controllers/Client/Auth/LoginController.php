@@ -7,10 +7,12 @@ use App\Auth\Social\SocialLogin;
 use App\Enums\ClientStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
+use App\Security\SignInLimiter;
 use App\Support\Activity;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class LoginController extends Controller
@@ -44,14 +46,25 @@ class LoginController extends Controller
             'password' => ['required', 'string'],
         ]);
 
+        // Emails are saved in lowercase, so "Raz@Example.com" finds the same account.
+        $credentials['email'] = Str::lower(trim($credentials['email']));
+
+        if (SignInLimiter::passwordLocked('client', $credentials['email'])) {
+            return back()->withInput($request->only('email'))->withErrors(['email' => __('Too many tries. Wait 15 minutes, then try again.')]);
+        }
+
         $guard = Auth::guard('web');
 
         if ($guard->validate($credentials)) {
             /** @var Client $client */
             $client = $guard->getLastAttempted();
         } elseif (($client = $this->legacyClient($credentials['email'], $credentials['password'])) === null) {
+            SignInLimiter::passwordFailed('client', $credentials['email']);
+
             return back()->withInput($request->only('email'))->withErrors(['email' => __('The email or password is wrong.')]);
         }
+
+        SignInLimiter::passwordPassed('client', $credentials['email']);
 
         if ($client->status === ClientStatus::Closed) {
             return back()->withErrors(['email' => __('This account is closed. Contact support if you need help.')]);
@@ -94,10 +107,13 @@ class LoginController extends Controller
     /**
      * Sign the client in after their password (or Google, GitHub, Facebook) was accepted,
      * asking for the two-factor code first when they turned it on.
+     *
+     * Clients who turned it on are always asked, even when staff set client two-factor to Off:
+     * Off only stops new clients from setting it up, it never quietly removes protection.
      */
     public static function signIn(Request $request, Client $client, bool $remember, string $how, ?string $default = null): RedirectResponse
     {
-        if ($client->hasTwoFactorEnabled() && setting('security.client_two_factor') !== 'off') {
+        if ($client->hasTwoFactorEnabled()) {
             $request->session()->put('client.two_factor', [
                 'id' => $client->id,
                 'remember' => $remember,

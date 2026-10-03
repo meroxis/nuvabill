@@ -54,9 +54,8 @@ class ImportedPasswordTest extends TestCase
     public function test_a_password_the_client_changes_replaces_the_imported_one(): void
     {
         $client = $this->importedClient();
-        $client->forceFill(['has_password' => false])->save();
 
-        $this->actingAs($client, 'web')->put(route('client.account.password'), ['password' => 'my-new-password', 'password_confirmation' => 'my-new-password'])
+        $this->actingAs($client, 'web')->put(route('client.account.password'), ['current_password' => 'password', 'password' => 'my-new-password', 'password_confirmation' => 'my-new-password'])
             ->assertSessionHasNoErrors();
 
         $this->assertNull($client->fresh()->legacy_password);

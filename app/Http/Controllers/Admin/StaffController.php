@@ -8,6 +8,8 @@ use App\Models\Role;
 use App\Support\Activity;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
@@ -33,6 +35,8 @@ class StaffController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validated($request);
+        $this->onlyOwnersTouchOwners($request, null, (int) $data['role_id']);
+
         $admin = Admin::create($data);
         Activity::log('staff.created', "Staff account for {$admin->name} created", $admin);
 
@@ -50,23 +54,56 @@ class StaffController extends Controller
     public function update(Request $request, Admin $admin): RedirectResponse
     {
         $data = $this->validated($request, $admin);
+        $active = (bool) ($data['is_active'] ?? $admin->is_active);
+        $staysOwner = Role::find($data['role_id'])?->isOwner() === true;
 
-        if ($admin->is($request->user('admin')) && ! $data['is_active']) {
+        if ($admin->is($request->user('admin')) && ! $active) {
             throw ValidationException::withMessages(['is_active' => __('You cannot turn off your own account.')]);
         }
 
-        if ($admin->role?->isOwner() && ! Role::find($data['role_id'])?->isOwner() && $this->ownerCount() <= 1) {
-            throw ValidationException::withMessages(['role_id' => __('This is the last owner. Give someone else the Owner role first.')]);
+        // At least one active owner must stay, whether the owner loses the role or is turned off.
+        if ($admin->is_active && $admin->role?->isOwner() && (! $staysOwner || ! $active) && $this->ownerCount() <= 1) {
+            throw ValidationException::withMessages([$active ? 'role_id' : 'is_active' => __('This is the last owner. Give someone else the Owner role first.')]);
         }
+
+        $this->onlyOwnersTouchOwners($request, $admin, (int) $data['role_id']);
 
         if (blank($data['password'] ?? null)) {
             unset($data['password']);
         }
 
-        $admin->update($data);
+        $admin->fill($data);
+
+        // A new password also ends remember-me logins; other sessions end through auth.session.
+        if ($admin->isDirty('password')) {
+            $admin->setRememberToken(Str::random(60));
+        }
+
+        $admin->save();
+
+        // Staff editing their own account here keep this session: the guard holds the new password.
+        if ($admin->is($request->user('admin'))) {
+            Auth::guard('admin')->setUser($admin);
+        }
+
         Activity::log('staff.updated', "Staff account for {$admin->name} updated", $admin);
 
         return redirect()->route('admin.settings.staff.index')->with('status', __('Staff member saved.'));
+    }
+
+    /**
+     * Staff managers who are not owners cannot make owners or change an owner's account (email,
+     * password, role or sign-in), so they cannot take over or lock out an owner.
+     */
+    private function onlyOwnersTouchOwners(Request $request, ?Admin $admin, int $roleId): void
+    {
+        if ($request->user('admin')->role?->isOwner() === true) {
+            return;
+        }
+
+        if ($admin?->role?->isOwner() === true || Role::find($roleId)?->isOwner() === true) {
+            throw ValidationException::withMessages(['role_id' => __('Only an owner can give the Owner role or change an owner account.')]);
+        }
     }
 
     /**

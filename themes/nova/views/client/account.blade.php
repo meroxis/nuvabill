@@ -24,6 +24,15 @@
                 @if (setting('tax.enabled') || $client->tax_id)
                     <x-input name="tax_id" :label="setting('tax.id_label')" :value="$client->tax_id" :help="__('Shown on your invoices. Optional.')" />
                 @endif
+                {{-- Changing the sign-in email needs proof that this is the account owner. --}}
+                @if ($client->has_password)
+                    <x-input name="current_password" id="details-password" type="password" :label="__('Current password')" :help="__('Needed only when you change your email.')" class="span-2" autocomplete="current-password" />
+                @else
+                    <div class="span-2" style="display:grid;gap:.5rem">
+                        <x-input name="email_code" id="details-email-code" :label="__('Code from the email')" :help="__('Needed only when you change your email.')" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
+                        <span><button class="btn btn-sm" type="submit" form="account-email-code">{{ __('Email me a code') }}</button></span>
+                    </div>
+                @endif
             </div>
             <div class="form-actions"><button class="btn btn-primary" type="submit">{{ __('Save details') }}</button></div>
         </form>
@@ -43,6 +52,10 @@
                 @endif
                 <x-input name="password" type="password" :label="__('New password')" :help="__('At least 8 characters.')" required autocomplete="new-password" />
                 <x-input name="password_confirmation" type="password" :label="__('Type it again')" required autocomplete="new-password" />
+                @unless ($client->has_password)
+                    <x-input name="email_code" id="password-email-code" :label="__('Code from the email')" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
+                    <span><button class="btn btn-sm" type="submit" form="account-email-code">{{ __('Email me a code') }}</button></span>
+                @endunless
                 <div class="form-actions"><button class="btn btn-primary" type="submit">{{ $client->has_password ? __('Change password') : __('Set password') }}</button></div>
             </form>
 
@@ -76,6 +89,9 @@
                                 @method('DELETE')
                                 @if ($client->has_password)
                                     <x-input name="current_password" type="password" id="two-factor-password" :label="__('Your password')" required autocomplete="current-password" />
+                                @else
+                                    <x-input name="email_code" id="two-factor-off-code" :label="__('Code from the email')" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
+                                    <span><button class="btn btn-sm" type="submit" form="account-email-code">{{ __('Email me a code') }}</button></span>
                                 @endif
                                 <div><button class="btn btn-sm btn-danger" type="submit">{{ __('Turn off') }}</button></div>
                             </form>
@@ -238,4 +254,9 @@
             </section>
         </div>
     </div>
+
+    @unless ($client->has_password)
+        {{-- "Email me a code" buttons send this form: clients without a password confirm account changes with that code. --}}
+        <form method="POST" action="{{ route('client.account.email-code') }}" id="account-email-code" hidden>@csrf</form>
+    @endunless
 @endsection

@@ -56,6 +56,8 @@ class AffiliatesTest extends TestCase
         $this->artisan('nuvabill:cron')->assertSuccessful();
         $this->assertSame(AffiliateCommission::STATUS_AVAILABLE, $commission->fresh()->status);
 
+        // Mer Las in her own browser: the session above belongs to Raz, who has another password.
+        $this->flushSession();
         $this->actingAs($mer, 'web')->post(route('client.affiliate.withdraw'))->assertSessionHas('status');
         $this->assertSame(500, $mer->fresh()->credit);
         $this->assertSame(AffiliateCommission::STATUS_PAID, $commission->fresh()->status);

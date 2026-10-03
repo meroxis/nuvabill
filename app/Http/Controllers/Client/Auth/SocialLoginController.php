@@ -22,7 +22,10 @@ use Throwable;
  * Sign in or create an account with Google, GitHub or Facebook, and connect those
  * accounts from the Account page.
  *
- * An existing account is only signed in by email when the provider says the email is verified.
+ * An existing account is only signed in by email when both sides proved they own that email: the
+ * provider says it is verified, and the account confirmed it before (a password reset link, a
+ * provider sign-up, or connecting a provider with the same verified email). Anyone can sign up
+ * with someone else's address, so an unconfirmed account is never handed to the provider's user.
  */
 class SocialLoginController extends Controller
 {
@@ -84,10 +87,11 @@ class SocialLoginController extends Controller
             return $this->failed($request, __(':provider did not share a confirmed email address. Create an account with a password instead.', ['provider' => $driver->name()]));
         }
 
-        $client = Client::query()->whereRaw('LOWER(email) = ?', [$user->email])->first();
+        // Older SQLite sites may still have the same address in two spellings: a confirmed one wins.
+        $client = Client::query()->whereRaw('LOWER(email) = ?', [$user->email])->orderByRaw('email_verified_at IS NULL')->orderBy('id')->first();
 
         if ($client !== null) {
-            if (! $user->emailVerified) {
+            if (! $user->emailVerified || $client->email_verified_at === null) {
                 return $this->failed($request, __('An account with this email already exists. Sign in with your password, then connect :provider on your Account page.', ['provider' => $driver->name()]));
             }
 
@@ -123,6 +127,12 @@ class SocialLoginController extends Controller
         }
 
         $this->link($client, $driver, $user);
+
+        // The provider confirmed the same email the account uses, so the account's email is confirmed too.
+        if ($client->email_verified_at === null && $user->emailVerified && $user->email === Str::lower($client->email)) {
+            $client->forceFill(['email_verified_at' => now()])->save();
+        }
+
         Activity::log('client.social_connected', "{$client->name} connected {$driver->name()} sign-in", $client, $client, $client);
 
         return redirect()->route('client.account.edit')->with('status', __(':provider is connected. You can now sign in with it.', ['provider' => $driver->name()]));

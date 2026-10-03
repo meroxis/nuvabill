@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Auth\ClientRegistrar;
 use App\Enums\ClientStatus;
 use App\Models\Client;
 use App\Support\Countries;
@@ -31,7 +32,7 @@ class ClientRequest extends FormRequest
             'first_name' => ['required', 'string', 'max:100'],
             'last_name' => ['required', 'string', 'max:100'],
             'company_name' => ['nullable', 'string', 'max:150'],
-            'email' => ['required', 'email', 'max:190', Rule::unique('clients', 'email')->ignore($client?->id)],
+            'email' => ClientRegistrar::emailRules($client?->id),
             'phone' => ['nullable', 'string', 'max:40'],
             'address_1' => ['nullable', 'string', 'max:190'],
             'address_2' => ['nullable', 'string', 'max:190'],

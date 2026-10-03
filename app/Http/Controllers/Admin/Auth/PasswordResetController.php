@@ -9,11 +9,20 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
+use Illuminate\Support\Timebox;
 use Illuminate\Validation\Rules\Password as PasswordRule;
 use Illuminate\View\View;
 
+use function Illuminate\Support\defer;
+
 class PasswordResetController extends Controller
 {
+    /**
+     * Every "forgot password" answer takes at least this long (in microseconds), whether or not the
+     * email belongs to a staff account, so staff emails cannot be found by timing the answer.
+     */
+    private const ANSWER_TIME = 1_000_000;
+
     public function request(): View
     {
         return view('admin.auth.forgot-password');
@@ -23,7 +32,15 @@ class PasswordResetController extends Controller
     {
         $request->validate(['email' => ['required', 'email']]);
 
-        Password::broker('admins')->sendResetLink($request->only('email'));
+        (new Timebox)->call(function () use ($request): void {
+            Password::broker('admins')->sendResetLink($request->only('email'), function (Admin $admin, string $token): string {
+                // The email goes out after the answer is sent, so a slow or broken mail server
+                // does not show in the answer either. It is never queued: the plain token stays in memory.
+                defer(fn () => $admin->sendPasswordResetNotification($token));
+
+                return Password::RESET_LINK_SENT;
+            });
+        }, self::ANSWER_TIME);
 
         // Same answer whether or not the address exists, so staff emails cannot be discovered.
         return back()->with('status', __('If that email belongs to a staff account, a reset link is on its way.'));
@@ -42,6 +59,7 @@ class PasswordResetController extends Controller
             'password' => ['required', 'confirmed', PasswordRule::min(10)],
         ]);
 
+        // A new password hash also ends every other signed-in session (the auth.session middleware).
         $status = Password::broker('admins')->reset(
             $request->only('email', 'password', 'password_confirmation', 'token'),
             function (Admin $admin, string $password): void {

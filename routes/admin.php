@@ -85,17 +85,19 @@ Route::middleware('guest:admin')->group(function (): void {
     Route::post('reset-password', [PasswordResetController::class, 'update'])->name('password.update');
 });
 
-Route::middleware(['auth:admin', 'admin.can', 'admin.two-factor'])->group(function (): void {
+// auth.session: a new password signs out every other session of that staff member.
+Route::middleware(['auth:admin', 'auth.session', 'admin.can', 'admin.two-factor'])->group(function (): void {
     Route::post('logout', [LoginController::class, 'destroy'])->name('logout');
 
     Route::get('/', DashboardController::class)->name('dashboard');
     Route::get('today', [PhoneAppController::class, 'today'])->name('today');
 
     Route::get('profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::put('profile/password', [ProfileController::class, 'password'])->name('profile.password');
+    // Routes that check the current password share one limit per staff member, so a stolen session cannot guess it.
+    Route::put('profile/password', [ProfileController::class, 'password'])->middleware('throttle:6,1,staff-reauth')->name('profile.password');
     Route::post('profile/two-factor', [ProfileController::class, 'startTwoFactor'])->name('profile.two-factor.start');
     Route::post('profile/two-factor/confirm', [ProfileController::class, 'confirmTwoFactor'])->name('profile.two-factor.confirm');
-    Route::delete('profile/two-factor', [ProfileController::class, 'disableTwoFactor'])->name('profile.two-factor.disable');
+    Route::delete('profile/two-factor', [ProfileController::class, 'disableTwoFactor'])->middleware('throttle:6,1,staff-reauth')->name('profile.two-factor.disable');
     Route::post('profile/api-keys', [ApiKeyController::class, 'store'])->middleware('throttle:10,1')->name('profile.api-keys.store');
     Route::delete('profile/api-keys/{apiToken}', [ApiKeyController::class, 'destroy'])->name('profile.api-keys.destroy');
     Route::post('language', [LanguageController::class, 'admin'])->name('language');

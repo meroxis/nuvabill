@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Auth\ClientRegistrar;
 use App\Enums\ClientStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Api\ClientResource;
@@ -38,7 +39,7 @@ class ClientController extends Controller
             'first_name' => ['required', 'string', 'max:100'],
             'last_name' => ['required', 'string', 'max:100'],
             'company_name' => ['nullable', 'string', 'max:150'],
-            'email' => ['required', 'email', 'max:190', 'unique:clients,email'],
+            'email' => ClientRegistrar::emailRules(),
             'phone' => ['nullable', 'string', 'max:40'],
             'address_1' => ['nullable', 'string', 'max:190'],
             'city' => ['nullable', 'string', 'max:100'],
