@@ -68,7 +68,8 @@ class SettingsChecks extends CheckGroup
             return $check->passed();
         }
 
-        if (app()->environment('local')) {
+        // APP_ENV=local alone is not enough: a copy at a public address shows its error pages to anyone.
+        if (app()->environment('local') && $this->isLocal((string) config('app.url'))) {
             return $check->passed('On, but this is a development copy (APP_ENV=local)');
         }
 

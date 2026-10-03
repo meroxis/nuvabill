@@ -4,12 +4,15 @@ namespace App\Health\Checks;
 
 use App\Health\CheckGroup;
 use App\Health\CheckResult;
+use App\Health\PendingCheck;
 use FilesystemIterator;
 use Illuminate\Support\Number;
+use Illuminate\Support\Str;
 use RecursiveCallbackFilterIterator;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
+use Throwable;
 
 /**
  * Who can read and change Nuvabill's files on the server, and whether forgotten backups or
@@ -49,17 +52,31 @@ class FileChecks extends CheckGroup
 
     public function run(): array
     {
+        // Each check runs on its own, so one that cannot finish never hides the others.
         return [
-            $this->envFile(),
-            $this->writable(),
-            $this->openFolders(),
-            $this->publicLeftovers(),
+            $this->guarded($this->check('files.env', 'Only you can read the .env file', weight: 5), $this->envFile(...)),
+            $this->guarded($this->check('files.writable', 'Nuvabill can write to storage and cache'), $this->writable(...)),
+            $this->guarded($this->check('files.open_folders', 'No folder can be changed by everyone (777)', weight: 5), $this->openFolders(...)),
+            $this->guarded($this->check('files.public_leftovers', 'No backups, .sql files or database tools in the public folder', weight: 5), $this->publicLeftovers(...)),
         ];
     }
 
-    private function envFile(): CheckResult
+    /**
+     * @param  callable(PendingCheck): CheckResult  $run
+     */
+    private function guarded(PendingCheck $check, callable $run): CheckResult
     {
-        $check = $this->check('files.env', 'Only you can read the .env file', weight: 5);
+        try {
+            return $run($check);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return $check->skipped('This check could not finish: :error', ['error' => Str::limit($exception->getMessage(), 120)]);
+        }
+    }
+
+    private function envFile(PendingCheck $check): CheckResult
+    {
         $path = base_path('.env');
 
         if (! $this->hasUnixPermissions()) {
@@ -83,9 +100,8 @@ class FileChecks extends CheckGroup
         );
     }
 
-    private function writable(): CheckResult
+    private function writable(PendingCheck $check): CheckResult
     {
-        $check = $this->check('files.writable', 'Nuvabill can write to storage and cache');
         $folders = ['storage', 'storage/framework/cache', 'storage/framework/sessions', 'storage/logs', 'bootstrap/cache'];
         $blocked = array_values(array_filter($folders, fn (string $folder): bool => is_dir(base_path($folder)) && ! is_writable(base_path($folder))));
 
@@ -99,21 +115,22 @@ class FileChecks extends CheckGroup
         );
     }
 
-    private function openFolders(): CheckResult
+    private function openFolders(PendingCheck $check): CheckResult
     {
-        $check = $this->check('files.open_folders', 'No folder can be changed by everyone (777)', weight: 5);
-
         if (! $this->hasUnixPermissions()) {
             return $check->skipped('This server does not use Unix file permissions.');
         }
 
         $open = [];
+
+        // A folder this account cannot open is still checked itself, but not looked into.
         $iterator = new RecursiveIteratorIterator(
             new RecursiveCallbackFilterIterator(
                 new RecursiveDirectoryIterator(base_path(), FilesystemIterator::SKIP_DOTS),
                 fn (SplFileInfo $file): bool => $file->isDir() && ! $file->isLink() && ! in_array($file->getFilename(), ['vendor', 'node_modules', '.git'], true),
             ),
             RecursiveIteratorIterator::SELF_FIRST,
+            RecursiveIteratorIterator::CATCH_GET_CHILD,
         );
 
         foreach ($iterator as $folder) {
@@ -140,17 +157,21 @@ class FileChecks extends CheckGroup
         );
     }
 
-    private function publicLeftovers(): CheckResult
+    private function publicLeftovers(PendingCheck $check): CheckResult
     {
-        $check = $this->check('files.public_leftovers', 'No backups, .sql files or database tools in the public folder', weight: 5);
         $found = [];
 
         if (is_dir(public_path())) {
+            // Only public/storage and public/build are left out, not every folder with that name. A folder
+            // this account cannot open is skipped instead of stopping the check.
             $iterator = new RecursiveIteratorIterator(
                 new RecursiveCallbackFilterIterator(
                     new RecursiveDirectoryIterator(public_path(), FilesystemIterator::SKIP_DOTS),
-                    fn (SplFileInfo $file): bool => ! $file->isLink() && ! in_array($file->getFilename(), ['storage', 'build'], true),
+                    fn (SplFileInfo $file): bool => ! $file->isLink() && (! $file->isDir() || $file->isReadable())
+                        && ! ($file->getPath() === public_path() && in_array($file->getFilename(), ['storage', 'build'], true)),
                 ),
+                RecursiveIteratorIterator::LEAVES_ONLY,
+                RecursiveIteratorIterator::CATCH_GET_CHILD,
             );
 
             foreach ($iterator as $file) {

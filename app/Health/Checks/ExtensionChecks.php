@@ -7,6 +7,7 @@ use App\Health\CheckResult;
 use App\Health\CoreFiles;
 use App\Marketplace\LicenseChecker;
 use App\Marketplace\MarketplaceClient;
+use App\Marketplace\PackageType;
 use App\Models\MarketplaceInstall;
 use App\Support\Demo;
 use App\Support\Themes;
@@ -55,7 +56,7 @@ class ExtensionChecks extends CheckGroup
         $installs = MarketplaceInstall::query()->orderBy('name')->get();
 
         return [
-            $this->origin($installs->pluck('slug')->all()),
+            $this->origin($installs),
             $this->licenses($installs),
             $this->updates($installs),
             $this->unusedThemes(),
@@ -64,11 +65,12 @@ class ExtensionChecks extends CheckGroup
 
     /**
      * Packages that are neither part of Nuvabill nor installed from the marketplace were copied in
-     * by hand: nobody reviewed or signed them.
+     * by hand: nobody reviewed or signed them. A folder only counts as installed when both its type
+     * and its name match: an add-on folder named like an installed theme was still copied by hand.
      *
-     * @param  list<string>  $installed
+     * @param  Collection<int, MarketplaceInstall>  $installs
      */
-    private function origin(array $installed): CheckResult
+    private function origin(Collection $installs): CheckResult
     {
         $check = $this->check('extensions.origin', 'Every theme and extension came from Nuvabill or the marketplace');
         $manifest = $this->coreFiles->manifest();
@@ -89,12 +91,22 @@ class ExtensionChecks extends CheckGroup
             }
         }
 
+        $installed = $installs->toBase()
+            ->map(fn (MarketplaceInstall $install): ?string => match (true) {
+                $install->type === PackageType::Theme => 'themes/'.$install->slug,
+                $install->type === PackageType::OrderForm => 'orderforms/'.$install->slug,
+                $install->type?->isExtension() === true => 'extensions/'.$install->type->value.'s/'.$install->slug,
+                default => null,
+            })
+            ->filter()->flip()->all();
+
+        $root = $this->coreFiles->root();
         $byHand = [];
 
-        foreach ([...glob(base_path('extensions/*/*'), GLOB_ONLYDIR) ?: [], ...glob(base_path('themes/*'), GLOB_ONLYDIR) ?: [], ...glob(base_path('orderforms/*'), GLOB_ONLYDIR) ?: []] as $folder) {
-            $relative = ltrim(str_replace('\\', '/', substr($folder, strlen(base_path()))), '/');
+        foreach ([...glob($root.'/extensions/*/*', GLOB_ONLYDIR) ?: [], ...glob($root.'/themes/*', GLOB_ONLYDIR) ?: [], ...glob($root.'/orderforms/*', GLOB_ONLYDIR) ?: []] as $folder) {
+            $relative = ltrim(str_replace('\\', '/', substr($folder, strlen($root))), '/');
 
-            if (! isset($builtIn[$relative]) && ! in_array(basename($folder), $installed, true)) {
+            if (! isset($builtIn[$relative]) && ! isset($installed[$relative])) {
                 $byHand[] = $relative;
             }
         }
@@ -171,7 +183,7 @@ class ExtensionChecks extends CheckGroup
             return $check->passed();
         }
 
-        $fromMarketplace = MarketplaceInstall::query()->whereIn('slug', $unused)->pluck('slug')->all();
+        $fromMarketplace = MarketplaceInstall::query()->where('type', PackageType::Theme)->whereIn('slug', $unused)->pluck('slug')->all();
 
         return $check->warning('Installed but not used: :names', ['names' => $unused->implode(', ')],
             advice: 'Every theme is code on your server. Remove themes from the marketplace on the Marketplace page, and move themes that were added by hand to quarantine here. You can put them back at any time.',

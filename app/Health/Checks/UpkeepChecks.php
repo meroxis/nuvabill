@@ -6,6 +6,7 @@ use App\Extensions\ExtensionManager;
 use App\Extensions\ExtensionManifest;
 use App\Health\CheckGroup;
 use App\Health\CheckResult;
+use App\Models\ActivityLog;
 use App\Updates\UpdateManager;
 use Illuminate\Support\Carbon;
 
@@ -132,9 +133,10 @@ class UpkeepChecks extends CheckGroup
     private function safeBackups(): CheckResult
     {
         $check = $this->check('upkeep.backup_safe', 'Backups are encrypted and kept off this server', weight: 1);
-        $offsite = $this->extensions->ofType(ExtensionManifest::TYPE_ADDON)
+        $addons = $this->extensions->ofType(ExtensionManifest::TYPE_ADDON)
             ->filter(fn (ExtensionManifest $manifest): bool => in_array('backups', $manifest->permissions, true) && $this->extensions->isEnabled($manifest->slug))
-            ->pluck('name');
+            ->values();
+        $offsite = $addons->pluck('name');
 
         if ($offsite->isEmpty()) {
             return $check->warning('No backup add-on copies your backups to another place',
@@ -143,13 +145,40 @@ class UpkeepChecks extends CheckGroup
             );
         }
 
-        if (setting('backups.last_at') !== null && ! setting('backups.last_encrypted')) {
+        // An add-on that is on but cannot upload (for example its Google access ran out) keeps no copy anywhere.
+        $copied = $this->lastOffsiteCopy();
+
+        if ($copied === null || $copied->lt(now()->subDays(7))) {
+            return $check->warning(':names has not copied a backup off this server in the last 7 days', ['names' => $offsite->implode(', ')],
+                advice: 'The add-on is on, but no upload worked. Open its settings to see the last error, and connect it again if needed.',
+                link: $this->link('admin.marketplace.settings', 'Open the add-on settings', ['slug' => $addons->first()->slug]),
+            );
+        }
+
+        $encrypted = setting('backups.last_offsite_at') !== null ? setting('backups.last_offsite_encrypted') : setting('backups.last_encrypted');
+
+        if (! $encrypted) {
             return $check->warning('The last backup was not encrypted',
                 advice: 'A backup holds every client and the .env file. Set a backup password so nobody else can open it.',
             );
         }
 
         return $check->passed(':names', ['names' => $offsite->implode(', ')]);
+    }
+
+    /**
+     * When a backup add-on last stored a copy away from this server. Add-ons note it with
+     * SiteBackup::record(); older ones only write "backup.uploaded" to the activity log.
+     */
+    private function lastOffsiteCopy(): ?Carbon
+    {
+        $recorded = setting('backups.last_offsite_at');
+        $logged = ActivityLog::query()->where('action', 'backup.uploaded')->max('created_at');
+
+        return collect([
+            is_string($recorded) && $recorded !== '' ? Carbon::parse($recorded) : null,
+            filled($logged) ? Carbon::parse($logged) : null,
+        ])->filter()->max();
     }
 
     private function mail(): CheckResult

@@ -22,6 +22,7 @@ use App\Models\HealthRun;
 use App\Support\Demo;
 use App\Support\Locales;
 use App\Support\Settings;
+use Illuminate\Container\Attributes\Singleton;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Throwable;
@@ -30,7 +31,11 @@ use Throwable;
  * Site health: runs every check, keeps the result with a score per tab (security, database,
  * search engines) and emails staff who may fix security issues when something new and urgent
  * shows up. Runs every night, after updates and when staff press "Check now".
+ *
+ * One shared instance, so check groups added with extend() (for example by an add-on when it
+ * boots) are run by the nightly check and shown on the pages.
  */
+#[Singleton]
 class SiteHealth
 {
     /**
@@ -62,7 +67,11 @@ class SiteHealth
      */
     public function extend(CheckGroup $group): void
     {
-        $this->extra[] = $group;
+        // Added again (for example a second boot), the group replaces itself instead of running twice.
+        $this->extra = [
+            ...array_filter($this->extra, fn (CheckGroup $added): bool => $added->section() !== $group->section() || $added->key() !== $group->key()),
+            $group,
+        ];
     }
 
     /**
@@ -267,6 +276,9 @@ class SiteHealth
         // Email templates are written in English, so the list in them is too.
         $issues = Locales::inEnglish(fn (): string => $new->map(fn (CheckResult $check): string => '- **'.$check->displayTitle().'**'.($check->summary !== '' ? ': '.$check->displaySummary() : ''))->implode("\n"));
 
+        // Everyone gets the email; the team's Telegram group gets the alert once, not once per person.
+        $chatSent = false;
+
         foreach (Admin::query()->with('role')->where('is_active', true)->get() as $admin) {
             if ($admin->hasPermission('security.manage')) {
                 app(TemplateMailer::class)->sendTo('admin.security_alert', $admin->email, $admin->name, [
@@ -274,7 +286,9 @@ class SiteHealth
                     'issues' => $issues,
                     'score' => $run->security_score ?? '—',
                     'admin_url' => route('admin.health.index'),
+                    TemplateMailer::SKIP_CHAT_KEY => $chatSent,
                 ]);
+                $chatSent = true;
             }
         }
     }

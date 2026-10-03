@@ -65,8 +65,12 @@ class SiteBackup
 
     /**
      * Make the backup zip and return its path. With a password, every file in it is encrypted with AES-256.
+     *
+     * $record false: a safety copy (before an optimize or a database change), or a backup an add-on
+     * still has to upload. Site health then does not count it; an add-on calls record() once its copy
+     * is safely stored elsewhere.
      */
-    public function create(string $type = self::TYPE_SITE, ?string $password = null): string
+    public function create(string $type = self::TYPE_SITE, ?string $password = null, bool $record = true): string
     {
         if (! in_array($type, [self::TYPE_SITE, self::TYPE_DATABASE], true)) {
             throw new InvalidArgumentException("Unknown backup type [{$type}]: use site or database.");
@@ -120,14 +124,32 @@ class SiteBackup
 
         $this->prune($type);
 
-        // Site health warns when the last backup is old or not encrypted.
-        app(Settings::class)->setMany([
-            'backups.last_at' => now()->toIso8601String(),
-            'backups.last_type' => $type,
-            'backups.last_encrypted' => filled($password),
-        ]);
+        if ($record) {
+            $this->record($type, filled($password));
+        }
 
         return $path;
+    }
+
+    /**
+     * Note a finished backup for site health, which warns when the last one is old or not encrypted.
+     * Backup add-ons pass $offsite once the copy is stored away from this server, for example after
+     * the upload to Google Drive worked.
+     */
+    public function record(string $type, bool $encrypted, bool $offsite = false): void
+    {
+        $values = [
+            'backups.last_at' => now()->toIso8601String(),
+            'backups.last_type' => $type,
+            'backups.last_encrypted' => $encrypted,
+        ];
+
+        if ($offsite) {
+            $values['backups.last_offsite_at'] = now()->toIso8601String();
+            $values['backups.last_offsite_encrypted'] = $encrypted;
+        }
+
+        app(Settings::class)->setMany($values);
     }
 
     /**

@@ -179,7 +179,7 @@ class SiteHealthTest extends TestCase
         $this->assertSame(['public/cache.php'], array_column($result['planted'], 'path'));
         $this->assertTrue($result['planted'][0]['public']);
 
-        $files->accept(['app/Changed.php']);
+        $files->accept(['app/Changed.php'], array_column($result['changed'], 'hash', 'path'));
         $files->quarantine(['public/cache.php']);
         $result = $files->compare($manifest['files']);
 

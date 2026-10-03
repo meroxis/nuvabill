@@ -7,6 +7,10 @@ use App\Health\CheckResult;
 use App\Models\ActivityLog;
 use App\Models\Admin;
 use App\Models\ApiToken;
+use App\Security\Captcha;
+use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 /**
@@ -40,11 +44,39 @@ class StaffChecks extends CheckGroup
         return 'users';
     }
 
+    /**
+     * Whether a staff member has not used their account since $since: no sign-in and no use of
+     * their API keys (an account that never signed in counts from when it was made). The check and
+     * the "Switch them off" fix use this same rule.
+     */
+    public static function isIdle(Admin $admin, CarbonInterface $since): bool
+    {
+        $attributes = $admin->getAttributes();
+        $apiUse = array_key_exists('api_tokens_max_last_used_at', $attributes) ? $attributes['api_tokens_max_last_used_at'] : $admin->apiTokens()->max('last_used_at');
+        $last = collect([$admin->last_login_at, filled($apiUse) ? Carbon::parse($apiUse) : null])->filter()->max();
+
+        return $last === null ? $admin->created_at?->lt($since) === true : $last->lt($since);
+    }
+
+    /**
+     * API tokens that can change data and were not used since $since (never used: made before then).
+     * The check and the "Delete them" fix use this same rule.
+     *
+     * @return Builder<ApiToken>
+     */
+    public static function unusedWriteTokens(CarbonInterface $since): Builder
+    {
+        return ApiToken::query()->where('can_write', true)
+            ->where(fn ($query) => $query->where('last_used_at', '<', $since)->orWhere(fn ($never) => $never->whereNull('last_used_at')->where('created_at', '<', $since)));
+    }
+
     public function run(): array
     {
-        $staff = Admin::query()->with(['role', 'passkeys'])->where('is_active', true)->orderBy('name')->get();
+        $staff = Admin::query()->with('role')->withMax('apiTokens', 'last_used_at')->where('is_active', true)->orderBy('name')->get();
         $powerful = $staff->filter(fn (Admin $admin): bool => $this->isPowerful($admin));
-        $unprotected = fn (Collection $people): Collection => $people->reject(fn (Admin $admin): bool => $admin->hasTwoFactorEnabled() || $admin->passkeys->isNotEmpty());
+        // Only the authenticator app adds a second step to a password sign-in. A passkey is another way
+        // to sign in, so with only a passkey the password alone is still enough.
+        $unprotected = fn (Collection $people): Collection => $people->reject(fn (Admin $admin): bool => $admin->hasTwoFactorEnabled());
 
         return [
             $this->powerfulTwoFactor($unprotected($powerful), $powerful->count()),
@@ -79,7 +111,7 @@ class StaffChecks extends CheckGroup
         }
 
         return $check->urgent(':names can sign in with only a password', ['names' => $unprotected->pluck('name')->implode(', ')],
-            advice: 'A stolen password is enough to take over the whole site. Ask them to turn on two-factor sign-in or add a passkey under their profile, or require it for all staff.',
+            advice: 'A stolen password is enough to take over the whole site. Ask them to turn on two-factor sign-in under their profile, or require it for all staff. A passkey alone does not stop sign-in with a stolen password.',
             items: $this->people($unprotected, 'urgent'),
             fix: $this->requireTwoFactorFix(),
             link: $this->link('admin.settings.staff.index', 'Open staff'),
@@ -139,7 +171,7 @@ class StaffChecks extends CheckGroup
     {
         $check = $this->check('staff.inactive', 'No active staff account unused for 90 days');
         $since = now()->subDays(90);
-        $idle = $staff->filter(fn (Admin $admin): bool => $admin->last_login_at === null ? $admin->created_at?->lt($since) === true : $admin->last_login_at->lt($since))->values();
+        $idle = $staff->filter(fn (Admin $admin): bool => self::isIdle($admin, $since))->values();
 
         if ($idle->isEmpty()) {
             return $check->passed();
@@ -193,10 +225,7 @@ class StaffChecks extends CheckGroup
     private function unusedTokens(): CheckResult
     {
         $check = $this->check('api.write_tokens', 'API tokens that can change data are in use');
-        $since = now()->subDays(60);
-        $unused = ApiToken::query()->with('admin')->where('can_write', true)
-            ->where(fn ($query) => $query->where('last_used_at', '<', $since)->orWhere(fn ($never) => $never->whereNull('last_used_at')->where('created_at', '<', $since)))
-            ->get();
+        $unused = self::unusedWriteTokens(now()->subDays(60))->with('admin')->get();
 
         if ($unused->isEmpty()) {
             return $check->passed();
@@ -216,10 +245,18 @@ class StaffChecks extends CheckGroup
     private function captcha(): CheckResult
     {
         $check = $this->check('clients.captcha', 'CAPTCHA protects client sign-in and sign-up');
-        $forms = (array) setting('security.captcha_forms');
+        $captcha = app(Captcha::class);
 
-        if (setting('security.captcha_provider') !== 'off' && in_array('client_login', $forms, true) && in_array('client_register', $forms, true)) {
+        // Forms only ask for a CAPTCHA once its keys were checked on the security settings page.
+        if ($captcha->protects('client_login') && $captcha->protects('client_register')) {
             return $check->passed();
+        }
+
+        if (array_key_exists((string) setting('security.captcha_provider'), Captcha::PROVIDERS) && $captcha->provider() === null) {
+            return $check->warning('A CAPTCHA is chosen, but no form asks for it yet',
+                advice: 'Nuvabill only turns the CAPTCHA on after its keys were checked. Open Settings → Security, save the keys and solve the CAPTCHA once.',
+                link: $this->link('admin.settings.security.edit', 'Open Settings → Security'),
+            );
         }
 
         return $check->warning('Robots can try passwords and make fake accounts',

@@ -26,6 +26,12 @@ class TemplateMailer
     public const LOCALE_KEY = '_locale';
 
     /**
+     * Set to true in the context when the same staff email goes to several people: only one of them
+     * should also be posted to the team's Telegram group.
+     */
+    public const SKIP_CHAT_KEY = '_skip_chat';
+
+    /**
      * @param  array<string, mixed>  $context
      */
     public function send(string $key, Client $client, array $context = []): bool
@@ -75,7 +81,8 @@ class TemplateMailer
 
         $locale = $context[self::LOCALE_KEY] ?? null;
         $locale = is_string($locale) && Locales::isSupported($locale) ? $locale : Locales::default();
-        unset($context[self::LOCALE_KEY]);
+        $skipChat = (bool) ($context[self::SKIP_CHAT_KEY] ?? false);
+        unset($context[self::LOCALE_KEY], $context[self::SKIP_CHAT_KEY]);
         $context += $this->baseContext();
         [$subjectText, $bodyText] = $template->textFor($locale);
 
@@ -86,7 +93,7 @@ class TemplateMailer
         ]);
 
         // Staff emails, such as a new ticket or order, also go to the team's Telegram group.
-        if (str_starts_with($key, 'admin.')) {
+        if (! $skipChat && str_starts_with($key, 'admin.')) {
             rescue(fn () => app(ChatNotifier::class)->staffEmailed($subject, isset($context['admin_url']) ? (string) $context['admin_url'] : null));
         }
 

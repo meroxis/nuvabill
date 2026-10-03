@@ -13,6 +13,12 @@ use App\Models\MarketplaceInstall;
  */
 class CoreFileChecks extends CheckGroup
 {
+    /**
+     * At most this many files are listed, and marked as yours, at a time. The count says how many
+     * there are in all.
+     */
+    private const MAX_ITEMS = 100;
+
     public function __construct(private readonly CoreFiles $files) {}
 
     public function key(): string
@@ -41,7 +47,7 @@ class CoreFileChecks extends CheckGroup
     }
 
     /**
-     * @var array{checked: int, accepted: int, changed: list<array{path: string, modified: int|null}>, missing: list<string>, planted: list<array{path: string, modified: int|null, public: bool}>}|null
+     * @var array{checked: int, accepted: int, changed: list<array{path: string, hash: string|null, modified: int|null}>, missing: list<string>, planted: list<array{path: string, hash: string|null, modified: int|null, public: bool}>}|null
      */
     private ?array $comparison = null;
 
@@ -54,7 +60,7 @@ class CoreFileChecks extends CheckGroup
 
     /**
      * @param  array<string, string>  $files
-     * @return array{checked: int, accepted: int, changed: list<array{path: string, modified: int|null}>, missing: list<string>, planted: list<array{path: string, modified: int|null, public: bool}>}
+     * @return array{checked: int, accepted: int, changed: list<array{path: string, hash: string|null, modified: int|null}>, missing: list<string>, planted: list<array{path: string, hash: string|null, modified: int|null, public: bool}>}
      */
     private function comparison(array $files): array
     {
@@ -83,13 +89,13 @@ class CoreFileChecks extends CheckGroup
         }
 
         $result = $this->comparison($manifest['files']);
-        $changed = $result['changed'];
+        $changed = array_slice($result['changed'], 0, self::MAX_ITEMS);
 
-        if ($changed === [] && $result['missing'] === []) {
+        if ($result['changed'] === [] && $result['missing'] === []) {
             return $check->passed(':count files checked', ['count' => number_format($result['checked'])]);
         }
 
-        $items = [
+        $items = array_slice([
             ...array_map(fn (array $file): array => [
                 'label' => $file['path'],
                 'value' => __('Different from the release').($file['modified'] ? ' · '.date('d M Y, H:i', $file['modified']) : ''),
@@ -98,13 +104,30 @@ class CoreFileChecks extends CheckGroup
                 'fix' => $this->fix('core.restore', 'Put back the original', ['paths' => [$file['path']]], confirm: 'The release copy of this file is downloaded, checked and put back. The changed copy is kept in storage/app/quarantine.'),
             ], $changed),
             ...array_map(fn (string $path): array => ['label' => $path, 'value' => __('Missing'), 'mono' => true, 'status' => 'warning'], $result['missing']),
-        ];
+        ], 0, self::MAX_ITEMS);
 
-        return $check->warning(':count files differ from the signed :version release', ['count' => count($items), 'version' => $manifest['version']],
+        return $check->warning(':count files differ from the signed :version release', ['count' => count($result['changed']) + count($result['missing']), 'version' => $manifest['version']],
             advice: 'A changed file can be your own edit, or a sign of a break-in. If you made the change, mark it as yours and the check stops warning until the file changes again.',
             items: $items,
-            fix: $changed !== [] ? $this->fix('core.accept', 'Mark as mine', ['paths' => array_column($changed, 'path')]) : null,
+            fix: $this->acceptFix($changed),
         );
+    }
+
+    /**
+     * "Mark as mine" for the files shown, with the content each had in this check: a file that
+     * changes after the check is never accepted without being looked at again.
+     *
+     * @param  list<array{path: string, hash: string|null}>  $files
+     * @return array<string, mixed>|null
+     */
+    private function acceptFix(array $files): ?array
+    {
+        $readable = array_values(array_filter($files, fn (array $file): bool => is_string($file['hash'] ?? null)));
+
+        return $readable === [] ? null : $this->fix('core.accept', 'Mark as mine', [
+            'paths' => array_column($readable, 'path'),
+            'hashes' => array_column($readable, 'hash', 'path'),
+        ]);
     }
 
     private function planted(): CheckResult
@@ -116,24 +139,29 @@ class CoreFileChecks extends CheckGroup
             return $check->skipped('This needs the signed file list that comes with release downloads of Nuvabill.');
         }
 
-        $planted = $this->comparison($manifest['files'])['planted'];
+        $all = $this->comparison($manifest['files'])['planted'];
 
-        if ($planted === []) {
+        if ($all === []) {
             return $check->passed();
         }
 
-        $public = array_values(array_filter($planted, fn (array $file): bool => $file['public']));
+        $planted = array_slice($all, 0, self::MAX_ITEMS);
+        $public = array_values(array_filter($all, fn (array $file): bool => $file['public']));
 
-        return $check->failed($public !== [], ':count files are not part of Nuvabill', ['count' => count($planted)],
+        return $check->failed($public !== [], ':count files are not part of Nuvabill', ['count' => count($all)],
             advice: 'A program file that is not part of Nuvabill, in a folder visitors can reach, is a common sign of a break-in. If you do not know it, move it to quarantine and change your passwords.',
-            items: array_map(fn (array $file): array => [
+            items: array_map(fn (array $file): array => array_filter([
                 'label' => $file['path'],
-                'value' => ($file['public'] ? __('In the public folder') : __('In the Nuvabill folder')).($file['modified'] ? ' · '.date('d M Y, H:i', $file['modified']) : ''),
+                'value' => (CoreFiles::isServerSettings($file['path']) ? __('Makes the server run code').' · ' : '')
+                    .($file['public'] ? __('In the public folder') : __('In the Nuvabill folder')).($file['modified'] ? ' · '.date('d M Y, H:i', $file['modified']) : ''),
                 'mono' => true,
                 'status' => $file['public'] ? 'urgent' : 'warning',
-                'fix' => $this->fix('core.quarantine', 'Move to quarantine', ['paths' => [$file['path']]], confirm: 'The file is moved to storage/app/quarantine, where nobody can run it. Nothing is deleted.', danger: true),
-            ], $planted),
-            fix: $this->fix('core.accept', 'Mark as mine', ['paths' => array_column($planted, 'path')]),
+                // A server settings file also holds the rules that keep private files hidden, so it is
+                // edited by hand, never moved away whole.
+                'fix' => CoreFiles::isServerSettings($file['path']) ? null
+                    : $this->fix('core.quarantine', 'Move to quarantine', ['paths' => [$file['path']]], confirm: 'The file is moved to storage/app/quarantine, where nobody can run it. Nothing is deleted.', danger: true),
+            ], fn (mixed $value): bool => $value !== null), $planted),
+            fix: $this->acceptFix($planted),
         );
     }
 

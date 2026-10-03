@@ -197,7 +197,8 @@ class DatabaseInspector
     public function optimize(bool $backupFirst = true): array
     {
         $before = $this->totals()['free'];
-        $backup = $backupFirst ? app(SiteBackup::class)->create(SiteBackup::TYPE_DATABASE) : null;
+        // A safety copy, not one of the site's backups: site health does not count it.
+        $backup = $backupFirst ? app(SiteBackup::class)->create(SiteBackup::TYPE_DATABASE, record: false) : null;
         $count = 0;
 
         if ($this->isMysql()) {
@@ -223,11 +224,16 @@ class DatabaseInspector
     }
 
     /**
+     * The tables of Nuvabill's own database. Without naming it, MySQL lists the tables of every
+     * database the user can see.
+     *
      * @return list<string>
      */
     public function tableNames(): array
     {
-        return array_values(array_map(fn (array $table): string => (string) $table['name'], Schema::getTables()));
+        $schema = $this->connection()->getSchemaBuilder();
+
+        return array_values(array_map('strval', $schema->getTableListing($schema->getCurrentSchemaListing(), schemaQualified: false)));
     }
 
     /**

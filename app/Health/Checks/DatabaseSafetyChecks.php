@@ -106,8 +106,18 @@ class DatabaseSafetyChecks extends CheckGroup
 
         return $check->warning('The database user has rights on every database on the server',
             advice: 'If someone breaks into Nuvabill, they reach your other databases too. Make a user in your hosting panel with rights on Nuvabill\'s database only, and put it in the .env file.',
-            items: array_map(fn (string $grant): array => ['label' => Str::limit(preg_replace("/IDENTIFIED BY PASSWORD '[^']*'/i", '', $grant), 140), 'mono' => true, 'status' => 'warning'], $global),
+            items: array_map(fn (string $grant): array => ['label' => Str::limit(self::withoutCredentials($grant), 140), 'mono' => true, 'status' => 'warning'], $global),
         );
+    }
+
+    /**
+     * The grant line without its sign-in part, whatever its form: "IDENTIFIED BY PASSWORD '…'" or
+     * MariaDB's "IDENTIFIED VIA plugin USING '…' OR …". Both hold the password hash, which must never
+     * be saved with the results.
+     */
+    public static function withoutCredentials(string $grant): string
+    {
+        return preg_match('/\sIDENTIFIED\s/i', $grant, $match, PREG_OFFSET_CAPTURE) ? rtrim(substr($grant, 0, $match[0][1])) : $grant;
     }
 
     private function user(): CheckResult

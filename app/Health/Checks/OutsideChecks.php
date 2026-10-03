@@ -4,9 +4,11 @@ namespace App\Health\Checks;
 
 use App\Health\CheckGroup;
 use App\Health\CheckResult;
+use App\Support\Cloudflare;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\IpUtils;
 use Throwable;
 
 /**
@@ -167,8 +169,16 @@ class OutsideChecks extends CheckGroup
             return $check->passed('No proxy found in front of the site');
         }
 
-        if (filled(config('trustedproxy.proxies'))) {
+        $proxies = config('trustedproxy.proxies');
+
+        if ($proxies === '*' || (is_array($proxies) && collect(Cloudflare::IP_RANGES)->every(fn (string $range): bool => IpUtils::checkIp(Str::before($range, '/'), $proxies)))) {
             return $check->passed('Behind Cloudflare, and its addresses are trusted');
+        }
+
+        if (filled($proxies)) {
+            return $check->warning('NUVABILL_TRUSTED_PROXIES is set, but Cloudflare\'s addresses are not in it',
+                advice: 'Nuvabill then sees Cloudflare\'s address instead of the visitor\'s, so sign-in limits count every visitor as one. Use NUVABILL_TRUSTED_PROXIES=cloudflare, or list Cloudflare\'s address ranges as well as your own proxy.',
+            );
         }
 
         return $check->warning('Your site is behind Cloudflare, but Nuvabill sees Cloudflare\'s address instead of the visitor\'s',

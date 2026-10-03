@@ -14,6 +14,65 @@ use Throwable;
  */
 class SearchSetupChecks extends CheckGroup
 {
+    /**
+     * Addresses other than the one in .env that visitors opened the store at: host => when last seen.
+     */
+    public const OTHER_HOSTS_KEY = 'seo.other_hosts';
+
+    /**
+     * A few are kept, so one made-up address in a request cannot hide a real second address.
+     */
+    private const MAX_OTHER_HOSTS = 5;
+
+    /**
+     * "Billing.Example.com." and "billing.example.com" are the same address.
+     */
+    public static function normalHost(string $host): string
+    {
+        return rtrim(strtolower(trim($host)), '.');
+    }
+
+    /**
+     * Remember that a visitor opened the store at $host, when it is not the address in .env. Each
+     * address is written at most once a day; after 7 days without visits it is forgotten.
+     */
+    public static function noteAddress(string $host): void
+    {
+        $host = self::normalHost($host);
+        $configured = self::normalHost((string) parse_url((string) config('app.url'), PHP_URL_HOST));
+
+        if ($host === '' || $host === $configured || ! SiteAddress::isReal('https://'.$host)) {
+            return;
+        }
+
+        $seen = self::otherHosts();
+
+        if (isset($seen[$host]) && $seen[$host] > now()->subDay()->getTimestamp()) {
+            return;
+        }
+
+        $seen[$host] = now()->getTimestamp();
+        arsort($seen);
+        Cache::put(self::OTHER_HOSTS_KEY, array_slice($seen, 0, self::MAX_OTHER_HOSTS, true), now()->addDays(7));
+    }
+
+    /**
+     * @return array<string, int> Host => when it was last seen, from the last 7 days.
+     */
+    private static function otherHosts(): array
+    {
+        $since = now()->subDays(7)->getTimestamp();
+        $seen = [];
+
+        foreach ((array) Cache::get(self::OTHER_HOSTS_KEY, []) as $host => $at) {
+            if (is_string($host) && is_int($at) && $at >= $since) {
+                $seen[$host] = $at;
+            }
+        }
+
+        return $seen;
+    }
+
     public function key(): string
     {
         return 'search-setup';
@@ -119,16 +178,24 @@ class SearchSetupChecks extends CheckGroup
     private function oneAddress(): CheckResult
     {
         $check = $this->check('seo.one_address', 'Visitors reach the store at one address', 2);
-        $other = Cache::get('seo.other_host');
-        $host = (string) parse_url((string) config('app.url'), PHP_URL_HOST);
+        $host = self::normalHost((string) parse_url((string) config('app.url'), PHP_URL_HOST));
+        // Before 0.6.12 only the first other address was kept, under seo.other_host.
+        $legacy = Cache::get('seo.other_host');
+        $seen = [...array_keys(self::otherHosts()), ...(is_string($legacy) ? [$legacy] : [])];
 
-        if (! is_string($other) || $other === $host) {
+        // "billing.example.com." (with the dot) is the same address, not another one.
+        $others = collect($seen)->filter(fn (mixed $other): bool => is_string($other))
+            ->map(fn (string $other): string => self::normalHost($other))
+            ->reject(fn (string $other): bool => $other === '' || $other === $host)
+            ->unique()->values();
+
+        if ($others->isEmpty()) {
             return $check->passed();
         }
 
         return $check->warning(
             'The store also opens at :other, not only at :host.',
-            ['other' => $other, 'host' => $host],
+            ['other' => $others->implode(', '), 'host' => $host],
             'Search engines are told to use :host, but it is better when the other address forwards there. In Cloudflare, add a redirect rule; in cPanel, use Domains → Redirects.',
         );
     }

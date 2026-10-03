@@ -2,8 +2,9 @@
 
 namespace App\Health;
 
+use App\Health\Checks\StaffChecks;
+use App\Marketplace\PackageType;
 use App\Models\Admin;
-use App\Models\ApiToken;
 use App\Models\MarketplaceInstall;
 use App\Seo\Sitemap;
 use App\Support\Activity;
@@ -13,6 +14,7 @@ use App\Support\Settings;
 use App\Support\SiteBackup;
 use App\Support\Themes;
 use App\Updates\ReleaseSource;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Number;
 use RuntimeException;
@@ -40,6 +42,19 @@ class Repairs
      */
     public function run(array $fix, Admin $admin): string
     {
+        try {
+            return $this->repair($fix, $admin);
+        } catch (QueryException $exception) {
+            // Staff see a plain message; the database error, with its SQL and values, goes to the log only.
+            throw new RuntimeException(__('The fix could not be saved in the database. The details are in the log.'), previous: $exception);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $fix
+     */
+    private function repair(array $fix, Admin $admin): string
+    {
         $params = (array) ($fix['params'] ?? []);
         $paths = array_values(array_filter((array) ($params['paths'] ?? []), 'is_string'));
         $ids = array_values(array_map('intval', (array) ($params['ids'] ?? [])));
@@ -49,9 +64,9 @@ class Repairs
             'staff.disable_inactive' => $this->disableStaff($ids, $admin),
             'api.delete_tokens' => $this->deleteTokens($ids),
             'files.fix_env' => $this->chmod(['.env'], 0600),
-            'files.fix_folders' => $this->chmod($paths, 0755),
+            'files.fix_folders' => $this->chmod($paths, 0755, folders: true),
             'files.quarantine', 'core.quarantine' => trans_choice(':count file was moved to quarantine.|:count files were moved to quarantine.', $count = $this->coreFiles->quarantine($paths), ['count' => $count]),
-            'core.accept' => trans_choice(':count file is marked as yours.|:count files are marked as yours.', $count = $this->coreFiles->accept($paths), ['count' => $count]),
+            'core.accept' => trans_choice(':count file is marked as yours.|:count files are marked as yours.', $count = $this->coreFiles->accept($paths, array_filter((array) ($params['hashes'] ?? []), 'is_string')), ['count' => $count]),
             'core.restore' => trans_choice(':count original file was put back.|:count original files were put back.', $count = $this->coreFiles->restore($paths, $this->releases), ['count' => $count]),
             'settings.debug_off' => $this->writeEnv(['APP_DEBUG' => 'false'], __('Debug mode is off.')),
             'settings.secure_cookies' => $this->writeEnv(['SESSION_SECURE_COOKIE' => 'true'], __('Sign-in cookies are now only sent over HTTPS.')),
@@ -110,7 +125,7 @@ class Repairs
 
         foreach ($slugs as $slug) {
             if (! $this->themes->exists($slug) || $slug === $this->themes->saved() || $slug === Themes::DEFAULT
-                || MarketplaceInstall::query()->where('slug', $slug)->exists()) {
+                || MarketplaceInstall::query()->where('type', PackageType::Theme)->where('slug', $slug)->exists()) {
                 continue;
             }
 
@@ -132,37 +147,52 @@ class Repairs
     }
 
     /**
+     * The saved result can be hours old, so each account is checked again: only people who are still
+     * idle, never an owner, and nobody who may manage staff unless the person pressing may too.
+     *
      * @param  list<int>  $ids
      */
     private function disableStaff(array $ids, Admin $admin): string
     {
+        $since = now()->subDays(90);
+        $mayManageStaff = $admin->hasPermission('staff.manage');
+
         // Never the person pressing the button, so nobody locks themselves out.
-        $count = Admin::query()->whereIn('id', $ids)->whereKeyNot($admin->id)->where('is_active', true)->update(['is_active' => false]);
+        $idle = Admin::query()->with('role')->withMax('apiTokens', 'last_used_at')
+            ->whereIn('id', $ids)->whereKeyNot($admin->id)->where('is_active', true)->get()
+            ->filter(fn (Admin $staff): bool => StaffChecks::isIdle($staff, $since)
+                && $staff->role?->isOwner() !== true
+                && ($mayManageStaff || ! $staff->hasPermission('staff.manage')));
+
+        $count = $idle->isEmpty() ? 0 : Admin::query()->whereKey($idle->modelKeys())->update(['is_active' => false]);
 
         return trans_choice(':count staff account was switched off.|:count staff accounts were switched off.', $count, ['count' => $count]);
     }
 
     /**
+     * Only tokens that are still unused: one a program used since the check stays.
+     *
      * @param  list<int>  $ids
      */
     private function deleteTokens(array $ids): string
     {
-        $count = ApiToken::query()->whereIn('id', $ids)->delete();
+        $count = StaffChecks::unusedWriteTokens(now()->subDays(60))->whereIn('id', $ids)->delete();
 
         return trans_choice(':count API token was deleted.|:count API tokens were deleted.', $count, ['count' => $count]);
     }
 
     /**
      * @param  list<string>  $paths
+     * @param  bool  $folders  Folders of the Nuvabill folder (the 777 fix); otherwise only the .env file.
      */
-    private function chmod(array $paths, int $mode): string
+    private function chmod(array $paths, int $mode, bool $folders = false): string
     {
         $count = 0;
 
         foreach ($paths as $path) {
             $full = base_path($path);
 
-            if (! $this->coreFiles->isSafePath($path) && $path !== '.env') {
+            if ($folders ? ! $this->isOwnFolder($path) : $path !== '.env') {
                 continue;
             }
 
@@ -178,6 +208,24 @@ class Repairs
         }
 
         return trans_choice('The permissions of :count item were changed to :mode.|The permissions of :count items were changed to :mode.', $count, ['count' => $count, 'mode' => sprintf('%o', $mode)]);
+    }
+
+    /**
+     * A real folder inside the Nuvabill folder (not a link, not .git). Unlike the file repairs, storage
+     * and bootstrap/cache are allowed: they are the folders most often left open to everyone.
+     */
+    private function isOwnFolder(string $path): bool
+    {
+        if ($path === '' || str_contains($path, "\0") || str_starts_with($path, '/') || preg_match('#^[a-zA-Z]:#', $path)
+            || in_array('..', explode('/', str_replace('\\', '/', $path)), true) || preg_match('#^\.git(/|$)#', $path)) {
+            return false;
+        }
+
+        $full = base_path($path);
+        $real = realpath($full);
+        $root = realpath(base_path());
+
+        return is_dir($full) && ! is_link($full) && $real !== false && $root !== false && str_starts_with($real, $root.DIRECTORY_SEPARATOR);
     }
 
     /**
@@ -197,7 +245,8 @@ class Repairs
 
     private function migrate(): string
     {
-        app(SiteBackup::class)->create(SiteBackup::TYPE_DATABASE);
+        // A safety copy, not one of the site's backups: site health does not count it.
+        app(SiteBackup::class)->create(SiteBackup::TYPE_DATABASE, record: false);
         Artisan::call('migrate', ['--force' => true]);
 
         return __('The missing database changes were made. A backup of the database was made first.');

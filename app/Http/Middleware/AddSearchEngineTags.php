@@ -2,11 +2,10 @@
 
 namespace App\Http\Middleware;
 
+use App\Health\Checks\SearchSetupChecks;
 use App\Seo\HeadTags;
-use App\Seo\SiteAddress;
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -59,11 +58,6 @@ class AddSearchEngineTags
      */
     private function noteOtherAddress(Request $request): void
     {
-        $configured = strtolower((string) parse_url((string) config('app.url'), PHP_URL_HOST));
-        $host = strtolower($request->getHost());
-
-        if (SiteAddress::isReal('https://'.$host) && $configured !== $host && ! Cache::has('seo.other_host')) {
-            Cache::put('seo.other_host', $host, now()->addDays(7));
-        }
+        SearchSetupChecks::noteAddress($request->getHost());
     }
 }
