@@ -71,14 +71,18 @@
                             <x-pill tone="info">{{ __('Charged on :date', ['date' => $autoPay['date']->translatedFormat('d M Y')]) }}</x-pill>
                         @endif
                     </div>
-                    <span><b>{{ $autoPay['method']->label() }}</b>@if ($autoPay['method']->expiry())<span class="muted"> · {{ __('Expires :date', ['date' => $autoPay['method']->expiry()]) }}</span>@endif</span>
+                    @if ($autoPay['method'])
+                        <span><b>{{ $autoPay['method']->label() }}</b>@if ($autoPay['method']->expiry())<span class="muted"> · {{ __('Expires :date', ['date' => $autoPay['method']->expiry()]) }}</span>@endif</span>
+                    @endif
                     @if ($invoice->autopay_error)
                         <p class="muted" style="margin:0;font-size:.88rem">{{ $invoice->autopay_error }} @if ($autoPay['retries']){{ __('Tries again on :date.', ['date' => $autoPay['date']->translatedFormat('d M Y')]) }}@endif</p>
                     @elseif (! $autoPay['automatic'])
                         <p class="muted" style="margin:0;font-size:.88rem">{{ __('This invoice is not charged by itself: automatic payments are off for this client, or it is not a renewal.') }}</p>
                     @endif
                     @if ($canManage && $autoPay['usable'])
-                        <form method="POST" action="{{ route('admin.invoices.charge', $invoice) }}" data-confirm="{{ __('Charge :amount to :method now?', ['amount' => money($invoice->balance(), $invoice->currency), 'method' => $autoPay['method']->label()]) }}">
+                        <form method="POST" action="{{ route('admin.invoices.charge', $invoice) }}" data-confirm="{{ $autoPay['repeat']
+                            ? __('Send the unclear try to :method again? It is the same payment, so :amount is charged only once.', ['amount' => money($invoice->balance(), $invoice->currency), 'method' => $autoPay['method']->label()])
+                            : __('Charge :amount to :method now?', ['amount' => money($invoice->balance(), $invoice->currency), 'method' => $autoPay['method']->label()]) }}">
                             @csrf
                             <button class="btn btn-primary" type="submit"><x-icon name="card" />{{ __('Charge now') }}</button>
                         </form>

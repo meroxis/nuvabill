@@ -49,10 +49,13 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
 
     /**
      * Orders made before Nuvabill 0.6.12 name only the invoice in custom_id, without this site's
-     * marker. Their payments still count until this day, which leaves time for slow ones such as
-     * eChecks. This can go in a later release.
+     * marker. On a site that used PayPal before, the update saves when it started marking orders
+     * (this setting), and payments without the marker still count for this many days after it.
+     * That leaves time for slow ones such as eChecks, however late the site updates.
      */
-    private const UNMARKED_ORDERS_UNTIL = '2026-11-15';
+    private const MARKED_SINCE_SETTING = 'paypal.marked_orders_since';
+
+    private const UNMARKED_ORDER_DAYS = 30;
 
     public function settingsFields(): array
     {
@@ -159,22 +162,30 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
             return null;
         }
 
-        $response = $this->api()->withBody('{}')->post($this->baseUrl().'/v2/checkout/orders/'.$orderId.'/capture');
+        // The order is read before it is captured. Only this site's order for this invoice pays it,
+        // so an order made on another site that uses the same PayPal account, or one this site no
+        // longer counts, is never captured here: its money is not taken without paying an invoice.
+        $response = $this->api()->get($this->baseUrl().'/v2/checkout/orders/'.$orderId);
 
-        if ($response->status() === 422 && $response->json('details.0.issue') === 'ORDER_ALREADY_CAPTURED') {
-            $response = $this->api()->get($this->baseUrl().'/v2/checkout/orders/'.$orderId);
-        }
-
-        if ($response->failed()) {
+        if ($response->failed() || $this->invoiceFromCustomId($response->json('purchase_units.0.custom_id'), $this->takesUnmarkedOrders()) !== $invoice->id) {
             return null;
         }
 
-        $unit = $response->json('purchase_units.0', []);
-        $capture = $unit['payments']['captures'][0] ?? null;
+        if ($response->json('status') === 'APPROVED') {
+            $response = $this->api()->withBody('{}')->post($this->baseUrl().'/v2/checkout/orders/'.$orderId.'/capture');
 
-        // Only this site's order for this invoice pays it: a client cannot bring back an order they
-        // paid on another site that uses the same PayPal account.
-        if (($capture['status'] ?? null) !== 'COMPLETED' || $this->invoiceFromCustomId($unit['custom_id'] ?? $capture['custom_id'] ?? null, $this->takesUnmarkedOrders()) !== $invoice->id) {
+            if ($response->status() === 422 && $response->json('details.0.issue') === 'ORDER_ALREADY_CAPTURED') {
+                $response = $this->api()->get($this->baseUrl().'/v2/checkout/orders/'.$orderId);
+            }
+
+            if ($response->failed()) {
+                return null;
+            }
+        }
+
+        $capture = $response->json('purchase_units.0.payments.captures.0');
+
+        if (! is_array($capture) || ($capture['status'] ?? null) !== 'COMPLETED' || ! is_string($capture['id'] ?? null)) {
             return null;
         }
 
@@ -497,11 +508,15 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
     }
 
     /**
-     * Whether a payment without the site marker may still be from an order this site made before 0.6.12.
+     * Whether a payment without the site marker may still be from an order this site made before
+     * 0.6.12: only on a site that used PayPal then, and only for a while after it updated.
      */
     private function takesUnmarkedOrders(): bool
     {
-        return now()->lt(CarbonImmutable::parse(self::UNMARKED_ORDERS_UNTIL));
+        $since = setting(self::MARKED_SINCE_SETTING);
+        $since = is_string($since) && $since !== '' ? rescue(fn (): CarbonImmutable => CarbonImmutable::parse($since), null, false) : null;
+
+        return $since !== null && now()->lt($since->addDays(self::UNMARKED_ORDER_DAYS));
     }
 
     /**

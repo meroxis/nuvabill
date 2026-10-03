@@ -56,7 +56,33 @@ class AutoPay
             return null;
         }
 
-        return $this->usableMethod($invoice);
+        // An earlier try whose result is not known is sent again with its own method. While it
+        // cannot be, nothing pays the invoice by itself.
+        $unclear = $this->unclearTry($invoice);
+
+        return $unclear === null ? $this->usableMethod($invoice) : $this->methodOfTry($invoice, $unclear);
+    }
+
+    /**
+     * Whether the invoice has an earlier try whose result is not known and that its gateway cannot
+     * rule out. That try is sent again as it was, with its own method and key, before any other
+     * method or wallet credit is used.
+     */
+    public function repeatsUnclearTry(Invoice $invoice): bool
+    {
+        return $this->unclearTry($invoice) !== null;
+    }
+
+    /**
+     * The saved method an unclear earlier try is sent again with, which "Charge now" charges instead
+     * of the client's default. Null when there is no such try, or when its method was removed or its
+     * gateway is turned off, so it cannot be sent again.
+     */
+    public function unclearTryMethod(Invoice $invoice): ?PaymentMethod
+    {
+        $unclear = $this->unclearTry($invoice);
+
+        return $unclear === null ? null : $this->methodOfTry($invoice, $unclear);
     }
 
     /**
@@ -155,7 +181,7 @@ class AutoPay
                 $method = $this->methodOfTry($invoice, $pending);
 
                 if ($method === null) {
-                    return $this->settle($invoice, null, ChargeResult::pending(__('The last payment try is not clear, and its payment method can no longer be used. Check the payment at the payment service and record it here, or ask the client to pay the invoice.')), $by, $pending);
+                    return $this->hold($invoice, $pending, $by);
                 }
             } elseif ($this->wallet->enabled()) {
                 $this->wallet->pay($invoice);
@@ -233,6 +259,34 @@ class AutoPay
     }
 
     /**
+     * Hold an unclear try that cannot be sent again, as its method was removed or its gateway is
+     * turned off. It may have been paid, so no other method and no wallet credit is charged: the try
+     * stays on the invoice for staff to check, and is sent again if its method can be used again.
+     * The invoice no longer pays itself, so it has no retry date: the client gets the usual overdue
+     * reminders and pays by hand, and the nightly run still checks the try.
+     *
+     * @param  array<string, mixed>  $pending
+     */
+    private function hold(Invoice $invoice, array $pending, ?string $by): ChargeResult
+    {
+        $result = ChargeResult::pending(__('The last payment try is not clear, and its payment method can no longer be used. Check the payment at the payment service and record it here, or ask the client to pay the invoice.'));
+        $message = Str::limit($result->message, 240);
+        $first = ! isset($pending['held']);
+
+        $invoice->forceFill([
+            'autopay_pending' => $pending + ['held' => now()->toIso8601String()],
+            'autopay_error' => $message,
+            'autopay_retry_at' => null,
+        ])->save();
+
+        if ($first) {
+            Activity::log('invoice.autopay_pending', ($by ? "{$by} could not charge" : 'Could not charge')." invoice {$invoice->displayNumber()}: {$message}", $invoice, $invoice->client);
+        }
+
+        return $result;
+    }
+
+    /**
      * What became of a try whose result was not known, or null when the gateway has no payment for
      * it and the invoice can be charged.
      *
@@ -277,6 +331,19 @@ class AutoPay
 
         return ! isset($pending['reference'])
             && (! $gateway instanceof ChecksSavedCharges || $gateway instanceof RepeatsUnclearCharges);
+    }
+
+    /**
+     * The invoice's unclear try that must be sent again as it was, or null when it has none. Read
+     * from what the invoice keeps, without asking the gateway, so pages can show it.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function unclearTry(Invoice $invoice): ?array
+    {
+        $pending = is_array($invoice->autopay_pending) ? $invoice->autopay_pending : null;
+
+        return $pending !== null && $this->mustRepeat($pending) ? $pending : null;
     }
 
     /**
@@ -342,6 +409,8 @@ class AutoPay
             ->where('autopay_attempts', '<=', count(self::retryDays()))
             ->where(fn (Builder $query) => $query
                 ->where(fn (Builder $query) => $query->where('autopay_attempts', 0)->whereNull('autopay_retry_at'))
+                // A held unclear try is checked every night, so it is sent again once its method can be.
+                ->orWhere(fn (Builder $query) => $query->whereNotNull('autopay_pending')->whereNull('autopay_retry_at'))
                 ->orWhere('autopay_retry_at', '<=', $today->endOfDay()))
             ->get();
     }

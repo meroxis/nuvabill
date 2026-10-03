@@ -276,6 +276,7 @@ class AutoPayTest extends TestCase
         $this->enableGateway('paypal', ['mode' => 'sandbox', 'client_id' => 'id', 'client_secret' => 'secret']);
         Http::fake([
             'api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response(['access_token' => 'token']),
+            'api-m.sandbox.paypal.com/v2/checkout/orders/ORDER1' => Http::response(['id' => 'ORDER1', 'status' => 'APPROVED', 'purchase_units' => [['custom_id' => '1:'.substr(hash_hmac('sha256', 'nuvabill-paypal-site', (string) config('app.key')), 0, 24)]]]),
             'api-m.sandbox.paypal.com/v2/checkout/orders/ORDER1/capture' => Http::response([
                 'id' => 'ORDER1', 'status' => 'COMPLETED',
                 'payment_source' => ['paypal' => ['email_address' => 'raz@example.test', 'attributes' => ['vault' => ['id' => 'VAULT1', 'status' => 'VAULTED', 'customer' => ['id' => 'CUST1']]]]],

@@ -46,8 +46,9 @@ class InvoiceController extends Controller
                 'date' => $autoPay->chargeDate($invoice),
                 'failed' => $invoice->autopay_attempts > 0,
                 'retries' => $autoPay->willRetry($invoice),
-                // The wallet is used first, so it pays the whole invoice when it holds enough.
-                'wallet' => app(Wallet::class)->enabled() && $invoice->client->credit >= $invoice->balance(),
+                // The wallet is used first, so it pays the whole invoice when it holds enough. Not while
+                // an unclear earlier try is sent again: that try comes first.
+                'wallet' => app(Wallet::class)->enabled() && $invoice->client->credit >= $invoice->balance() && ! $autoPay->repeatsUnclearTry($invoice),
             ],
             'instructions' => session('payment_instructions'),
             'qr' => session('payment_qr'),

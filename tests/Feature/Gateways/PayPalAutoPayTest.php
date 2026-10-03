@@ -9,11 +9,14 @@ use App\Billing\SavedMethods;
 use App\Enums\InvoiceStatus;
 use App\Extensions\ExtensionManager;
 use App\Mail\TemplatedMessage;
+use App\Models\ActivityLog;
+use App\Models\Admin;
 use App\Models\Client;
 use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -267,9 +270,15 @@ class PayPalAutoPayTest extends TestCase
         app(DailyAutomation::class)->run();
         $this->assertArrayNotHasKey('reference', $invoice->fresh()->autopay_pending);
 
-        // Before the next night Raz makes a card the default and adds funds to the wallet.
+        // Before the next night Raz makes a card the default and adds enough to the wallet.
         app(SavedMethods::class)->makeDefault($this->card($client));
-        $client->forceFill(['credit' => 500])->save();
+        $client->forceFill(['credit' => 2000])->save();
+
+        // Raz's invoice page names PayPal, which is what is charged next.
+        $this->actingAs($client, 'web')->get(route('client.invoices.show', $invoice))->assertOk()
+            ->assertSee('This invoice is paid automatically with PayPal (raz@example.test)')
+            ->assertDontSee('paid automatically from your wallet credit')
+            ->assertDontSee('paid automatically with Visa');
 
         Carbon::setTestNow('2026-10-13 00:15:00');
         app(DailyAutomation::class)->run();
@@ -280,8 +289,31 @@ class PayPalAutoPayTest extends TestCase
         $this->assertSame(['CAP1'], $invoice->transactions()->pluck('reference')->all());
         $this->assertCount(3, $this->orderRequests());
         $this->assertSame([$this->attemptId('invoice-1-1299-try-0')], array_values(array_unique(array_map(fn (Request $request): string => $request->header('PayPal-Request-Id')[0], $this->orderRequests()))));
-        $this->assertSame(500, $client->fresh()->credit);
+        $this->assertSame(2000, $client->fresh()->credit);
         Http::assertNotSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.stripe.com/'));
+    }
+
+    public function test_charge_now_names_the_paypal_account_an_unclear_try_is_sent_again_with(): void
+    {
+        $this->enableGateway('stripe', ['secret_key' => 'sk_test_123', 'webhook_secret' => 'whsec_test']);
+        Http::fake([
+            self::API.'/v1/oauth2/token' => Http::response(['access_token' => 'token']),
+            self::API.'/v2/checkout/orders' => Http::response(['name' => 'INTERNAL_SERVER_ERROR'], 503),
+        ]);
+        $client = $this->clientWithPayPal();
+        $invoice = $this->renewalInvoice($client);
+
+        // PayPal does not answer, and then Raz makes a card the default.
+        app(DailyAutomation::class)->run();
+        app(SavedMethods::class)->makeDefault($this->card($client));
+
+        // "Charge now" sends the PayPal try again, so staff are asked about PayPal, not the card.
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.view', 'billing.view', 'billing.manage'])->create(['name' => 'Mer Las']));
+        $this->get(route('admin.invoices.show', $invoice))->assertOk()
+            ->assertSee('Charge now')
+            ->assertSee('Send the unclear try to PayPal (raz@example.test) again? It is the same payment, so $12.99 is charged only once.')
+            ->assertDontSee('Visa •••• 4242')
+            ->assertDontSee('Charge $12.99 to');
     }
 
     public function test_staff_charging_after_paypal_refused_a_repeated_attempt_does_not_charge_the_new_default_card(): void
@@ -314,7 +346,7 @@ class PayPalAutoPayTest extends TestCase
         Http::assertNotSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.stripe.com/'));
     }
 
-    public function test_an_unclear_try_whose_paypal_account_was_removed_is_left_for_staff_to_check(): void
+    public function test_an_unclear_try_whose_paypal_account_was_removed_is_left_for_staff_and_the_client_is_reminded(): void
     {
         $this->enableGateway('stripe', ['secret_key' => 'sk_test_123', 'webhook_secret' => 'whsec_test']);
         Http::fake([
@@ -334,18 +366,82 @@ class PayPalAutoPayTest extends TestCase
         app(SavedMethods::class)->forget($client->paymentMethods()->where('gateway', 'paypal')->sole(), 'Raz');
         $this->assertTrue($card->fresh()->is_default);
 
-        Carbon::setTestNow('2026-10-13 00:15:00');
-        app(DailyAutomation::class)->run();
+        foreach (['2026-10-13', '2026-10-14', '2026-10-15', '2026-10-19', '2026-10-25'] as $night) {
+            Carbon::setTestNow($night.' 00:15:00');
+            app(DailyAutomation::class)->run();
+        }
 
+        // The unclear try is kept for staff to check, and nothing else is charged.
         $invoice->refresh();
         $this->assertSame(InvoiceStatus::Unpaid, $invoice->status);
         $this->assertSame(0, $invoice->transactions()->count());
         $this->assertSame(0, $invoice->autopay_attempts);
-        $this->assertSame($pending, $invoice->autopay_pending);
+        $this->assertSame($pending, Arr::except($invoice->autopay_pending, 'held'));
         $this->assertSame('The last payment try is not clear, and its payment method can no longer be used. Check the payment at the payment service and record it here, or ask the client to pay the invoice.', $invoice->autopay_error);
         $this->assertCount(2, $this->orderRequests());
         Http::assertNotSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.stripe.com/'));
-        Mail::assertNotSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => str_contains($mail->subjectLine, 'We could not charge'));
+        $this->assertSame(1, ActivityLog::query()->where('action', 'invoice.autopay_pending')->where('description', 'like', 'Could not charge%')->count());
+
+        // The invoice no longer pays itself, so Raz gets the usual overdue reminders and pays by hand.
+        $this->assertNull($invoice->autopay_retry_at);
+        $this->assertSame(3, $invoice->reminder_count);
+        Mail::assertSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => $mail->hasTo('raz@example.test') && str_contains($mail->subjectLine, 'is overdue'));
+        $this->assertNull(app(AutoPay::class)->methodFor($invoice));
+        $this->actingAs($client, 'web')->get(route('client.invoices.show', $invoice))->assertOk()
+            ->assertDontSee('paid automatically')
+            ->assertDontSee('We try again on');
+
+        // Staff see why, and are not offered a charge on the card.
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.view', 'billing.view', 'billing.manage'])->create(['name' => 'Mer Las']));
+        $this->get(route('admin.invoices.show', $invoice))->assertOk()
+            ->assertSee('Payment not finished')
+            ->assertSee('its payment method can no longer be used')
+            ->assertDontSee('Charge now')
+            ->assertDontSee('Visa •••• 4242');
+        $this->assertTrue(app(AutoPay::class)->charge($invoice->fresh(), $card, 'Mer Las')->isPending());
+        Http::assertNotSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.stripe.com/'));
+    }
+
+    public function test_a_held_try_is_sent_again_once_paypal_is_turned_back_on(): void
+    {
+        $answers = [
+            Http::response(['name' => 'UNPROCESSABLE_ENTITY', 'details' => [['issue' => 'INSTRUMENT_DECLINED', 'description' => 'The instrument was declined.']]], 422),
+            Http::response(['name' => 'INTERNAL_SERVER_ERROR'], 503),
+            Http::response(['name' => 'INTERNAL_SERVER_ERROR'], 503),
+            Http::response($this->order('COMPLETED'), 201),
+        ];
+        Http::fake([
+            self::API.'/v1/oauth2/token' => Http::response(['access_token' => 'token']),
+            self::API.'/v2/checkout/orders' => function () use (&$answers) {
+                return array_shift($answers);
+            },
+        ]);
+        $invoice = $this->renewalInvoice($this->clientWithPayPal());
+        $paypal = ['mode' => 'sandbox', 'client_id' => 'id', 'client_secret' => 'secret'];
+
+        // The first try is declined, and the retry three days later gets no answer.
+        app(DailyAutomation::class)->run();
+        Carbon::setTestNow('2026-10-15 00:15:00');
+        app(DailyAutomation::class)->run();
+        $this->assertSame(1, $invoice->fresh()->autopay_attempts);
+        $this->assertSame('invoice-1-1299-try-1', $invoice->fresh()->autopay_pending['key']);
+
+        // Staff turn PayPal off for a day: the try cannot be sent, so it is held.
+        app(ExtensionManager::class)->saveSettings('paypal', $paypal, false);
+        Carbon::setTestNow('2026-10-16 00:15:00');
+        app(DailyAutomation::class)->run();
+        $this->assertNull($invoice->fresh()->autopay_retry_at);
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->fresh()->status);
+
+        // Once PayPal is back, the next night sends that same try again.
+        app(ExtensionManager::class)->saveSettings('paypal', $paypal, true);
+        Carbon::setTestNow('2026-10-17 00:15:00');
+        app(DailyAutomation::class)->run();
+
+        $invoice->refresh();
+        $this->assertSame(InvoiceStatus::Paid, $invoice->status);
+        $this->assertSame(['CAP1'], $invoice->transactions()->pluck('reference')->all());
+        $this->assertSame($this->attemptId('invoice-1-1299-try-1'), $this->orderRequests()[3]->header('PayPal-Request-Id')[0]);
     }
 
     public function test_a_try_sent_before_the_site_marker_is_still_found_and_not_charged_again(): void

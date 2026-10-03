@@ -38,6 +38,7 @@ class PayPalGatewayTest extends TestCase
                 'id' => 'ORDER123',
                 'links' => [['rel' => 'payer-action', 'href' => 'https://www.sandbox.paypal.com/checkoutnow?token=ORDER123']],
             ], 201),
+            'api-m.sandbox.paypal.com/v2/checkout/orders/ORDER123' => Http::response(['id' => 'ORDER123', 'status' => 'APPROVED', 'purchase_units' => [['custom_id' => $this->customId($invoice)]]]),
             'api-m.sandbox.paypal.com/v2/checkout/orders/ORDER123/capture' => Http::response([
                 'id' => 'ORDER123',
                 'status' => 'COMPLETED',
@@ -156,42 +157,101 @@ class PayPalGatewayTest extends TestCase
         $this->assertSame(['CAP1'], $invoice->transactions()->pluck('reference')->all());
     }
 
-    public function test_a_capture_of_an_order_made_before_the_site_marker_counts_only_for_a_while(): void
+    public function test_a_capture_of_an_order_made_before_the_site_marker_counts_for_a_while_after_the_update(): void
     {
         $this->enableGateway('paypal', ['mode' => 'sandbox', 'client_id' => 'client-id', 'client_secret' => 'client-secret', 'webhook_id' => 'WH-1']);
         $this->fakeVerifiedWebhooks();
-        $late = Invoice::factory()->create(['total' => 899]);
         $early = Invoice::factory()->create(['total' => 899]);
+        $late = Invoice::factory()->create(['total' => 899]);
 
-        Carbon::setTestNow('2026-11-15 00:00:00');
-        $this->postCaptureCompleted((string) $late->id)->assertOk();
-        $this->assertSame(InvoiceStatus::Unpaid, $late->fresh()->status);
+        // This site updates long after the release, so the time it allows starts at its own update.
+        Carbon::setTestNow('2027-03-01 10:00:00');
+        $this->runMarkerMigration();
+        $this->assertSame('2027-03-01T10:00:00+00:00', setting('paypal.marked_orders_since'));
 
-        Carbon::setTestNow('2026-11-14 23:59:00');
+        // Running the update again later keeps the first date.
+        Carbon::setTestNow('2027-03-30 10:00:00');
+        $this->runMarkerMigration();
+        $this->assertSame('2027-03-01T10:00:00+00:00', setting('paypal.marked_orders_since'));
+
         $this->postCaptureCompleted((string) $early->id)->assertOk();
         $this->assertSame(InvoiceStatus::Paid, $early->fresh()->status);
+
+        Carbon::setTestNow('2027-03-31 10:00:00');
+        $this->postCaptureCompleted((string) $late->id)->assertOk();
+        $this->assertSame(InvoiceStatus::Unpaid, $late->fresh()->status);
+    }
+
+    public function test_a_site_that_never_used_paypal_never_counts_a_capture_without_its_marker(): void
+    {
+        $this->enableGateway('paypal', ['mode' => 'sandbox', 'client_id' => '', 'client_secret' => '', 'webhook_id' => '']);
+        $this->runMarkerMigration();
+        $this->assertNull(setting('paypal.marked_orders_since'));
+
+        // Set up after the update: every order this site makes carries its marker.
+        $this->enableGateway('paypal', ['mode' => 'sandbox', 'client_id' => 'client-id', 'client_secret' => 'client-secret', 'webhook_id' => 'WH-1']);
+        $this->fakeVerifiedWebhooks();
+        $invoice = Invoice::factory()->create(['total' => 899]);
+
+        $this->postCaptureCompleted((string) $invoice->id)->assertOk();
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->fresh()->status);
+    }
+
+    public function test_an_order_made_before_the_update_is_captured_on_return_only_while_it_counts(): void
+    {
+        $client = Client::factory()->create();
+        $invoice = Invoice::factory()->create(['client_id' => $client->id, 'total' => 899]);
+        Http::fake([
+            'api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response(['access_token' => 'token-1']),
+            // Made before 0.6.12, so it names only the invoice.
+            'api-m.sandbox.paypal.com/v2/checkout/orders/ORDER5' => Http::response(['id' => 'ORDER5', 'status' => 'APPROVED', 'purchase_units' => [['custom_id' => (string) $invoice->id]]]),
+            'api-m.sandbox.paypal.com/v2/checkout/orders/ORDER5/capture' => Http::response([
+                'id' => 'ORDER5',
+                'status' => 'COMPLETED',
+                'purchase_units' => [['payments' => ['captures' => [['id' => 'CAPTURE5', 'status' => 'COMPLETED', 'amount' => ['currency_code' => 'USD', 'value' => '8.99']]]]]],
+            ], 201),
+        ]);
+        Carbon::setTestNow('2027-03-01 10:00:00');
+        $this->runMarkerMigration();
+
+        // After the time allowed the order is not captured, so PayPal takes no money for nothing.
+        Carbon::setTestNow('2027-04-01 10:00:00');
+        $this->actingAs($client, 'web')->get(route('client.invoices.return', [$invoice, 'paypal']).'?token=ORDER5&PayerID=XYZ');
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->fresh()->status);
+        Http::assertNotSent(fn (Request $request): bool => str_ends_with($request->url(), '/capture'));
+
+        Carbon::setTestNow('2027-03-20 10:00:00');
+        $this->get(route('client.invoices.return', [$invoice, 'paypal']).'?token=ORDER5&PayerID=XYZ');
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertSame(['CAPTURE5'], $invoice->transactions()->pluck('reference')->all());
     }
 
     public function test_an_order_paid_on_another_site_does_not_pay_the_invoice_here(): void
     {
         $client = Client::factory()->create();
         $invoice = Invoice::factory()->create(['client_id' => $client->id, 'total' => 899]);
+        $otherSite = $invoice->id.':'.substr(hash_hmac('sha256', 'nuvabill-paypal-site', 'another-app-key'), 0, 24);
         Http::fake([
             'api-m.sandbox.paypal.com/v1/oauth2/token' => Http::response(['access_token' => 'token-1']),
-            'api-m.sandbox.paypal.com/v2/checkout/orders/ORDER9/capture' => Http::response([
+            'api-m.sandbox.paypal.com/v2/checkout/orders/ORDER8' => Http::response(['id' => 'ORDER8', 'status' => 'APPROVED', 'purchase_units' => [['custom_id' => $otherSite]]]),
+            'api-m.sandbox.paypal.com/v2/checkout/orders/ORDER9' => Http::response([
                 'id' => 'ORDER9',
                 'status' => 'COMPLETED',
                 'purchase_units' => [[
-                    'custom_id' => $invoice->id.':'.substr(hash_hmac('sha256', 'nuvabill-paypal-site', 'another-app-key'), 0, 24),
+                    'custom_id' => $otherSite,
                     'payments' => ['captures' => [['id' => 'CAPTURE9', 'status' => 'COMPLETED', 'amount' => ['currency_code' => 'USD', 'value' => '8.99']]]],
                 ]],
-            ], 201),
+            ]),
+            'api-m.sandbox.paypal.com/v2/checkout/orders/*/capture' => Http::response(['id' => 'ORDER8', 'status' => 'COMPLETED'], 201),
         ]);
 
+        // An order the client paid on the other site, and one they only approved there.
         $this->actingAs($client, 'web')->get(route('client.invoices.return', [$invoice, 'paypal']).'?token=ORDER9&PayerID=XYZ');
+        $this->get(route('client.invoices.return', [$invoice, 'paypal']).'?token=ORDER8&PayerID=XYZ');
 
         $this->assertSame(InvoiceStatus::Unpaid, $invoice->fresh()->status);
         $this->assertSame(0, Transaction::query()->count());
+        Http::assertNotSent(fn (Request $request): bool => str_ends_with($request->url(), '/capture'));
     }
 
     /**
@@ -205,6 +265,11 @@ class PayPalGatewayTest extends TestCase
     private function siteMarker(): string
     {
         return substr(hash_hmac('sha256', 'nuvabill-paypal-site', (string) config('app.key')), 0, 24);
+    }
+
+    private function runMarkerMigration(): void
+    {
+        (require database_path('migrations/2027_07_02_000112_gateways_paypal_unmarked_orders_window.php'))->up();
     }
 
     private function fakeVerifiedWebhooks(): void

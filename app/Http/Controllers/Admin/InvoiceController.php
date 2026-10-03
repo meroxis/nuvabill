@@ -64,7 +64,14 @@ class InvoiceController extends Controller
         $canRefundThroughGateway = $invoice->status === InvoiceStatus::Paid
             && $invoice->transactions->where('type', 'payment')->contains(fn (Transaction $payment): bool => $refunds->canRefundThroughGateway($payment));
 
-        $savedMethod = $invoice->isPayable() ? $invoice->client?->defaultPaymentMethod() : null;
+        // While an earlier unclear try is sent again, "Charge now" charges that try's method, not the
+        // client's default. When the try cannot be sent again, nothing is charged.
+        $repeat = $invoice->isPayable() && $autoPay->repeatsUnclearTry($invoice);
+        $savedMethod = match (true) {
+            ! $invoice->isPayable() => null,
+            $repeat => $autoPay->unclearTryMethod($invoice),
+            default => $invoice->client?->defaultPaymentMethod(),
+        };
 
         return view('admin.invoices.show', [
             'invoice' => $invoice,
@@ -72,9 +79,10 @@ class InvoiceController extends Controller
             'canRefundThroughGateway' => $canRefundThroughGateway,
             // Funds added to the wallet are already in it, so a credit note cannot put them there again.
             'creditToWallet' => $invoice->currency === $invoice->client->currency && ! $invoice->items->contains('type', InvoiceItem::TYPE_CREDIT),
-            'autoPay' => $savedMethod === null ? null : [
+            'autoPay' => $savedMethod === null && ! $repeat ? null : [
                 'method' => $savedMethod,
-                'usable' => $savedMethods->gateway($savedMethod->gateway) !== null && ! $savedMethod->isExpired(),
+                'repeat' => $repeat,
+                'usable' => $savedMethod !== null && ($repeat || ($savedMethods->gateway($savedMethod->gateway) !== null && ! $savedMethod->isExpired())),
                 'automatic' => $autoPay->methodFor($invoice) !== null,
                 'date' => $autoPay->chargeDate($invoice),
                 'retries' => $autoPay->willRetry($invoice),
