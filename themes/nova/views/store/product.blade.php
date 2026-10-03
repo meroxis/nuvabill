@@ -4,7 +4,7 @@
 
 @section('content')
     @php
-        $features = collect(preg_split('/\R/', (string) $product->description))->map(fn ($line) => trim($line, " \t-*•"))->filter();
+        $features = collect(\App\Seo\SeoText::featureLines($product->description));
         $selectedCycle = old('billing_cycle', $prices->first()?->billing_cycle->value);
     @endphp
 

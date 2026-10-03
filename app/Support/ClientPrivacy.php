@@ -2,11 +2,13 @@
 
 namespace App\Support;
 
-use App\Billing\SavedMethods;
+use App\Contracts\SavesPaymentMethods;
 use App\Enums\ClientStatus;
 use App\Enums\DomainStatus;
 use App\Enums\InvoiceStatus;
+use App\Enums\QuoteStatus;
 use App\Enums\ServiceStatus;
+use App\Extensions\ExtensionManager;
 use App\Models\ActivityLog;
 use App\Models\Admin;
 use App\Models\Client;
@@ -19,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
+use Throwable;
 
 /**
  * Privacy tools for the GDPR and similar laws: everything Nuvabill keeps about a client, as one
@@ -28,10 +31,22 @@ use InvalidArgumentException;
  */
 class ClientPrivacy
 {
-    public function __construct(private SavedMethods $savedMethods) {}
+    /**
+     * Besides every client.* entry, what the client's own copy shows of the activity log: things
+     * they did themselves. Other entries are notes for staff, such as why an order waits for a
+     * review or what a gateway or control panel answered.
+     */
+    private const CLIENT_ACTIVITY = [
+        'order.placed', 'payment_method.saved', 'payment_method.removed', 'ticket.opened', 'ticket.replied', 'ticket.closed',
+        'wallet.top_up', 'quote.accepted', 'quote.declined', 'domain.nameservers', 'domain.auto_renew',
+        'affiliate.joined', 'affiliate.withdrawn',
+    ];
+
+    public function __construct(private ExtensionManager $extensions) {}
 
     /**
-     * Everything about the client, for a JSON file. Staff notes are only included for staff.
+     * Everything about the client, for a JSON file. Staff notes, tags, draft quotes and the staff
+     * side of the activity log are only included for staff.
      *
      * @return array<string, mixed>
      */
@@ -66,7 +81,7 @@ class ClientPrivacy
                 'status' => $client->status->value,
                 'wallet' => $amount($client->credit),
                 'two_factor' => $client->hasTwoFactorEnabled(),
-                'tags' => $client->tags,
+                'tags' => $forStaff ? $client->tags : null,
                 'staff_notes' => $forStaff ? $client->notes : null,
                 'created_at' => $date($client->created_at),
             ], fn ($value): bool => $value !== null),
@@ -110,7 +125,7 @@ class ClientPrivacy
                     'reason' => $note->reason,
                 ])->all(),
             ])->all(),
-            'quotes' => $client->quotes->map(fn ($quote): array => [
+            'quotes' => ($forStaff ? $client->quotes : $client->quotes->where('status', '!=', QuoteStatus::Draft)->values())->map(fn ($quote): array => [
                 'number' => $quote->displayNumber(),
                 'subject' => $quote->subject,
                 'status' => $quote->status->value,
@@ -151,7 +166,10 @@ class ClientPrivacy
                 'passkeys' => $client->passkeys->map(fn ($passkey): array => ['name' => $passkey->name, 'added' => $date($passkey->created_at)])->all(),
                 'social_accounts' => $client->socialAccounts->map(fn ($account): array => ['provider' => $account->provider, 'email' => $account->email])->all(),
             ],
-            'activity' => ActivityLog::query()->where('client_id', $client->id)->latest('id')->limit(1000)->get()
+            'activity' => ActivityLog::query()->where('client_id', $client->id)
+                ->when(! $forStaff, fn ($query) => $query->where('actor_type', 'client')->where('actor_id', $client->id)
+                    ->where(fn ($query) => $query->where('action', 'like', 'client.%')->orWhereIn('action', self::CLIENT_ACTIVITY)))
+                ->latest('id')->limit(1000)->get()
                 ->map(fn (ActivityLog $entry): array => ['action' => $entry->action, 'description' => $entry->description, 'ip_address' => $entry->actor_type === 'client' ? $entry->ip_address : null, 'date' => $date($entry->created_at)])
                 ->all(),
         ];
@@ -188,12 +206,17 @@ class ClientPrivacy
     /**
      * Erase the client's personal data. They can no longer sign in.
      *
+     * Returns the saved cards and PayPal accounts the gateway did not remove. Nothing is left here
+     * to try again with, so staff remove those at the gateway by hand.
+     *
+     * @return list<string>
+     *
      * @throws InvalidArgumentException When something still needs the data (see blockers()).
      */
-    public function erase(Client $client, Admin $admin): void
+    public function erase(Client $client, Admin $admin): array
     {
         if ($client->isErased()) {
-            return;
+            return [];
         }
 
         if (($blockers = $this->blockers($client)) !== []) {
@@ -201,8 +224,20 @@ class ClientPrivacy
         }
 
         // Saved cards and PayPal accounts are removed at the gateway too.
+        $leftAtGateway = [];
+
         foreach ($client->paymentMethods()->get() as $method) {
-            rescue(fn () => $this->savedMethods->forget($method, $admin->name), report: false);
+            try {
+                $gateway = $this->extensions->gateway($method->gateway);
+
+                if ($gateway instanceof SavesPaymentMethods) {
+                    $gateway->forgetSaved($method);
+                }
+            } catch (Throwable $exception) {
+                report($exception);
+                // The gateway's own reference finds it there. A PayPal address is personal data, so it stays out.
+                $leftAtGateway[] = ($method->type === PaymentMethod::TYPE_PAYPAL ? 'PayPal' : $method->label())." ({$method->gateway}: {$method->reference})";
+            }
         }
 
         $keepForInvoices = $client->invoices()->where('status', '!=', InvoiceStatus::Draft)->exists() || $client->transactions()->exists();
@@ -220,8 +255,13 @@ class ClientPrivacy
             $client->tickets()->delete();
             $client->invoices()->where('status', InvoiceStatus::Draft)->each(fn (Invoice $invoice) => $invoice->delete());
             Order::query()->where('client_id', $client->id)->update(['ip_address' => null, 'notes' => null]);
-            ActivityLog::query()->where('client_id', $client->id)->update(['ip_address' => null]);
-            ActivityLog::query()->where('actor_type', 'client')->where('actor_id', $client->id)->update(['ip_address' => null]);
+
+            // The activity log keeps what happened and when, but not the texts: they hold the
+            // client's name, ticket subjects and the like.
+            ActivityLog::query()
+                ->where(fn ($query) => $query->where('client_id', $client->id)
+                    ->orWhere(fn ($query) => $query->where('actor_type', 'client')->where('actor_id', $client->id)))
+                ->update(['ip_address' => null, 'description' => "Details removed when client #{$client->id} was erased"]);
 
             $fields = [
                 'email' => 'erased-'.$client->id.'@erased.invalid',
@@ -231,6 +271,8 @@ class ClientPrivacy
                 'tags' => null,
                 'status' => ClientStatus::Closed,
                 'remember_token' => null,
+                'last_login_at' => null,
+                'last_login_ip' => null,
                 'two_factor_secret' => null,
                 'two_factor_recovery_codes' => null,
                 'two_factor_method' => null,
@@ -256,6 +298,8 @@ class ClientPrivacy
             $client->forceFill($fields)->save();
         });
 
-        Activity::log('client.erased', "Personal data of client #{$client->id} erased", $client);
+        Activity::log('client.erased', "Personal data of client #{$client->id} erased".($leftAtGateway === [] ? '' : '. Not removed at the gateway, remove by hand: '.implode(', ', $leftAtGateway)), $client);
+
+        return $leftAtGateway;
     }
 }

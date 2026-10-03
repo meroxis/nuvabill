@@ -11,11 +11,13 @@ use App\Models\Ticket;
 use App\Support\Locales;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use League\CommonMark\Util\RegexHelper;
 use Throwable;
 
 /**
  * Sends the editable email templates. Placeholders like {{ client.first_name }} are replaced with
- * plain values; templates are never compiled as code, so staff cannot run PHP through them.
+ * plain values; templates are never compiled as code, so staff cannot run PHP through them, and
+ * the values are never read as Markdown, so clients cannot add links or pictures through them.
  */
 class TemplateMailer
 {
@@ -24,6 +26,13 @@ class TemplateMailer
      * signature add-ons that extend this class (such as Crystal Mail) were built against.
      */
     public const LOCALE_KEY = '_locale';
+
+    private const PLACEHOLDER = '/{{\s*([a-zA-Z0-9_.]+)\s*}}/';
+
+    /**
+     * Raw HTML in a template shows as text, and links that could run code are dropped.
+     */
+    private const MARKDOWN_OPTIONS = ['html_input' => 'escape', 'allow_unsafe_links' => false];
 
     /**
      * Set to true in the context when the same staff email goes to several people: only one of them
@@ -87,10 +96,7 @@ class TemplateMailer
         [$subjectText, $bodyText] = $template->textFor($locale);
 
         $subject = self::render($subjectText, $context);
-        $html = Str::markdown(self::render($bodyText, $context), [
-            'html_input' => 'escape',
-            'allow_unsafe_links' => false,
-        ]);
+        $html = self::renderHtml($bodyText, $context);
 
         // Staff emails, such as a new ticket or order, also go to the team's Telegram group.
         if (! $skipChat && str_starts_with($key, 'admin.')) {
@@ -118,10 +124,7 @@ class TemplateMailer
     public function sendText(string $email, string $name, string $subject, string $body, array $context = []): bool
     {
         $context += $this->baseContext();
-        $html = Str::markdown(self::render($body, $context), [
-            'html_input' => 'escape',
-            'allow_unsafe_links' => false,
-        ]);
+        $html = self::renderHtml($body, $context);
 
         try {
             Mail::to($email, $name)->locale(Locales::default())->send(new TemplatedMessage(self::render($subject, $context), $html));
@@ -141,11 +144,74 @@ class TemplateMailer
      */
     public static function render(string $text, array $context): string
     {
-        return (string) preg_replace_callback('/{{\s*([a-zA-Z0-9_.]+)\s*}}/', function (array $match) use ($context): string {
-            $value = data_get($context, $match[1]);
+        return (string) preg_replace_callback(self::PLACEHOLDER, fn (array $match): string => self::plainValue(data_get($context, $match[1])), $text);
+    }
 
-            return is_scalar($value) ? (string) $value : '';
-        }, $text);
+    /**
+     * The email body as HTML. The template is Markdown, but the values put into it stay plain
+     * text: a client's name or ticket message cannot add links, pictures or headings to an email
+     * that comes from the company. Only values wrapped in {@see MarkdownValue} are read as Markdown.
+     *
+     * @param  array<string, mixed>  $context
+     */
+    public static function renderHtml(string $markdown, array $context): string
+    {
+        // Each placeholder first becomes a word of letters and digits that Markdown leaves alone.
+        // An address in angle brackets, <{{ invoice.url }}>, is linked below like a bare one.
+        $markdown = (string) preg_replace('/<\s*({{\s*[a-zA-Z0-9_.]+\s*}})\s*>/', '$1', $markdown);
+        $seed = bin2hex(random_bytes(6));
+        $values = [];
+        $markdown = (string) preg_replace_callback(self::PLACEHOLDER, function (array $match) use ($context, $seed, &$values): string {
+            $values[] = [$match[1], data_get($context, $match[1])];
+
+            return 'NBPH'.$seed.(count($values) - 1).'Z';
+        }, $markdown);
+
+        $html = Str::markdown($markdown, self::MARKDOWN_OPTIONS);
+        $token = 'NBPH'.$seed.'(\d+)Z';
+
+        // A value alone in its paragraph: Markdown values become their own blocks (such as a
+        // list), and empty values leave no empty paragraph behind.
+        $html = (string) preg_replace_callback('#<p>'.$token.'</p>#', function (array $match) use ($values): string {
+            $value = $values[(int) $match[1]][1];
+
+            return match (true) {
+                $value instanceof MarkdownValue => rtrim(Str::markdown($value->markdown, self::MARKDOWN_OPTIONS)),
+                self::plainValue($value) === '' => '',
+                default => $match[0],
+            };
+        }, $html);
+
+        // Then the values go back in, escaped for where they stand: in a tag's attribute or in text.
+        $inLinkOrCode = 0;
+
+        return (string) preg_replace_callback('#<[^>]*>|'.$token.'#', function (array $match) use ($values, $token, &$inLinkOrCode): string {
+            if ($match[0][0] === '<') {
+                if (preg_match('#^<(a|code)[\s>]#i', $match[0])) {
+                    $inLinkOrCode++;
+                } elseif (preg_match('#^</(a|code)\s*>#i', $match[0]) && $inLinkOrCode > 0) {
+                    $inLinkOrCode--;
+                }
+
+                return self::fillAttributes($match[0], $token, $values);
+            }
+
+            [$key, $value] = $values[(int) $match[1]];
+
+            if ($value instanceof MarkdownValue) {
+                return rtrim(Str::inlineMarkdown($value->markdown, self::MARKDOWN_OPTIONS));
+            }
+
+            $text = self::plainValue($value);
+
+            // Links Nuvabill made, such as {{ invoice.url }} on its own, stay clickable. The address
+            // is the text, so nothing hides where it goes.
+            if ($inLinkOrCode === 0 && preg_match('/url$/i', $key) && preg_match('#^https?://[^\s<>"]+$#i', $text)) {
+                return '<a href="'.e($text).'">'.e($text).'</a>';
+            }
+
+            return nl2br(e($text));
+        }, $html);
     }
 
     /**
@@ -218,6 +284,42 @@ class TemplateMailer
                 'url' => route('client.tickets.show', $ticket),
             ],
         ]);
+    }
+
+    /**
+     * Placeholders in a tag's attributes, such as the address in [Pay now]({{ invoice.url }}).
+     * Addresses that could run code (javascript: and the like) are left out, as Markdown does.
+     *
+     * @param  list<array{0: string, 1: mixed}>  $values
+     */
+    private static function fillAttributes(string $tag, string $token, array $values): string
+    {
+        return (string) preg_replace_callback('#([a-zA-Z_:][-a-zA-Z0-9_:.]*)="([^"]*)"#', function (array $match) use ($token, $values): string {
+            if (! preg_match('#'.$token.'#', $match[2])) {
+                return $match[0];
+            }
+
+            $value = (string) preg_replace_callback(
+                '#'.$token.'#',
+                fn (array $placeholder): string => self::plainValue($values[(int) $placeholder[1]][1]),
+                html_entity_decode($match[2], ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+            );
+
+            if (in_array(strtolower($match[1]), ['href', 'src'], true) && RegexHelper::isLinkPotentiallyUnsafe($value)) {
+                $value = '';
+            }
+
+            return $match[1].'="'.e($value).'"';
+        }, $tag);
+    }
+
+    private static function plainValue(mixed $value): string
+    {
+        return match (true) {
+            $value instanceof MarkdownValue => $value->markdown,
+            is_scalar($value) => (string) $value,
+            default => '',
+        };
     }
 
     /**

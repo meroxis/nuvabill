@@ -96,6 +96,28 @@ class NetworkStatusTest extends TestCase
             ->assertDontSee('web7.example.test');
     }
 
+    public function test_an_incident_on_the_status_page_names_only_servers_shown_there(): void
+    {
+        $hidden = Server::factory()->create(['name' => 'Internal box', 'status_public' => false]);
+        $shown = Server::factory()->create(['name' => 'web7', 'status_name' => 'Shared hosting', 'status_public' => true, 'status_up' => true]);
+        $inactive = Server::factory()->create(['name' => 'Old box', 'status_public' => true, 'is_active' => false]);
+        $incident = NetworkIncident::factory()->create(['title' => 'Email is slow', 'server_ids' => [$hidden->id, $shown->id, $inactive->id]]);
+        $client = Client::factory()->create();
+        Service::factory()->for($client)->create(['server_id' => $hidden->id]);
+
+        $this->get(route('network.status'))->assertOk()->assertSee('Email is slow')->assertSee('Shared hosting')
+            ->assertDontSee('Internal box')->assertDontSee('Old box')->assertDontSee('web7');
+
+        // Resolved lately, too.
+        $incident->update(['status' => IncidentStatus::Resolved, 'resolved_at' => now()->subHour()]);
+        $this->get(route('network.status'))->assertOk()->assertSee('Email is slow')->assertSee('Shared hosting')
+            ->assertDontSee('Internal box')->assertDontSee('Old box');
+
+        // Clients on the hidden server are still told.
+        $incident->update(['status' => IncidentStatus::Investigating, 'resolved_at' => null]);
+        $this->actingAs($client, 'web')->get(route('client.dashboard'))->assertOk()->assertSee('Email is slow');
+    }
+
     public function test_staff_post_an_issue_with_updates_and_affected_clients_see_it(): void
     {
         $admin = Admin::factory()->withPermissions(['status.manage'])->create();

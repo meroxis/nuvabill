@@ -32,13 +32,18 @@ class SiteAddress
     }
 
     /**
-     * The full address of a path, in a language when it is not the site's default one.
+     * The full address of a path, in a language when it is not the site's default one, and on a
+     * page of a list after the first.
      */
-    public static function url(string $path, ?string $locale = null): string
+    public static function url(string $path, ?string $locale = null, ?int $page = null): string
     {
         $path = trim($path, '/');
         $url = self::root().($path === '' ? '/' : '/'.$path);
+        $query = http_build_query(array_filter([
+            'lang' => $locale !== null && $locale !== Locales::default() ? $locale : null,
+            'page' => $page !== null && $page > 1 ? $page : null,
+        ], fn (mixed $value): bool => $value !== null));
 
-        return $locale !== null && $locale !== Locales::default() ? $url.'?lang='.$locale : $url;
+        return $query === '' ? $url : $url.'?'.$query;
     }
 }

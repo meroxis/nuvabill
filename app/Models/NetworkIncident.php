@@ -94,6 +94,19 @@ class NetworkIncident extends Model
         return $ids === [] ? new Collection : Server::query()->whereIn('id', $ids)->orderBy('name')->get();
     }
 
+    /**
+     * The servers the public status page may name: the ones staff show there. Other servers'
+     * names are staff labels, so the page leaves them out.
+     *
+     * @return Collection<int, Server>
+     */
+    public function publicServers(): Collection
+    {
+        $ids = $this->serverIds();
+
+        return $ids === [] ? new Collection : Server::query()->whereIn('id', $ids)->where('is_active', true)->where('status_public', true)->orderBy('name')->get();
+    }
+
     public static function kindLabel(string $kind): string
     {
         return $kind === self::KIND_MAINTENANCE ? __('Planned maintenance') : __('Network issue');

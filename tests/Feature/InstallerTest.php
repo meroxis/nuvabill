@@ -2,7 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Enums\AutoSetup;
+use App\Enums\BillingCycle;
+use App\Models\Product;
+use App\Models\ProductGroup;
 use App\Support\Installer;
+use Database\Seeders\DemoCatalogSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use RuntimeException;
 use Tests\TestCase;
@@ -67,5 +72,28 @@ class InstallerTest extends TestCase
     {
         $this->get(route('install.welcome'))->assertNotFound();
         $this->get(route('install.account'))->assertNotFound();
+    }
+
+    public function test_example_plans_in_a_currency_without_usd_like_amounts_are_not_sold_automatically(): void
+    {
+        (new DemoCatalogSeeder)->run('IQD');
+
+        $plans = Product::query()->whereIn('slug', ['starter', 'business', 'pro'])->get();
+
+        $this->assertCount(3, $plans);
+        $this->assertFalse(Product::query()->visible()->whereIn('slug', ['starter', 'business', 'pro'])->exists());
+        $this->assertFalse(ProductGroup::query()->where('slug', 'web-hosting')->sole()->is_visible);
+        $plans->each(fn (Product $plan) => $this->assertSame(AutoSetup::Manual, $plan->auto_setup));
+    }
+
+    public function test_example_plans_in_usd_stay_on_sale(): void
+    {
+        (new DemoCatalogSeeder)->run('USD');
+
+        $plans = Product::query()->visible()->whereIn('slug', ['starter', 'business', 'pro'])->get();
+
+        $this->assertCount(3, $plans);
+        $plans->each(fn (Product $plan) => $this->assertSame(AutoSetup::OnPayment, $plan->auto_setup));
+        $this->assertSame(399, $plans->firstWhere('slug', 'starter')->priceFor('USD', BillingCycle::Monthly)->price);
     }
 }

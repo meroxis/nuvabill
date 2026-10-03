@@ -1,6 +1,6 @@
 @php
     $start = $product->startingPrice($currency);
-    $features = collect(preg_split('/\R/', (string) $product->description))->map(fn ($line) => trim($line, " \t-*•"))->filter()->take(6);
+    $features = collect(\App\Seo\SeoText::featureLines($product->description))->take(6);
 @endphp
 <article class="plan">
     <div>
@@ -13,6 +13,9 @@
                 {{ __('Free') }}
             @else
                 {{ money($start->price, $currency) }}<small>{{ $start->billing_cycle->suffix() }}</small>
+            @endif
+            @if ($start->setup_fee > 0)
+                <small style="display:block;margin-top:.35rem">{{ __('+ :fee setup', ['fee' => money($start->setup_fee, $currency)]) }}</small>
             @endif
         </div>
     @endif

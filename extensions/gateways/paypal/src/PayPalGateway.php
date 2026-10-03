@@ -502,7 +502,12 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
 
     public function forgetSaved(PaymentMethod $method): void
     {
-        $this->api()->delete($this->baseUrl().'/v3/vault/payment-tokens/'.rawurlencode($method->reference));
+        $response = $this->api()->delete($this->baseUrl().'/v3/vault/payment-tokens/'.rawurlencode($method->reference));
+
+        // An account PayPal no longer knows is already gone.
+        if ($response->failed() && $response->status() !== 404) {
+            throw new RuntimeException('PayPal could not remove the saved account: '.($response->json('details.0.description') ?? $response->json('message') ?? $response->status()));
+        }
     }
 
     /**

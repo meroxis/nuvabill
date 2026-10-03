@@ -6,10 +6,14 @@ export function kbSuggest(config) {
     return {
         articles: [],
         timer: null,
+        // The subject whose articles are on screen.
         lastQuery: '',
+        // Counts lookups, so an answer that comes back after the subject changed again is ignored.
+        seq: 0,
 
         lookup(value) {
             clearTimeout(this.timer);
+            const id = ++this.seq;
             const query = String(value || '').trim();
 
             if (query.length < 3) {
@@ -24,19 +28,22 @@ export function kbSuggest(config) {
                     return;
                 }
 
-                this.lastQuery = query;
-
                 try {
                     const response = await fetch(`${config.url}?q=${encodeURIComponent(query)}`, { headers: { Accept: 'application/json' } });
+                    const data = response.ok ? await response.json() : null;
 
-                    if (!response.ok) {
+                    if (id !== this.seq) {
                         return;
                     }
 
-                    const data = await response.json();
-                    this.articles = Array.isArray(data.articles) ? data.articles.slice(0, 5) : [];
+                    this.articles = data && Array.isArray(data.articles) ? data.articles.slice(0, 5) : [];
+                    // A failed lookup is tried again the next time.
+                    this.lastQuery = data ? query : '';
                 } catch {
-                    this.articles = [];
+                    if (id === this.seq) {
+                        this.articles = [];
+                        this.lastQuery = '';
+                    }
                 }
             }, 400);
         },

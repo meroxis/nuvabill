@@ -93,8 +93,13 @@ class HeadTags
             return $has('name="robots"') ? '' : '<meta name="robots" content="noindex, nofollow">';
         }
 
-        $lang = (string) $request->query('lang', '');
-        $canonical = SiteAddress::url($request->path(), isset(Locales::enabled()[$lang]) ? $lang : null);
+        // Odd values, such as ?lang[]=x, count as none.
+        $lang = $request->query('lang');
+        $lang = is_string($lang) && isset(Locales::enabled()[$lang]) ? $lang : null;
+        // Each page of a list, such as /announcements?page=2, is a page of its own.
+        $page = $request->query('page');
+        $page = is_string($page) && ctype_digit($page) && (int) $page > 1 ? (int) $page : null;
+        $canonical = SiteAddress::url($request->path(), $lang, $page);
 
         if (! $has('rel="canonical"')) {
             $tags[] = '<link rel="canonical" href="'.e($canonical).'">';
@@ -104,10 +109,10 @@ class HeadTags
 
         if (setting('seo.language_links') && count($locales) > 1 && ! $has('hreflang=')) {
             foreach ($locales as $locale) {
-                $tags[] = '<link rel="alternate" hreflang="'.e(Locales::htmlLang($locale)).'" href="'.e(SiteAddress::url($request->path(), $locale)).'">';
+                $tags[] = '<link rel="alternate" hreflang="'.e(Locales::htmlLang($locale)).'" href="'.e(SiteAddress::url($request->path(), $locale, $page)).'">';
             }
 
-            $tags[] = '<link rel="alternate" hreflang="x-default" href="'.e(SiteAddress::url($request->path())).'">';
+            $tags[] = '<link rel="alternate" hreflang="x-default" href="'.e(SiteAddress::url($request->path(), page: $page)).'">';
         }
 
         if (! $has('property="og:title"')) {
@@ -145,7 +150,12 @@ class HeadTags
         }
 
         foreach ($this->seo->data() as $data) {
-            $tags[] = '<script type="application/ld+json">'.json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP).'</script>';
+            // One broken character must not empty the whole block.
+            $json = json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP | JSON_INVALID_UTF8_SUBSTITUTE);
+
+            if ($json !== false) {
+                $tags[] = '<script type="application/ld+json">'.$json.'</script>';
+            }
         }
 
         return $tags === [] ? '' : implode("\n", $tags);

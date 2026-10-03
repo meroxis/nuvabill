@@ -25,7 +25,20 @@ class SeoText
             $pattern = self::DEFAULT_PATTERN;
         }
 
-        return trim(strtr($pattern, ['{page}' => $page, '{company}' => (string) setting('company.name')]), " \t·|-–—");
+        return self::trimEnds(strtr($pattern, ['{page}' => $page, '{company}' => (string) setting('company.name')]), " \t·|-–—");
+    }
+
+    /**
+     * The features in a product description, one per line, without the bullets around them.
+     *
+     * @return list<string>
+     */
+    public static function featureLines(?string $description): array
+    {
+        return array_values(array_filter(array_map(
+            fn (string $line): string => self::trimEnds($line, " \t-*•·"),
+            preg_split('/\R/u', (string) $description) ?: [],
+        ), fn (string $line): bool => $line !== ''));
     }
 
     public static function productTitle(Product $product): string
@@ -91,11 +104,7 @@ class SeoText
      */
     public static function suggestProductDescription(Product $product, ?string $currency = null): string
     {
-        $lines = array_values(array_filter(array_map(
-            fn (string $line): string => trim($line, " \t-*•·"),
-            preg_split('/\R/u', strip_tags((string) $product->description)) ?: [],
-        )));
-
+        $lines = self::featureLines(strip_tags((string) $product->description));
         $text = $product->name;
 
         if ($lines !== []) {
@@ -146,7 +155,18 @@ class SeoText
         $cut = mb_substr($text, 0, $limit - 1);
         $space = mb_strrpos($cut, ' ');
 
-        return rtrim($space !== false && $space > $limit * 0.6 ? mb_substr($cut, 0, $space) : $cut, ' ,.;:·').'…';
+        return self::trimEnds($space !== false && $space > $limit * 0.6 ? mb_substr($cut, 0, $space) : $cut, ' ,.;:·', start: false).'…';
+    }
+
+    /**
+     * trim() for every language. trim() removes single bytes, so "·" or "•" in its list also cut
+     * letters such as "р", "ط" or "✓" in half; this removes whole characters only.
+     */
+    private static function trimEnds(string $text, string $characters, bool $start = true): string
+    {
+        $set = '['.preg_quote($characters, '/').']+';
+
+        return (string) preg_replace('/'.($start ? '^'.$set.'|' : '').$set.'$/u', '', $text);
     }
 
     /**

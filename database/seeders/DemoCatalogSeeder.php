@@ -14,12 +14,21 @@ use Illuminate\Database\Seeder;
  */
 class DemoCatalogSeeder extends Seeder
 {
+    /**
+     * Currencies where the example prices (3.99, 8.99 and 15.99 a month) make sense. In others,
+     * such as IQD, they would cost almost nothing, so the plans stay hidden and are not set up
+     * on their own until staff set real prices.
+     */
+    private const PRICED_FOR = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'NZD', 'CHF', 'SGD'];
+
     public function run(string $currency = 'USD'): void
     {
+        $onSale = in_array(strtoupper($currency), self::PRICED_FOR, true);
+
         $group = ProductGroup::query()->firstOrCreate(['slug' => 'web-hosting'], [
             'name' => 'Web hosting',
             'description' => 'Fast cPanel hosting with free SSL and daily backups.',
-            'is_visible' => true,
+            'is_visible' => $onSale,
         ]);
 
         $plans = [
@@ -34,11 +43,11 @@ class DemoCatalogSeeder extends Seeder
                 'name' => $name,
                 'type' => ProductType::Hosting,
                 'description' => $features,
-                'is_visible' => true,
+                'is_visible' => $onSale,
                 'requires_domain' => true,
                 'server_module' => 'cpanel',
                 'module_config' => ['package' => $slug],
-                'auto_setup' => AutoSetup::OnPayment,
+                'auto_setup' => $onSale ? AutoSetup::OnPayment : AutoSetup::Manual,
                 'sort_order' => $order,
             ]);
 

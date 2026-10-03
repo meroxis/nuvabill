@@ -3,17 +3,23 @@
 namespace Tests\Feature;
 
 use App\Enums\ClientStatus;
+use App\Enums\QuoteStatus;
 use App\Enums\ServiceStatus;
 use App\Mail\TemplateMailer;
+use App\Models\ActivityLog;
 use App\Models\Admin;
 use App\Models\Client;
 use App\Models\Invoice;
+use App\Models\PaymentMethod;
+use App\Models\Quote;
 use App\Models\Service;
 use App\Models\Ticket;
 use App\Models\TicketDepartment;
+use App\Support\Activity;
 use App\Support\TicketDesk;
 use Database\Seeders\DefaultDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -101,6 +107,81 @@ class PrivacyTest extends TestCase
         $client->refresh();
         $this->assertSame('Erased', $client->first_name);
         $this->assertNull($client->company_name);
+    }
+
+    public function test_the_clients_own_copy_leaves_out_staff_tags_draft_quotes_and_staff_notes_in_the_log(): void
+    {
+        $client = Client::factory()->create(['first_name' => 'Raz', 'tags' => ['Abuse']]);
+        Quote::factory()->for($client)->create(['subject' => 'Unsent draft price', 'status' => QuoteStatus::Draft]);
+        Quote::factory()->for($client)->create(['subject' => 'Sent offer', 'status' => QuoteStatus::Sent]);
+        // Written while the client places an order, so the client is the actor.
+        Activity::log('order.review', 'Order #1 needs a review: The email address is from a throwaway email service.', $client, $client, $client);
+        Activity::log('service.module_failed', 'Could not create service #1: WHM API said quota exceeded', $client, $client, $client);
+        Activity::log('client.login', 'Raz signed in with a password', $client, $client, $client);
+
+        $ownJson = $this->actingAs($client, 'web')->get(route('client.account.data'))->assertOk()->streamedContent();
+        $own = json_decode($ownJson, true);
+
+        $this->assertArrayNotHasKey('tags', $own['profile']);
+        $this->assertSame(['Sent offer'], array_column($own['quotes'], 'subject'));
+        $this->assertStringNotContainsString('Unsent draft price', $ownJson);
+        $this->assertStringNotContainsString('throwaway email service', $ownJson);
+        $this->assertStringNotContainsString('WHM API said', $ownJson);
+        $this->assertContains('client.login', array_column($own['activity'], 'action'));
+
+        // Staff still get everything.
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.manage'])->create());
+        $staffJson = $this->get(route('admin.clients.data', $client))->assertOk()->streamedContent();
+        $staff = json_decode($staffJson, true);
+
+        $this->assertSame(['Abuse'], $staff['profile']['tags']);
+        $this->assertStringContainsString('Unsent draft price', $staffJson);
+        $this->assertContains('order.review', array_column($staff['activity'], 'action'));
+    }
+
+    public function test_erasing_removes_the_last_ip_and_personal_text_from_the_activity_log(): void
+    {
+        Mail::fake();
+        $client = Client::factory()->create(['first_name' => 'Mer', 'last_name' => 'Las', 'email' => 'merlas@example.test']);
+
+        $this->post(route('client.login'), ['email' => 'merlas@example.test', 'password' => 'password'], ['REMOTE_ADDR' => '203.0.113.5'])->assertSessionHasNoErrors();
+        $this->assertSame('203.0.113.5', $client->fresh()->last_login_ip);
+        app(TicketDesk::class)->open($client, TicketDepartment::query()->firstOrFail(), 'Home address change', 'I moved.');
+        auth('web')->logout();
+
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.manage'])->create());
+        $this->post(route('admin.clients.erase', $client), ['confirm' => 'ERASE'])->assertSessionHas('status')->assertSessionMissing('error');
+
+        $client->refresh();
+        $this->assertNull($client->last_login_ip);
+        $this->assertNull($client->last_login_at);
+
+        $tiedToClient = ActivityLog::query()->where(fn ($query) => $query->where('client_id', $client->id)
+            ->orWhere(fn ($query) => $query->where('actor_type', 'client')->where('actor_id', $client->id)));
+        $this->assertTrue((clone $tiedToClient)->where('action', 'client.login')->exists(), 'The entry itself stays for the audit trail.');
+        $this->assertSame(0, (clone $tiedToClient)->where('description', 'like', '%Mer Las%')->count());
+        $this->assertSame(0, (clone $tiedToClient)->where('description', 'like', '%Home address change%')->count());
+        $this->assertSame(0, (clone $tiedToClient)->whereNotNull('ip_address')->count());
+    }
+
+    public function test_erasing_tells_staff_about_a_card_the_gateway_did_not_remove(): void
+    {
+        $this->enableGateway('stripe', ['secret_key' => 'sk_test_123', 'webhook_secret' => 'whsec_test']);
+        Http::fake(['api.stripe.com/v1/payment_methods/pm_visa/detach' => Http::response(['error' => ['message' => 'Try again later']], 500)]);
+        $client = Client::factory()->create(['first_name' => 'Mer', 'last_name' => 'Las']);
+        PaymentMethod::query()->create([
+            'client_id' => $client->id, 'gateway' => 'stripe', 'type' => PaymentMethod::TYPE_CARD, 'reference' => 'pm_visa',
+            'customer_reference' => 'cus_merlas', 'brand' => 'visa', 'last4' => '4242', 'expires_month' => 8, 'expires_year' => 2028, 'is_default' => true,
+        ]);
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.manage'])->create());
+
+        $this->post(route('admin.clients.erase', $client), ['confirm' => 'ERASE'])
+            ->assertSessionHas('status')
+            ->assertSessionHas('error', 'The payment gateway did not remove these saved methods. Remove them there by hand: Visa •••• 4242 (stripe: pm_visa)');
+
+        $this->assertTrue($client->fresh()->isErased());
+        $this->assertSame(0, PaymentMethod::query()->count());
+        $this->assertStringContainsString('Visa •••• 4242 (stripe: pm_visa)', (string) ActivityLog::query()->where('action', 'client.erased')->value('description'));
     }
 
     public function test_clients_ask_for_erasure_with_one_ticket(): void

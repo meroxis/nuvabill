@@ -443,7 +443,12 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
 
     public function forgetSaved(PaymentMethod $method): void
     {
-        $this->api()->asForm()->post(self::API.'/payment_methods/'.rawurlencode($method->reference).'/detach');
+        $response = $this->api()->asForm()->post(self::API.'/payment_methods/'.rawurlencode($method->reference).'/detach');
+
+        // A card Stripe no longer knows is already gone.
+        if ($response->failed() && $response->status() !== 404) {
+            throw new RuntimeException('Stripe could not remove the saved card: '.($response->json('error.message') ?? $response->status()));
+        }
     }
 
     /**

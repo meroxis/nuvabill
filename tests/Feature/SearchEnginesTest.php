@@ -5,14 +5,17 @@ namespace Tests\Feature;
 use App\Health\SiteHealth;
 use App\Health\Status;
 use App\Models\Admin;
+use App\Models\Announcement;
 use App\Models\HealthRun;
 use App\Models\Product;
 use App\Models\ProductGroup;
 use App\Models\SeoRedirect;
+use App\Seo\SeoText;
 use App\Seo\ShareImage;
 use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
@@ -47,6 +50,56 @@ class SearchEnginesTest extends TestCase
         $this->assertSame('Business Plan', $productData['name']);
         $this->assertSame(['@type' => 'Offer', 'price' => '8.99', 'priceCurrency' => 'USD', 'availability' => 'https://schema.org/InStock', 'url' => url('/').'/'.$product->storePath()], $productData['offers']);
         $this->assertCount(3, collect($data)->firstWhere('@type', 'BreadcrumbList')['itemListElement']);
+    }
+
+    public function test_multibyte_company_names_and_bullets_keep_titles_and_product_data_intact(): void
+    {
+        app(Settings::class)->setMany(['company.name' => '云科技']);
+        $product = Product::factory()->priced(899)->create(['name' => 'Business Plan', 'description' => "✓ 10 GB storage\n✓ Free SSL"]);
+
+        $html = $this->get(route('store.product', [$product->group, $product]))->assertOk()->getContent();
+
+        $this->assertTrue(mb_check_encoding($html, 'UTF-8'));
+        $this->assertStringContainsString('<title>Business Plan · 云科技</title>', $html);
+        $this->assertStringContainsString('<meta name="description" content="Business Plan: ✓ 10 GB storage, ✓ Free SSL. From $8.99/mo.">', $html);
+        $this->assertSame('Business Plan: ✓ 10 GB storage, ✓ Free SSL. From $8.99/mo.', collect($this->structuredData($html))->firstWhere('@type', 'Product')['description']);
+
+        app(Settings::class)->setMany(['company.name' => 'Хостер']);
+        $this->get(route('store.product', [$product->group, $product]))->assertSee('<title>Business Plan · Хостер</title>', false);
+    }
+
+    public function test_shortened_text_is_cut_by_characters_not_bytes(): void
+    {
+        $text = SeoText::limit(str_repeat('a', 150).' заказ без доставки и прочего', 160);
+
+        $this->assertTrue(mb_check_encoding($text, 'UTF-8'));
+        $this->assertStringEndsWith(' заказ…', $text);
+        $this->assertSame(['✓ 10 GB SSD', 'استضافة مجانية', 'Free SSL™', '€5 credit'], SeoText::featureLines("- ✓ 10 GB SSD\n• استضافة مجانية\n\n * Free SSL™ \n€5 credit"));
+    }
+
+    public function test_an_array_lang_parameter_is_ignored_and_not_reported(): void
+    {
+        Exceptions::fake();
+
+        $this->get('/?lang[]=1')->assertOk()->assertSee('<link rel="canonical" href="'.url('/').'/">', false);
+
+        Exceptions::assertNothingReported();
+    }
+
+    public function test_paginated_announcement_pages_keep_their_page_in_the_canonical_address(): void
+    {
+        app(Settings::class)->setMany(['announcements.enabled' => true, 'locale.enabled' => ['en', 'de']]);
+        Announcement::factory()->count(11)->create();
+        $address = url('/').'/announcements';
+
+        $this->get(route('announcements.index', ['page' => 2]))->assertOk()
+            ->assertSee('<link rel="canonical" href="'.$address.'?page=2">', false)
+            ->assertSee('<link rel="alternate" hreflang="de" href="'.$address.'?lang=de&amp;page=2">', false);
+        $this->get(route('announcements.index', ['lang' => 'de', 'page' => 2]))->assertSee('<link rel="canonical" href="'.$address.'?lang=de&amp;page=2">', false);
+
+        foreach (['page=1', 'page=abc', 'page[]=2'] as $query) {
+            $this->get('/announcements?'.$query)->assertOk()->assertSee('<link rel="canonical" href="'.$address.'">', false);
+        }
     }
 
     public function test_titles_and_descriptions_written_by_staff_replace_the_theme_ones(): void

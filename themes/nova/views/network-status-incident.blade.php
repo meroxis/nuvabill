@@ -1,6 +1,6 @@
 {{-- One issue or maintenance on the network status page, with its updates. --}}
 @php
-    $affected = $incident->servers();
+    $affected = $incident->publicServers();
 @endphp
 <div class="incident">
     <div class="incident-head">

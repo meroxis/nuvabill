@@ -31,11 +31,15 @@ class ClientPrivacyController extends Controller
         $request->validate(['confirm' => ['required', 'in:ERASE']], ['confirm.in' => __('Type ERASE to confirm.')]);
 
         try {
-            $privacy->erase($client, $request->user('admin'));
+            $leftAtGateway = $privacy->erase($client, $request->user('admin'));
         } catch (InvalidArgumentException $exception) {
             return back()->with('error', $exception->getMessage());
         }
 
-        return redirect()->route('admin.clients.show', $client)->with('status', __('Personal data erased. Invoices and payments stay, as the law requires.'));
+        $redirect = redirect()->route('admin.clients.show', $client)->with('status', __('Personal data erased. Invoices and payments stay, as the law requires.'));
+
+        return $leftAtGateway === [] ? $redirect : $redirect->with('error', __('The payment gateway did not remove these saved methods. Remove them there by hand: :methods', [
+            'methods' => implode(', ', $leftAtGateway),
+        ]));
     }
 }

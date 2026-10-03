@@ -2,6 +2,7 @@ import Alpine from 'alpinejs';
 import automationEditor from './automation-editor';
 import { aiMessage, productAi, ticketAi } from './ai-help';
 import { whatsappConnect } from './chat-apps';
+import { showCopied } from './copy-button';
 import { kbSuggest } from './kb-suggest';
 import { phoneApp, registerAdminApp } from './phone-app';
 
@@ -65,6 +66,8 @@ document.addEventListener('change', (event) => {
 /**
  * Copy buttons: <button data-copy="text to copy">.
  */
+const copyTimers = new WeakMap();
+
 document.addEventListener('click', async (event) => {
     const button = event.target instanceof Element ? event.target.closest('[data-copy]') : null;
 
@@ -74,11 +77,7 @@ document.addEventListener('click', async (event) => {
 
     try {
         await navigator.clipboard.writeText(button.dataset.copy);
-        const label = button.textContent;
-        button.textContent = button.dataset.copied || 'Copied';
-        setTimeout(() => {
-            button.textContent = label;
-        }, 1500);
+        showCopied(button, copyTimers);
     } catch {
         window.prompt('Copy this text:', button.dataset.copy);
     }

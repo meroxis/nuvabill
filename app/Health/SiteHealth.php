@@ -15,6 +15,7 @@ use App\Health\Checks\SearchSharingChecks;
 use App\Health\Checks\SettingsChecks;
 use App\Health\Checks\StaffChecks;
 use App\Health\Checks\UpkeepChecks;
+use App\Mail\MarkdownValue;
 use App\Mail\TemplateMailer;
 use App\Models\Admin;
 use App\Models\HealthIgnore;
@@ -283,7 +284,7 @@ class SiteHealth
             if ($admin->hasPermission('security.manage')) {
                 app(TemplateMailer::class)->sendTo('admin.security_alert', $admin->email, $admin->name, [
                     'staff' => ['name' => $admin->name],
-                    'issues' => $issues,
+                    'issues' => new MarkdownValue($issues),
                     'score' => $run->security_score ?? '—',
                     'admin_url' => route('admin.health.index'),
                     TemplateMailer::SKIP_CHAT_KEY => $chatSent,
