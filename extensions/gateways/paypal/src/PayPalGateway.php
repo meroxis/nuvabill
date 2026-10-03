@@ -18,6 +18,7 @@ use App\Support\Money;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
@@ -220,6 +221,14 @@ class PayPalGateway extends Gateway implements SavesPaymentMethods
             return false;
         }
 
+        // PayPal signs every webhook. Without its signature headers there is nothing to check, so
+        // a forged message costs no call to PayPal.
+        foreach (['PAYPAL-AUTH-ALGO', 'PAYPAL-CERT-URL', 'PAYPAL-TRANSMISSION-ID', 'PAYPAL-TRANSMISSION-SIG', 'PAYPAL-TRANSMISSION-TIME'] as $header) {
+            if (blank($request->header($header))) {
+                return false;
+            }
+        }
+
         $response = $this->api()->post($this->baseUrl().'/v1/notifications/verify-webhook-signature', [
             'auth_algo' => $request->header('PAYPAL-AUTH-ALGO'),
             'cert_url' => $request->header('PAYPAL-CERT-URL'),
@@ -364,16 +373,34 @@ class PayPalGateway extends Gateway implements SavesPaymentMethods
 
     private function api(): PendingRequest
     {
-        $token = Http::asForm()
+        return Http::withToken($this->accessToken())->timeout(30)->acceptJson();
+    }
+
+    /**
+     * PayPal's access token, kept (encrypted) until shortly before it expires, so each call does not
+     * ask PayPal for a new one.
+     */
+    private function accessToken(): string
+    {
+        $key = 'nuvabill.paypal.token.'.hash('sha256', $this->baseUrl().'|'.$this->setting('client_id').'|'.$this->setting('client_secret'));
+        $token = rescue(fn () => Crypt::decryptString((string) Cache::get($key)), report: false);
+
+        if (is_string($token) && $token !== '') {
+            return $token;
+        }
+
+        $response = Http::asForm()
             ->withBasicAuth((string) $this->setting('client_id'), (string) $this->setting('client_secret'))
             ->timeout(30)
-            ->post($this->baseUrl().'/v1/oauth2/token', ['grant_type' => 'client_credentials'])
-            ->json('access_token');
+            ->post($this->baseUrl().'/v1/oauth2/token', ['grant_type' => 'client_credentials']);
+        $token = $response->json('access_token');
 
-        if (! is_string($token)) {
+        if (! is_string($token) || $token === '') {
             throw new RuntimeException('PayPal rejected the Client ID or Secret.');
         }
 
-        return Http::withToken($token)->timeout(30)->acceptJson();
+        Cache::put($key, Crypt::encryptString($token), max(60, (int) $response->json('expires_in') - 300));
+
+        return $token;
     }
 }

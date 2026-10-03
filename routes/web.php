@@ -67,7 +67,8 @@ Route::get('preview/{kind}/{slug}', [PreviewController::class, 'start'])->whereI
 
 Route::get('store-api/domains', [QuickOrderController::class, 'domains'])->middleware('throttle:30,1')->name('store.api.domains');
 Route::post('store-api/quote', [QuickOrderController::class, 'quote'])->middleware('throttle:120,1')->name('store.api.quote');
-Route::post('order', [QuickOrderController::class, 'store'])->middleware(['throttle:10,1', 'auth.session', 'client.active', 'client.two-factor', 'captcha:checkout'])->name('order.store');
+// A guest who orders also creates an account: 5 a minute like the sign-up form (10 when signed in).
+Route::post('order', [QuickOrderController::class, 'store'])->middleware(['throttle:5|10,1', 'auth.session', 'client.active', 'client.two-factor', 'captcha:checkout'])->name('order.store');
 
 Route::get('checkout', [CheckoutController::class, 'show'])->name('checkout.show');
 Route::post('checkout', [CheckoutController::class, 'store'])->middleware(['auth:web', 'auth.session', 'client.active', 'client.two-factor', 'captcha:checkout'])->name('checkout.store');

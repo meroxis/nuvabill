@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Store;
 use App\Auth\ClientRegistrar;
 use App\Billing\Cart;
 use App\Billing\CartLine;
+use App\Billing\CouponLookups;
 use App\Billing\ExchangeRates;
 use App\Billing\OrderPlacer;
 use App\Billing\PaymentStarter;
@@ -20,6 +21,7 @@ use App\Models\Client;
 use App\Models\Domain;
 use App\Models\Product;
 use App\Models\TldPrice;
+use App\Security\Captcha;
 use App\Support\Demo;
 use App\Support\Locales;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -63,8 +65,20 @@ class QuickOrderController extends Controller
     {
         $data = $this->validateOrder($request, forQuote: true);
         $country = preg_match('/^[A-Za-z]{2}$/', (string) $request->input('country')) ? (string) $request->input('country') : null;
+        // Price checks must not become a way to guess coupon codes.
+        $tooManyCoupons = filled($data['coupon'] ?? null) && ! CouponLookups::allow($request->ip(), (string) $data['coupon']);
 
-        return response()->json($this->priceOrder($data, $request->user('web'), $country, $request->string('state')->limit(100, '')->toString()));
+        if ($tooManyCoupons) {
+            $data['coupon'] = null;
+        }
+
+        $quote = $this->priceOrder($data, $request->user('web'), $country, $request->string('state')->limit(100, '')->toString());
+
+        if ($tooManyCoupons) {
+            $quote['coupon_problem'] = __('Too many coupon codes were tried. Wait a minute, then try again.');
+        }
+
+        return response()->json($quote);
     }
 
     /**
@@ -150,6 +164,7 @@ class QuickOrderController extends Controller
         $client = $request->user('web');
 
         if ($client === null) {
+            $this->verifySignUpCaptcha($request);
             $client = $registrar->register($request->validate(ClientRegistrar::rules(confirmPassword: false)));
             Auth::guard('web')->login($client);
             $request->session()->regenerate();
@@ -184,6 +199,20 @@ class QuickOrderController extends Controller
         return $invoice->isPayable()
             ? redirect()->route('client.invoices.show', $invoice)->with('status', __('Thank you! Order #:number is placed. Pay the invoice below to start your service.', ['number' => $order->number]))
             : redirect()->route('client.dashboard')->with('status', __('Thank you! Order #:number is placed.', ['number' => $order->number]));
+    }
+
+    /**
+     * A guest who orders also creates an account, so the "Create an account" CAPTCHA applies here
+     * too. When checkout has its own CAPTCHA, the route has already checked the token, and a token
+     * works only once.
+     */
+    private function verifySignUpCaptcha(Request $request): void
+    {
+        $captcha = app(Captcha::class);
+
+        if ($captcha->protects('client_register') && ! $captcha->protects('checkout') && ! $captcha->verify($request)) {
+            throw ValidationException::withMessages(['captcha' => __('Please confirm you are a person, then try again.')]);
+        }
     }
 
     /**

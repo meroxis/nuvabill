@@ -79,6 +79,10 @@ class Installer
      */
     public function setUpDatabase(array $data): void
     {
+        if ($this->hasStaff()) {
+            throw new RuntimeException(__('Nuvabill is already installed on this database.'));
+        }
+
         $sqlitePath = filled($data['sqlite_path'] ?? null) ? (string) $data['sqlite_path'] : database_path('database.sqlite');
 
         $connection = $data['driver'] === 'mysql'
@@ -162,15 +166,30 @@ class Installer
     }
 
     /**
-     * Create the owner account and company details, and close the installer.
+     * Whether the database already has a staff account. Then Nuvabill is installed, and the
+     * installer must never create or change an account.
+     */
+    public function hasStaff(): bool
+    {
+        return Installation::databaseHasStaff();
+    }
+
+    /**
+     * Create the owner account and company details, and close the installer. Only for a database
+     * without staff accounts: it never changes an existing account.
      *
      * @param  array{company_name: string, company_email: string, currency: string, name: string, email: string, password: string, demo_products?: bool}  $data
      */
     public function finish(array $data): Admin
     {
+        if ($this->hasStaff()) {
+            throw new RuntimeException(__('Nuvabill is already installed on this database.'));
+        }
+
         $owner = Role::query()->get()->first(fn (Role $role): bool => $role->isOwner());
 
-        $admin = Admin::query()->updateOrCreate(['email' => $data['email']], [
+        $admin = Admin::query()->create([
+            'email' => $data['email'],
             'name' => $data['name'],
             'password' => $data['password'],
             'role_id' => $owner?->id,

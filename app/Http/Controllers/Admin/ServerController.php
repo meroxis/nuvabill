@@ -9,7 +9,9 @@ use App\Provisioning\Provisioner;
 use App\Support\Activity;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class ServerController extends Controller
@@ -47,14 +49,25 @@ class ServerController extends Controller
     public function update(Request $request, Server $server, ExtensionManager $extensions): RedirectResponse
     {
         $data = $this->validated($request, $extensions);
+        $server->fill(Arr::except($data, ['password', 'api_token']));
+
+        // A saved password or token is only ever sent to the server it was entered for. When the
+        // address or module changes, both must be entered again, so an old secret never goes to a new host.
+        $addressChanged = $server->isDirty(['module', 'hostname', 'port', 'use_ssl', 'username']);
+
+        if ($addressChanged && blank($data['password'] ?? null) && blank($data['api_token'] ?? null) && (filled($server->password) || filled($server->api_token))) {
+            throw ValidationException::withMessages(['api_token' => __('The server address, port, SSL, user name or module changed. Enter the API token or password again.')]);
+        }
 
         foreach (['password', 'api_token'] as $secret) {
-            if (blank($data[$secret] ?? null)) {
-                unset($data[$secret]);
+            if (filled($data[$secret] ?? null)) {
+                $server->{$secret} = $data[$secret];
+            } elseif ($addressChanged) {
+                $server->{$secret} = null;
             }
         }
 
-        $server->update($data);
+        $server->save();
         Activity::log('server.updated', "Server {$server->name} updated", $server);
 
         return redirect()->route('admin.servers.index')->with('status', __('Server saved.'));

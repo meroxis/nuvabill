@@ -1,8 +1,10 @@
 @props(['form', 'always' => false])
-{{-- The CAPTCHA widget for a form, when staff turned it on for that form. "always" shows it whenever a provider is set (settings check). --}}
+{{-- The CAPTCHA widget for a form, when staff turned it on for that form. "always" shows it whenever a provider is set (settings check).
+     A guest who checks out also creates an account, so the "Create an account" CAPTCHA shows for them at checkout too. --}}
 @php
     $captcha = app(\App\Security\Captcha::class);
-    $details = $always ? $captcha->details((string) setting('security.captcha_provider')) : ($captcha->protects($form) ? $captcha->details() : null);
+    $protected = $captcha->protects($form) || ($form === 'checkout' && auth('web')->guest() && $captcha->protects('client_register'));
+    $details = $always ? $captcha->details((string) setting('security.captcha_provider')) : ($protected ? $captcha->details() : null);
 @endphp
 @if ($details && $captcha->siteKey() !== '')
     <div class="field captcha-field">

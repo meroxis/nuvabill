@@ -83,6 +83,13 @@ class AppServiceProvider extends ServiceProvider
             URL::forceScheme('https');
         }
 
+        // Links in pages and emails (such as password reset links) use the site's own address when a
+        // visitor sends another host name, so a faked Host header cannot point them at another site.
+        // The installer runs before the address is saved.
+        if (Installation::isInstalled()) {
+            URL::formatHostUsing(fn (string $root): string => self::linkRoot($root));
+        }
+
         Relation::enforceMorphMap([
             'admin' => Admin::class,
             'automation' => Automation::class,
@@ -116,6 +123,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->make(ExtensionManager::class)->registerViews();
 
         RateLimiter::for('api-v1', fn (Request $request): Limit => Limit::perMinute(120)->by($request->bearerToken() ? hash('sha256', $request->bearerToken()) : (string) $request->ip()));
+        // Payment notifications: each one can make the gateway call its provider, so one sender cannot flood them.
+        RateLimiter::for('gateway-webhooks', fn (Request $request): Limit => Limit::perMinute(240)->by($request->route('gateway').'|'.$request->ip()));
 
         if (Installation::isInstalled()) {
             $this->applySettingsToConfig();
@@ -134,6 +143,24 @@ class AppServiceProvider extends ServiceProvider
             Http::allowStrayRequests([Rdap::BOOTSTRAP_URL, 'https://rdap.*', 'https://*.rdap.*', 'https://*/rdap/*', config('nuvabill.marketplace.url').'/api/marketplace/v1/catalog*']);
             Demo::fakeServers();
         }
+    }
+
+    /**
+     * The start of a link. The visitor's own host name is kept when it is this site's address
+     * (APP_URL, with or without "www."). Any other host name a visitor sent becomes APP_URL.
+     * A root set on purpose with URL::forceRootUrl() is kept.
+     */
+    private static function linkRoot(string $root): string
+    {
+        $appUrl = rtrim((string) config('app.url'), '/');
+        $siteHost = strtolower((string) parse_url($appUrl, PHP_URL_HOST));
+        $host = strtolower((string) parse_url($root, PHP_URL_HOST));
+
+        if ($siteHost === '' || $host === '' || in_array($siteHost, [$host, 'www.'.$host], true) || $host === 'www.'.$siteHost) {
+            return $root;
+        }
+
+        return $host === strtolower(request()->getHost()) ? $appUrl : $root;
     }
 
     /**
@@ -194,15 +221,29 @@ class AppServiceProvider extends ServiceProvider
             return;
         }
 
-        config([
+        config(self::mailConfig($settings));
+    }
+
+    /**
+     * Laravel's mail config for the saved email settings. With "TLS" or "SSL" the connection must be
+     * encrypted: a server that does not offer STARTTLS fails instead of getting the password in plain text.
+     *
+     * @return array<string, mixed>
+     */
+    public static function mailConfig(Settings $settings): array
+    {
+        $encryption = $settings->get('mail.encryption');
+
+        return [
             'mail.default' => $settings->get('mail.mailer'),
             'mail.mailers.smtp.host' => $settings->get('mail.host'),
             'mail.mailers.smtp.port' => (int) $settings->get('mail.port'),
             'mail.mailers.smtp.username' => $settings->get('mail.username'),
             'mail.mailers.smtp.password' => $settings->get('mail.password'),
-            'mail.mailers.smtp.scheme' => $settings->get('mail.encryption') === 'ssl' ? 'smtps' : null,
+            'mail.mailers.smtp.scheme' => $encryption === 'ssl' ? 'smtps' : null,
+            'mail.mailers.smtp.require_tls' => $encryption !== 'none',
             'mail.from.address' => $settings->get('mail.from_address'),
             'mail.from.name' => $settings->get('mail.from_name'),
-        ]);
+        ];
     }
 }

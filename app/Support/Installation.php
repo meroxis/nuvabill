@@ -3,6 +3,8 @@
 namespace App\Support;
 
 use Illuminate\Encryption\Encrypter;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
@@ -18,7 +20,32 @@ class Installation
             return filter_var($override, FILTER_VALIDATE_BOOL);
         }
 
-        return is_file(self::lockPath());
+        if (is_file(self::lockPath())) {
+            return true;
+        }
+
+        // The lock file can get lost (a database restore on a fresh upload, a new server, a storage
+        // folder that was not copied). A database that already has staff accounts is installed, so the
+        // installer must stay closed: put the lock back.
+        if (self::databaseHasStaff()) {
+            rescue(fn () => self::markInstalled(), report: false);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether the database in .env already has a staff account.
+     */
+    public static function databaseHasStaff(): bool
+    {
+        try {
+            return Schema::hasTable('admins') && DB::table('admins')->exists();
+        } catch (Throwable) {
+            return false;
+        }
     }
 
     public static function lockPath(): string

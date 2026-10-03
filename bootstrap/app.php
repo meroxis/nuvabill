@@ -21,6 +21,7 @@ use App\Http\Middleware\ProtectDemo;
 use App\Http\Middleware\RedirectToInstaller;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
+use App\Http\Middleware\ThrottleRequests;
 use App\Http\Middleware\TrackAffiliateLink;
 use App\Http\Middleware\VerifyCaptcha;
 use App\Models\SeoRedirect;
@@ -57,6 +58,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
             Route::post('webhooks/{gateway}', WebhookController::class)
                 ->where('gateway', '[a-z0-9_-]+')
+                ->middleware('throttle:gateway-webhooks')
                 ->name('webhooks.gateway');
 
             // Chat apps: messages from Telegram and WhatsApp.
@@ -102,8 +104,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->web(append: [AddSearchEngineTags::class, AddSiteIcon::class, RedirectToInstaller::class, SetLocale::class, ProtectDemo::class, ApplyThemePreview::class, ApplyCouponFromLink::class, TrackAffiliateLink::class]);
 
-        // The proxy list comes from config/trustedproxy.php. Only the visitor IP and HTTPS
-        // headers are read, so a visitor cannot fake the host name in links and emails.
+        // The proxy list comes from config/trustedproxy.php. Only the visitor IP and HTTPS headers are
+        // read, never X-Forwarded-Host. Links and emails use APP_URL for any other host name a visitor
+        // sends (see AppServiceProvider), so a faked Host header cannot change them either.
         $middleware->trustProxies(headers: Request::HEADER_X_FORWARDED_FOR | Request::HEADER_X_FORWARDED_PROTO);
 
         $middleware->replace(
@@ -117,6 +120,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'client.active' => EnsureClientIsActive::class,
             'client.two-factor' => EnsureClientTwoFactor::class,
             'captcha' => VerifyCaptcha::class,
+            // Each route gets its own counter, so quick price checks never use up the order or sign-in limit.
+            'throttle' => ThrottleRequests::class,
         ]);
 
         $middleware->redirectGuestsTo(fn (Request $request): string => $request->routeIs('admin.*')

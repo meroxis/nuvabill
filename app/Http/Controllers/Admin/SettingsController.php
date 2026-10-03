@@ -139,8 +139,18 @@ class SettingsController extends Controller
             'mail.from_name' => $data['from_name'],
         ];
 
+        // The saved password only ever goes to the mail server it was entered for.
+        $serverChanged = mb_strtolower(trim((string) $settings->get('mail.host'))) !== mb_strtolower(trim($values['mail.host']))
+            || (int) $settings->get('mail.port') !== $values['mail.port'];
+
         if (filled($data['password'] ?? null)) {
             $values['mail.password'] = $data['password'];
+        } elseif ($serverChanged && filled($settings->get('mail.password'))) {
+            if ($data['mailer'] === 'smtp') {
+                return back()->withInput($request->except('password'))->withErrors(['password' => __('Enter the password again, because the mail server changed.')]);
+            }
+
+            $values['mail.password'] = '';
         }
 
         $settings->setMany($values);

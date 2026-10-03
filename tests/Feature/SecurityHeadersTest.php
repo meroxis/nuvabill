@@ -75,6 +75,18 @@ class SecurityHeadersTest extends TestCase
         $this->assertSame('198.51.100.7', $admin->fresh()->last_login_ip);
     }
 
+    public function test_a_forge_host_name_does_not_make_forwarded_ips_trusted(): void
+    {
+        config(['trustedproxy.proxies' => (require config_path('trustedproxy.php'))['proxies']]);
+        $admin = Admin::factory()->create(['name' => 'Mer Las', 'email' => 'owner@example.test']);
+
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.7'])
+            ->withHeaders(['X-Forwarded-For' => '203.0.113.9'])
+            ->post('http://x.on-forge.com/'.config('nuvabill.admin_path').'/login', ['email' => 'owner@example.test', 'password' => 'password']);
+
+        $this->assertSame('198.51.100.7', $admin->fresh()->last_login_ip);
+    }
+
     /**
      * @param  list<string>|string|null  $expected
      */
@@ -96,7 +108,7 @@ class SecurityHeadersTest extends TestCase
     public static function proxySettings(): array
     {
         return [
-            'not set' => ['', null],
+            'not set' => ['', []],
             'cloudflare' => ['cloudflare', Cloudflare::IP_RANGES],
             'any proxy' => ['*', '*'],
             'a list' => ['10.0.0.1, 10.1.0.0/16', ['10.0.0.1', '10.1.0.0/16']],

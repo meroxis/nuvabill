@@ -11,6 +11,7 @@ use App\Support\Activity;
 use App\Support\Countries;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -50,8 +51,9 @@ class ClientController extends Controller
             'password' => ['nullable', Password::min(8)],
         ]);
 
-        $client = Client::create($data + [
-            'password' => $data['password'] ?? Str::random(40),
+        // No password (left out, null or empty): a random one. The client sets their own with "Forgot password".
+        $client = Client::create(Arr::except($data, ['password']) + [
+            'password' => filled($data['password'] ?? null) ? $data['password'] : Str::password(24),
             'currency' => setting('billing.currency'),
             'status' => ClientStatus::Active,
         ]);
