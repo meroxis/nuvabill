@@ -3,16 +3,19 @@
 namespace Tests\Feature;
 
 use App\Automations\Runner;
+use App\Automations\Steps\CallWebhook;
 use App\Automations\Templates;
 use App\Billing\InvoiceManager;
 use App\Billing\PaymentRecorder;
 use App\Enums\InvoiceStatus;
 use App\Enums\TicketPriority;
+use App\Events\ClientRegistered;
 use App\Mail\TemplatedMessage;
 use App\Models\Admin;
 use App\Models\Automation;
 use App\Models\AutomationRun;
 use App\Models\Client;
+use App\Models\Domain;
 use App\Models\Invoice;
 use App\Models\TicketDepartment;
 use App\Support\TicketDesk;
@@ -195,6 +198,148 @@ class AutomationsTest extends TestCase
 
         $this->assertSame(['VIP', 'reseller'], $client->refresh()->tagList());
         $this->get(route('admin.clients.show', $client))->assertSee('reseller');
+    }
+
+    public function test_a_domain_expiring_automation_runs_again_after_the_domain_is_renewed(): void
+    {
+        Mail::fake();
+        $this->automation('domain.expiring', 30, [['type' => 'send_email', 'config' => ['subject' => 'Renew {{ domain.name }}', 'body' => 'Please renew.']]]);
+        $domain = Domain::factory()->for(Client::factory()->create(['first_name' => 'Raz']))->expiringOn(today()->addDays(20))->create();
+
+        app(Runner::class)->scan(today()->toImmutable());
+        app(Runner::class)->scan(today()->toImmutable());
+
+        $this->assertSame(1, AutomationRun::query()->count());
+        Mail::assertSent(TemplatedMessage::class, 1);
+
+        // Renewed for a year: the same domain expires again next year, and gets its reminder again.
+        $domain->update(['expires_at' => $domain->expires_at->addYear()]);
+        $this->travel(1)->years();
+        app(Runner::class)->scan(today()->toImmutable());
+
+        $this->assertSame(2, AutomationRun::query()->count());
+        Mail::assertSent(TemplatedMessage::class, 2);
+        Mail::assertSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => $mail->subjectLine === 'Renew '.$domain->name);
+    }
+
+    public function test_runs_started_before_occasions_were_in_the_key_are_not_started_again(): void
+    {
+        $automation = $this->automation('invoice.overdue', 7, Templates::find('late-fee')['steps']);
+        $invoice = $this->invoice(Client::factory()->create(['first_name' => 'Raz']), 5000, 9);
+        // Started yesterday by the earlier version, whose key had no due date in it.
+        AutomationRun::query()->forceCreate([
+            'automation_id' => $automation->id,
+            'subject_type' => $invoice->getMorphClass(),
+            'subject_id' => $invoice->id,
+            'status' => AutomationRun::WAITING,
+            'step' => 2,
+            'resume_at' => now()->addDays(6),
+            'dedupe_key' => 'a'.$automation->id.':'.$invoice->getMorphClass().':'.$invoice->id.':d7',
+            'created_at' => now()->subDay(),
+        ]);
+
+        $this->assertSame(0, app(Runner::class)->scan(today()->toImmutable()));
+
+        $this->assertSame(1, AutomationRun::query()->count());
+        $this->assertSame(5000, $invoice->refresh()->total, 'No second late fee.');
+    }
+
+    public function test_the_daily_check_starts_every_due_subject_not_only_the_first_500(): void
+    {
+        $automation = $this->automation('invoice.overdue', 7, [['type' => 'wait', 'config' => ['amount' => '1', 'unit' => 'days']]]);
+        Invoice::factory()->count(510)->overdue(9)->for(Client::factory()->create(['first_name' => 'Raz']))->create();
+
+        $this->assertSame(510, app(Runner::class)->scan(today()->toImmutable()));
+        $this->assertSame(510, AutomationRun::query()->where('automation_id', $automation->id)->count());
+
+        $this->travel(1)->days();
+        $this->assertSame(0, app(Runner::class)->scan(today()->toImmutable()), 'Nothing starts twice.');
+    }
+
+    public function test_changing_the_steps_stops_waiting_runs_instead_of_repeating_a_step(): void
+    {
+        Mail::fake();
+        $credit = ['type' => 'add_credit', 'config' => ['amount' => '5', 'description' => 'Welcome gift']];
+        $wait = ['type' => 'wait', 'config' => ['amount' => '3', 'unit' => 'days']];
+        $email = ['type' => 'send_email', 'config' => ['subject' => 'Welcome', 'body' => 'Hello.']];
+        $automation = $this->automation('client.registered', null, [$credit, $wait, $email]);
+        $client = Client::factory()->create(['first_name' => 'Mer', 'last_name' => 'Las']);
+
+        ClientRegistered::dispatch($client);
+
+        $run = AutomationRun::query()->sole();
+        $this->assertSame([AutomationRun::WAITING, 2], [$run->status, $run->step]);
+        $this->assertSame(500, $client->refresh()->credit);
+
+        $this->signInAdmin();
+        $this->put(route('admin.automations.update', $automation), [
+            'name' => $automation->name,
+            'definition' => json_encode(['trigger' => 'client.registered', 'steps' => [
+                ['type' => 'wait', 'config' => ['amount' => '1', 'unit' => 'hours']], $email, $credit, $wait, $email,
+            ]]),
+            'activate' => '1',
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->travel(4)->days();
+        app(Runner::class)->resumeDue();
+
+        $this->assertSame(500, $client->refresh()->credit, 'The credit is not added a second time.');
+        $this->assertSame(AutomationRun::STOPPED, $run->refresh()->status);
+        $this->assertStringContainsString('steps of the automation were changed', $run->lastLog());
+        Mail::assertNothingSent();
+    }
+
+    public function test_a_web_address_step_refuses_shared_and_special_address_ranges(): void
+    {
+        foreach (['https://100.64.0.1/x', 'https://100.100.100.200/x', 'https://198.18.0.1/x', 'https://192.0.0.1/x', 'https://10.0.0.5/x', 'http://1.1.1.1/x'] as $url) {
+            $this->assertFalse(CallWebhook::isAllowed($url), $url);
+        }
+
+        $this->assertTrue(CallWebhook::isAllowed('https://1.1.1.1/x'));
+
+        // A name that points to the internet and to this server is refused.
+        CallWebhook::$resolveUsing = fn (string $host): array => ['1.1.1.1', '127.0.0.1'];
+
+        try {
+            $this->assertFalse(CallWebhook::isAllowed('https://hooks.example.test/x'));
+        } finally {
+            CallWebhook::$resolveUsing = null;
+        }
+    }
+
+    public function test_a_web_address_step_connects_to_the_address_it_checked(): void
+    {
+        CallWebhook::$resolveUsing = fn (string $host): array => $host === 'hooks.example.test' ? ['1.1.1.1'] : [];
+        $seen = null;
+        Http::fake(function (Request $request, array $options) use (&$seen) {
+            $seen = $options;
+
+            return Http::response(['ok' => true]);
+        });
+        $this->automation('client.registered', null, [['type' => 'webhook', 'config' => ['url' => 'https://hooks.example.test:8443/nuvabill']]]);
+
+        try {
+            ClientRegistered::dispatch(Client::factory()->create(['first_name' => 'Raz']));
+        } finally {
+            CallWebhook::$resolveUsing = null;
+        }
+
+        $this->assertSame(AutomationRun::DONE, AutomationRun::query()->sole()->status);
+        $this->assertSame('v4', $seen['force_ip_resolve'] ?? null);
+        $this->assertSame(['hooks.example.test:8443:1.1.1.1'], $seen['curl'][CURLOPT_RESOLVE] ?? null);
+    }
+
+    public function test_a_web_address_that_cannot_be_reached_does_not_show_why_on_the_run_page(): void
+    {
+        Http::fake(Http::failedConnection('cURL error 7: Failed to connect to hooks.example.test port 8080: Connection refused'));
+        $this->automation('client.registered', null, [['type' => 'webhook', 'config' => ['url' => 'https://hooks.example.test:8080/nuvabill']]]);
+
+        ClientRegistered::dispatch(Client::factory()->create(['first_name' => 'Raz']));
+
+        $run = AutomationRun::query()->sole();
+        $this->assertSame(AutomationRun::FAILED, $run->status);
+        $this->assertSame('The address could not be reached.', $run->error);
+        $this->assertStringNotContainsString('cURL', $run->lastLog());
     }
 
     /**

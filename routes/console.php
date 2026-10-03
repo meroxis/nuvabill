@@ -2,6 +2,7 @@
 
 use App\Chat\WhatsAppSetup;
 use App\Extensions\ExtensionManager;
+use App\Jobs\TranslateTicketReply;
 use App\Support\Demo;
 use App\Support\Installation;
 use Illuminate\Support\Facades\Schedule;
@@ -21,8 +22,10 @@ if (Installation::isInstalled()) {
     // crashed never holds up the next night.
     Schedule::command('nuvabill:cron')->dailyAt('00:15')->withoutOverlapping(120);
 
-    // The lock outlasts one run (50 seconds plus one long job), but not a day if a crash leaves it behind.
-    Schedule::command('queue:work --stop-when-empty --max-time=50 --tries=1')->everyMinute()->withoutOverlapping(10);
+    // The default queue first: AI translations wait until services and domains are set up. The lock outlasts
+    // one run (50 seconds plus one long job), but not a day if a crash leaves it behind.
+    $queues = (config('queue.connections.'.config('queue.default').'.queue') ?: 'default').','.TranslateTicketReply::QUEUE;
+    Schedule::command("queue:work --queue={$queues} --stop-when-empty --max-time=50 --tries=1")->everyMinute()->withoutOverlapping(10);
 
     // Automations: runs whose wait is over, and the timed triggers once a day.
     Schedule::command('nuvabill:automations')->everyFiveMinutes()->withoutOverlapping(30);

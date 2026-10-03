@@ -4,6 +4,7 @@ namespace App\Automations\Steps;
 
 use App\Automations\Context;
 use App\Automations\StepFailed;
+use Closure;
 use Illuminate\Support\Facades\Http;
 use Throwable;
 
@@ -13,6 +14,13 @@ use Throwable;
  */
 class CallWebhook extends Step
 {
+    /**
+     * Looks up the IPv4 addresses of a host name. Tests replace it, since made-up names do not resolve.
+     *
+     * @var (Closure(string): list<string>)|null
+     */
+    public static ?Closure $resolveUsing = null;
+
     public function key(): string
     {
         return 'webhook';
@@ -41,48 +49,79 @@ class CallWebhook extends Step
     public function run(Context $context, array $config): string
     {
         $url = (string) ($config['url'] ?? '');
+        $address = self::allowedAddress($url);
 
-        if (! self::isAllowed($url)) {
+        if ($address === null) {
             throw new StepFailed(__('Only HTTPS addresses on the internet can be used.'));
         }
 
+        $host = (string) parse_url($url, PHP_URL_HOST);
+        $port = (int) (parse_url($url, PHP_URL_PORT) ?: 443);
+        // Connect to the address that was checked, over IPv4, so a second DNS answer (an IPv6
+        // record, or a name that changes its answer) cannot lead to this server or the network.
+        $options = ['force_ip_resolve' => 'v4'];
+
+        if ($address !== '' && $address !== $host) {
+            $options['curl'] = [CURLOPT_RESOLVE => ["{$host}:{$port}:{$address}"]];
+        }
+
         try {
-            $response = Http::timeout(10)->withoutRedirecting()->acceptJson()->post($url, $context->webhookData());
+            $response = Http::timeout(10)->withoutRedirecting()->withOptions($options)->acceptJson()->post($url, $context->webhookData());
         } catch (Throwable $exception) {
-            throw new StepFailed(__('The address could not be reached: :error', ['error' => mb_substr($exception->getMessage(), 0, 160)]));
+            // The reason stays in the error log: on the run page it would tell which ports are open.
+            report($exception);
+
+            throw new StepFailed(__('The address could not be reached.'));
         }
 
         if (! $response->successful()) {
             throw new StepFailed(__('The address answered with error :status.', ['status' => $response->status()]));
         }
 
-        return __('Sent the details to :host', ['host' => (string) parse_url($url, PHP_URL_HOST)]);
+        return __('Sent the details to :host', ['host' => $host]);
     }
 
     /**
-     * HTTPS, and a host that does not point to this computer or a private network.
+     * HTTPS, and a host that only points to public internet addresses.
      */
     public static function isAllowed(string $url): bool
+    {
+        return self::allowedAddress($url) !== null;
+    }
+
+    /**
+     * The checked IPv4 address to connect to, or null when the address may not be used. In tests,
+     * made-up host names do not resolve and their calls are faked: that gives an empty string.
+     */
+    private static function allowedAddress(string $url): ?string
     {
         $host = (string) parse_url($url, PHP_URL_HOST);
 
         if (! str_starts_with(strtolower($url), 'https://') || $host === '' || in_array(strtolower($host), ['localhost', 'localhost.localdomain'], true)) {
-            return false;
+            return null;
         }
 
-        $addresses = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (gethostbynamel($host) ?: []);
+        $addresses = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : self::resolve($host);
 
         if (app()->runningUnitTests() && $addresses === []) {
-            // Tests fake the HTTP calls; made-up hosts do not resolve.
-            return true;
+            return '';
         }
 
         foreach ($addresses as $address) {
-            if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
-                return false;
+            // Also refuses shared and special ranges such as 100.64.0.0/10 (carrier networks, cloud metadata).
+            if (filter_var($address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4 | FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE | FILTER_FLAG_GLOBAL_RANGE) === false) {
+                return null;
             }
         }
 
-        return $addresses !== [];
+        return $addresses[0] ?? null;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private static function resolve(string $host): array
+    {
+        return array_values(self::$resolveUsing !== null ? (self::$resolveUsing)($host) : (gethostbynamel($host) ?: []));
     }
 }

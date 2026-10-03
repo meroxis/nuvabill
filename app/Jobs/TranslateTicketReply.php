@@ -17,11 +17,20 @@ class TranslateTicketReply implements ShouldQueue
 {
     use Queueable;
 
+    /**
+     * The queue for AI work. The worker takes it only when the default queue is empty, so setting
+     * up services and registering domains never waits behind translations.
+     */
+    public const QUEUE = 'ai';
+
     public int $tries = 1;
 
     public int $timeout = 120;
 
-    public function __construct(public int $replyId) {}
+    public function __construct(public int $replyId)
+    {
+        $this->onQueue(self::QUEUE);
+    }
 
     public function handle(TicketAssistant $assistant): void
     {

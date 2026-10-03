@@ -11,6 +11,7 @@ use App\Models\TicketDepartment;
 use App\Models\TicketReply;
 use App\Support\Demo;
 use App\Support\Locales;
+use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * AI help on tickets: a short summary with a suggested department and priority, reply drafts
@@ -23,6 +24,21 @@ class TicketAssistant
      * At most this much of a long ticket goes to the AI, newest messages first.
      */
     private const TRANSCRIPT_LIMIT = 40_000;
+
+    /**
+     * Longer client messages are translated only when staff press Translate.
+     */
+    private const AUTO_TRANSLATE_LENGTH = 4000;
+
+    /**
+     * Automatic translations one client can cause in an hour.
+     */
+    private const AUTO_TRANSLATE_PER_CLIENT_HOUR = 30;
+
+    /**
+     * Automatic translations for the whole site in a day, when the owner set no monthly limit.
+     */
+    private const AUTO_TRANSLATE_PER_SITE_DAY = 300;
 
     public const TONES = [
         'shorter' => 'Make it shorter: keep only what the client needs to know or do.',
@@ -69,10 +85,40 @@ class TicketAssistant
      * Whether a new client message is worth sending for translation: the client uses another
      * language, or the message is written in another alphabet than the staff language. Messages
      * that are surely in the staff language cost nothing.
+     *
+     * Clients decide how many messages they send, and each translation costs money, so automatic
+     * translations are limited: per client each hour, per site each day when there is no monthly
+     * limit, not for very long messages, and not in the last fifth of the monthly limit, which is
+     * kept for what staff ask for. Staff can still press Translate on any message. A yes counts
+     * toward these limits.
      */
     public function mightNeedTranslation(TicketReply $reply): bool
     {
-        return ! Demo::isEnabled() && $this->claude->isOn('translate') && self::looksForeign($reply);
+        if (Demo::isEnabled() || ! $this->claude->isOn('translate') || mb_strlen($reply->message) > self::AUTO_TRANSLATE_LENGTH || ! self::looksForeign($reply)) {
+            return false;
+        }
+
+        $limit = $this->claude->limitMicros();
+
+        if ($limit > 0 && $this->claude->spentThisMonth() * 5 >= $limit * 4) {
+            return false;
+        }
+
+        $client = 'ai-translate:client:'.(int) $reply->ticket?->client_id;
+        $site = $limit === 0 ? 'ai-translate:site' : null;
+
+        if (RateLimiter::tooManyAttempts($client, self::AUTO_TRANSLATE_PER_CLIENT_HOUR)
+            || ($site !== null && RateLimiter::tooManyAttempts($site, self::AUTO_TRANSLATE_PER_SITE_DAY))) {
+            return false;
+        }
+
+        RateLimiter::hit($client, 3600);
+
+        if ($site !== null) {
+            RateLimiter::hit($site, 86400);
+        }
+
+        return true;
     }
 
     /**
@@ -351,7 +397,7 @@ class TicketAssistant
         }
 
         return "<account>\nClient first name: ".$ticket->client->first_name."\n".implode("\n", $account)."\n</account>\n"
-            .'<ticket subject="'.e($ticket->subject).'" priority="'.$ticket->priority->value.'">'."\n"
+            .'<ticket subject="'.e(Redactor::clean((string) $ticket->subject)).'" priority="'.$ticket->priority->value.'">'."\n"
             .implode("\n", $messages)."\n</ticket>";
     }
 }

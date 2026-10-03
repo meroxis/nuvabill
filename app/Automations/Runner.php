@@ -8,8 +8,10 @@ use App\Jobs\ContinueAutomationRun;
 use App\Models\Automation;
 use App\Models\AutomationRun;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -22,6 +24,11 @@ use Throwable;
 class Runner
 {
     public const MAX_STEPS = 30;
+
+    /**
+     * A run still "running" after this many minutes without any progress was interrupted.
+     */
+    private const STALE_MINUTES = 30;
 
     public function __construct(private readonly Registry $registry) {}
 
@@ -43,17 +50,16 @@ class Runner
             return null;
         }
 
-        $key = 'a'.$automation->id.':'.$context->subjectType().':'.$subject->getKey().':'.($occurrence !== '' ? $occurrence : 'once');
-
         try {
-            $run = AutomationRun::query()->create([
+            $run = AutomationRun::query()->forceCreate([
                 'automation_id' => $automation->id,
                 'subject_type' => $context->subjectType(),
                 'subject_id' => $subject->getKey(),
                 'client_id' => $context->client()?->id,
                 'status' => AutomationRun::QUEUED,
                 'step' => 0,
-                'dedupe_key' => strlen($key) > 191 ? 'a'.$automation->id.':'.hash('sha256', $key) : $key,
+                'steps_hash' => self::stepsHash($automation),
+                'dedupe_key' => self::dedupeKey($automation, $subject, $occurrence),
                 'log' => [['step' => null, 'text' => __('Started: :trigger', ['trigger' => $trigger->describe($automation->trigger_days)]), 'at' => now()->toIso8601String()]],
             ]);
         } catch (UniqueConstraintViolationException) {
@@ -90,6 +96,12 @@ class Runner
 
         if (! $automation->is_active) {
             return $this->finish($run, AutomationRun::STOPPED, __('Stopped: the automation was switched off.'));
+        }
+
+        // A run only knows the number of its next step. After staff change the steps, that number
+        // points at another step, so going on could repeat a step (credit twice) or skip one.
+        if ($run->step > 0 && $run->steps_hash !== null && $run->steps_hash !== self::stepsHash($automation)) {
+            return $this->finish($run, AutomationRun::STOPPED, __('Stopped: the steps of the automation were changed after this run started.'));
         }
 
         $trigger = $this->registry->trigger($automation->trigger);
@@ -184,6 +196,11 @@ class Runner
      */
     public function resumeDue(int $limit = 200): int
     {
+        // Runs whose worker stopped in the middle of a step (killed for taking too long, out of
+        // memory, a restart) would show "Running" forever. Every finished step saves the run, so
+        // a run untouched for this long is not being worked on any more.
+        $this->failInterrupted(AutomationRun::query()->where('updated_at', '<=', now()->subMinutes(self::STALE_MINUTES))->orderBy('id')->limit($limit));
+
         $runs = AutomationRun::query()
             ->where(fn ($query) => $query
                 ->where(fn ($query) => $query->where('status', AutomationRun::WAITING)->where('resume_at', '<=', now()))
@@ -216,16 +233,116 @@ class Runner
 
             $days = (int) $automation->trigger_days;
 
-            foreach (($trigger->due)($today, $days)->limit(500)->get() as $subject) {
-                rescue(function () use ($automation, $subject, $days, &$started): void {
-                    if ($this->start($automation, $subject, 'd'.$days) !== null) {
-                        $started++;
+            // Every subject in the window, a page at a time. Subjects stay in the window for a few
+            // days, so the ones started on an earlier day are found with one query and skipped.
+            ($trigger->due)($today, $days)->chunkById(200, function (Collection $subjects) use ($automation, $trigger, $days, $today, &$started): void {
+                $skip = $this->startedAlready($automation, $trigger, $subjects, $days, $today);
+
+                foreach ($subjects as $subject) {
+                    if (isset($skip[$subject->getKey()])) {
+                        continue;
                     }
-                });
-            }
+
+                    rescue(function () use ($automation, $trigger, $subject, $days, &$started): void {
+                        if ($this->start($automation, $subject, $trigger->occasionFor($subject, $days)) !== null) {
+                            $started++;
+                        }
+                    });
+                }
+            });
         }
 
         return $started;
+    }
+
+    /**
+     * The subjects of this page that already have a run for this occasion, keyed by id. Runs
+     * started before occasions were part of the key ("d30" without the date) count while they are
+     * recent, so updating Nuvabill never starts a second run (and a second late fee) for them.
+     *
+     * @param  Collection<int, Model>  $subjects
+     * @return array<int|string, true>
+     */
+    private function startedAlready(Automation $automation, Trigger $trigger, Collection $subjects, int $days, CarbonImmutable $today): array
+    {
+        $keys = [];
+        $older = [];
+
+        foreach ($subjects as $subject) {
+            $keys[self::dedupeKey($automation, $subject, $trigger->occasionFor($subject, $days))] = $subject->getKey();
+            $older[self::dedupeKey($automation, $subject, 'd'.$days)] = $subject->getKey();
+        }
+
+        $found = AutomationRun::query()
+            ->where('automation_id', $automation->id)
+            ->where(fn (Builder $query) => $query->whereIn('dedupe_key', array_keys($keys))
+                ->orWhere(fn (Builder $query) => $query->whereIn('dedupe_key', array_keys($older))->where('created_at', '>=', $today->subDays($days + 8))))
+            ->pluck('dedupe_key');
+
+        $skip = [];
+
+        foreach ($found as $key) {
+            $skip[$keys[$key] ?? $older[$key]] = true;
+        }
+
+        return $skip;
+    }
+
+    /**
+     * One run per automation, subject and occasion: the database refuses a second run with this key.
+     */
+    private static function dedupeKey(Automation $automation, Model $subject, string $occurrence): string
+    {
+        $key = 'a'.$automation->id.':'.$subject->getMorphClass().':'.$subject->getKey().':'.($occurrence !== '' ? $occurrence : 'once');
+
+        return strlen($key) > 191 ? 'a'.$automation->id.':'.hash('sha256', $key) : $key;
+    }
+
+    /**
+     * The worker doing this run stopped in the middle of a step (the job took too long, or the
+     * process ended). Mark the run failed rather than go on: the step may have half happened.
+     */
+    public function interrupted(int $runId): void
+    {
+        $this->failInterrupted(AutomationRun::query()->whereKey($runId));
+    }
+
+    /**
+     * @param  Builder<AutomationRun>  $runs
+     */
+    private function failInterrupted(Builder $runs): void
+    {
+        foreach ($runs->where('status', AutomationRun::RUNNING)->get() as $run) {
+            // Claimed in one update, so a run a worker saved in the meantime is left alone.
+            $claimed = AutomationRun::query()->whereKey($run->id)
+                ->where('status', AutomationRun::RUNNING)
+                ->where('updated_at', $run->getRawOriginal('updated_at'))
+                ->update(['status' => AutomationRun::FAILED]);
+
+            if ($claimed === 1) {
+                $this->finish($run, AutomationRun::FAILED, __('Interrupted while working on step :number: it took too long or the worker stopped. Check what that step did before you do it by hand.', ['number' => $run->step + 1]), $run->step);
+            }
+        }
+    }
+
+    /**
+     * A fingerprint of the automation's steps, the same however the database orders JSON keys.
+     */
+    private static function stepsHash(Automation $automation): string
+    {
+        $sorted = function (mixed $value) use (&$sorted): mixed {
+            if (! is_array($value)) {
+                return $value;
+            }
+
+            if (! array_is_list($value)) {
+                ksort($value);
+            }
+
+            return array_map($sorted, $value);
+        };
+
+        return hash('sha256', (string) json_encode($sorted(array_values($automation->steps ?? []))));
     }
 
     private function finish(AutomationRun $run, string $status, string $text, ?int $step = null): AutomationRun

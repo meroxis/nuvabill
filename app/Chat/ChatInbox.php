@@ -2,6 +2,7 @@
 
 namespace App\Chat;
 
+use App\Enums\ClientStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\ServiceStatus;
 use App\Enums\TicketStatus;
@@ -11,6 +12,8 @@ use App\Models\Ticket;
 use App\Models\TicketDepartment;
 use App\Support\Locales;
 use App\Support\TicketDesk;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * Messages clients send to the bot: a link code from the client area, a few commands (invoices,
@@ -24,11 +27,22 @@ class ChatInbox
      */
     private const TICKET_DAYS = 3;
 
+    /**
+     * Messages one chat may send in a minute. Each one can email staff and alert their phones, as
+     * the client area's own limit on ticket replies keeps in check.
+     */
+    private const PER_MINUTE = 10;
+
     public function __construct(private TicketDesk $desk) {}
 
     public function handle(string $channel, string $externalId, string $text, ?string $name): ?string
     {
         $text = trim($text);
+
+        if ($this->tooFast($channel, $externalId)) {
+            return $this->slowDown($channel, $externalId);
+        }
+
         $code = $this->linkCode($channel, $text);
 
         if ($code !== null) {
@@ -52,9 +66,15 @@ class ChatInbox
             return __('Hello! To get your invoices, reminders and ticket replies here, sign in to the client area, open Account and scan the QR code under “Get alerts on your phone”.');
         }
 
-        $link->forceFill(['last_inbound_at' => now(), 'name' => $name !== null ? mb_substr($name, 0, 120) : $link->name])->save();
         $client = $link->client;
         $locale = $this->locale($client);
+
+        // A closed account cannot sign in, so it cannot use the chat either; it may still disconnect it.
+        if ($client->status === ClientStatus::Closed && $command !== 'stop') {
+            return $channel === ChatLink::WHATSAPP ? null : __('This account is closed. Contact support if you need help.', [], $locale);
+        }
+
+        $link->forceFill(['last_inbound_at' => now(), 'name' => $name !== null ? mb_substr($name, 0, 120) : $link->name])->save();
 
         return match ($command) {
             'help', 'start' => $this->help($locale),
@@ -66,9 +86,45 @@ class ChatInbox
         };
     }
 
+    /**
+     * Counts this message, and says whether the chat sent more than its share this minute. Keyed
+     * by the chat, so linked clients, strangers and code guesses are all slowed down.
+     */
+    private function tooFast(string $channel, string $externalId): bool
+    {
+        $key = 'chat-inbox:'.$channel.':'.$externalId;
+
+        if (RateLimiter::tooManyAttempts($key, self::PER_MINUTE)) {
+            return true;
+        }
+
+        RateLimiter::hit($key, 60);
+
+        return false;
+    }
+
+    /**
+     * Say once a minute that the chat is too fast, and drop the messages. On WhatsApp, strangers
+     * are left to the owner, so they get no answer from the bot.
+     */
+    private function slowDown(string $channel, string $externalId): ?string
+    {
+        $link = ChatLink::query()->with('client')->where('channel', $channel)->where('external_id', $externalId)->first();
+
+        if (($link === null && $channel === ChatLink::WHATSAPP) || ! Cache::add('chat-inbox-warned:'.$channel.':'.$externalId, true, 60)) {
+            return null;
+        }
+
+        return __('You are sending messages too fast. Please wait a minute.', [], $link?->client !== null ? $this->locale($link->client) : null);
+    }
+
+    /**
+     * The code in "/start CODE" (Telegram) or "LINK CODE" (WhatsApp). On WhatsApp the word LINK
+     * is needed: one-word messages like "Invoices" or "Received" are not codes.
+     */
     private function linkCode(string $channel, string $text): ?string
     {
-        $pattern = $channel === ChatLink::TELEGRAM ? '/^\/start\s+([A-Za-z0-9]{8})$/' : '/^(?:link\s+)?([A-Za-z0-9]{8})$/i';
+        $pattern = $channel === ChatLink::TELEGRAM ? '/^\/start\s+([A-Za-z0-9]{8})$/' : '/^link\s+([A-Za-z0-9]{8})$/i';
 
         return preg_match($pattern, $text, $match) ? $match[1] : null;
     }

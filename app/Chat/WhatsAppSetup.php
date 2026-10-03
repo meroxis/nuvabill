@@ -23,7 +23,7 @@ class WhatsAppSetup
     /**
      * @param  string  $via  "qr" for Meta's signup page, "manual" for the owner's own Meta app
      * @param  bool  $businessApp  the number stays in the WhatsApp Business app (QR coexistence)
-     * @return array{number: string, name: string, pin: string|null}
+     * @return array{number: string, name: string, pin: string|null, register_error: string|null}
      */
     public function connect(string $token, string $wabaId, ?string $phoneId, string $via, bool $businessApp = false, string $appSecret = ''): array
     {
@@ -55,18 +55,28 @@ class WhatsAppSetup
             throw $error;
         }
 
-        // A brand-new number from Meta's signup page still has to be registered, with a PIN.
+        // A brand-new number from Meta's signup page still has to be registered, with a PIN. The
+        // PIN is only shown when Meta took it; the connection stays either way, since a number
+        // that already has another PIN is registered and can send.
         $pin = null;
+        $registerError = null;
 
         if ($via === 'qr' && ! $businessApp) {
             $pin = (string) random_int(100000, 999999);
-            rescue(fn () => $this->whatsApp->register($token, $phone['id'], $pin), report: false);
+
+            try {
+                $this->whatsApp->register($token, $phone['id'], $pin);
+            } catch (ChatError $error) {
+                $pin = null;
+                $registerError = $error->getMessage();
+                Activity::log('chat.failed', mb_substr("WhatsApp number {$phone['number']} not registered: {$registerError}", 0, 250));
+            }
         }
 
         rescue(fn () => $this->refreshTemplates(), report: false);
         Activity::log('chat.whatsapp', "WhatsApp connected: {$phone['number']}");
 
-        return $phone + ['pin' => $pin];
+        return $phone + ['pin' => $pin, 'register_error' => $registerError];
     }
 
     /**

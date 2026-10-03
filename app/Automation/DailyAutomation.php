@@ -12,6 +12,7 @@ use App\Domains\DomainProvisioner;
 use App\Enums\DomainStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\ServiceStatus;
+use App\Extensions\ExtensionManager;
 use App\Mail\TemplateMailer;
 use App\Models\Domain;
 use App\Models\Invoice;
@@ -40,6 +41,7 @@ class DailyAutomation
         private TemplateMailer $mailer,
         private Affiliates $affiliates,
         private AutoPay $autoPay,
+        private ExtensionManager $extensions,
     ) {}
 
     /**
@@ -149,12 +151,20 @@ class DailyAutomation
     }
 
     /**
-     * Check transfers in progress, and the expiry dates of domains not checked for a week.
+     * Check transfers in progress, and the expiry dates of domains not checked for a week. Only
+     * domains at a registrar that is switched on and set up: the others cannot be checked, and
+     * would take every place in the run night after night.
      */
     private function syncDomains(): void
     {
+        $registrars = $this->extensions->activeRegistrars()->keys()->all();
+
+        if ($registrars === []) {
+            return;
+        }
+
         Domain::query()
-            ->whereNotNull('registrar')
+            ->whereIn('registrar', $registrars)
             ->where(fn (Builder $query) => $query
                 ->where('status', DomainStatus::PendingTransfer)
                 ->orWhere(fn (Builder $query) => $query
@@ -194,6 +204,9 @@ class DailyAutomation
             return;
         }
 
+        // At most one notice a day for each domain.
+        $notToday = fn (Builder $query) => $query->whereNull('expiry_notice_sent_at')->orWhere('expiry_notice_sent_at', '<', $today);
+
         Domain::query()
             ->with('client')
             ->where('status', DomainStatus::Active)
@@ -201,18 +214,28 @@ class DailyAutomation
             ->whereNotNull('expires_at')
             ->whereDate('expires_at', '>=', $today)
             ->whereDate('expires_at', '<=', $today->addDays($days->max()))
-            ->where(fn (Builder $query) => $query->whereNull('expiry_notice_sent_at')->orWhere('expiry_notice_sent_at', '<', now()->subDays(5)))
-            ->eachById(function (Domain $domain) use ($today, $days): void {
+            ->where($notToday)
+            ->eachById(function (Domain $domain) use ($today, $days, $notToday): void {
                 $daysLeft = (int) $today->diffInDays($domain->expires_at);
+                // The nearest warning day reached, for example 3 of "7, 3, 1" with 2 days left.
+                $warning = $days->filter(fn (int $day): bool => $daysLeft <= $day)->min();
 
-                if (! $days->contains(fn (int $day): bool => $daysLeft <= $day && $daysLeft > $day - 5)) {
+                // Not reached yet, or more than 5 days late (a run was missed): no stale notice.
+                if ($warning === null || $daysLeft <= $warning - 5) {
+                    return;
+                }
+
+                // The last notice was sent with this many days left, or fewer: this warning went out already.
+                $leftAtLastNotice = $domain->expiry_notice_sent_at === null
+                    ? PHP_INT_MAX
+                    : (int) $domain->expiry_notice_sent_at->copy()->startOfDay()->diffInDays($domain->expires_at, false);
+
+                if ($leftAtLastNotice <= $warning) {
                     return;
                 }
 
                 // Claim the notice in one update before sending, so it goes out once even if two runs meet.
-                $claimed = Domain::query()->whereKey($domain->id)
-                    ->where(fn (Builder $query) => $query->whereNull('expiry_notice_sent_at')->orWhere('expiry_notice_sent_at', '<', now()->subDays(5)))
-                    ->update(['expiry_notice_sent_at' => now()]);
+                $claimed = Domain::query()->whereKey($domain->id)->where($notToday)->update(['expiry_notice_sent_at' => now()]);
 
                 if ($claimed === 1) {
                     $this->mailer->send('domain.expiring', $domain->client, DomainProvisioner::context($domain) + ['days_left' => $daysLeft]);

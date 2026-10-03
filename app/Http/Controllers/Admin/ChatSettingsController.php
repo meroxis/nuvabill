@@ -132,6 +132,10 @@ class ChatSettingsController extends Controller
             $message .= ' '.__('Its two-step PIN is :pin. Keep it somewhere safe.', ['pin' => $phone['pin']]);
         }
 
+        if ($phone['register_error'] !== null) {
+            $message .= ' '.__('Meta did not register this number yet (:error). Register it in WhatsApp Manager, or clients will not get messages.', ['error' => $phone['register_error']]);
+        }
+
         $request->session()->flash('status', $message);
 
         return response()->json(['ok' => true]);

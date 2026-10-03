@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Ai\Redactor;
 use App\Enums\TicketPriority;
+use App\Jobs\TranslateTicketReply;
 use App\Mail\TemplatedMessage;
 use App\Models\Admin;
 use App\Models\AiUsage;
@@ -15,6 +16,7 @@ use App\Support\TicketDesk;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Tests\Fakes\FakeClaude;
 use Tests\TestCase;
 
@@ -188,6 +190,79 @@ class AiHelpTest extends TestCase
             ->assertSee('Translated from Arabic')
             ->assertSee('My website shows an error after moving.')
             ->assertSee('Send it in Arabic');
+    }
+
+    public function test_one_client_cannot_cause_unlimited_automatic_translations(): void
+    {
+        Mail::fake();
+        $this->setSettings(['ai.key' => self::KEY]);
+        $client = Client::factory()->create(['first_name' => 'Raz', 'language' => 'ar']);
+        $claude = FakeClaude::install();
+
+        foreach (range(1, 40) as $ignored) {
+            $claude->answer(['language' => 'ar', 'translation' => 'Hello again.']);
+        }
+
+        $desk = app(TicketDesk::class);
+        $ticket = $desk->open($client, TicketDepartment::query()->firstOrFail(), 'سؤال', 'مرحبا');
+
+        foreach (range(1, 39) as $ignored) {
+            $desk->replyAsClient($ticket, $client, 'مرحبا مرة أخرى');
+        }
+
+        $this->assertCount(30, $claude->requests, 'At most 30 automatic translations an hour for one client.');
+        $this->assertNull($ticket->replies()->reorder()->latest('id')->first()->language, 'Staff can still press Translate.');
+    }
+
+    public function test_long_messages_and_the_last_fifth_of_the_limit_are_not_translated_automatically(): void
+    {
+        Mail::fake();
+        $this->setSettings(['ai.key' => self::KEY, 'ai.monthly_limit' => 100]);
+        $client = Client::factory()->create(['first_name' => 'Raz', 'language' => 'ar']);
+        $claude = FakeClaude::install();
+        $department = TicketDepartment::query()->firstOrFail();
+
+        app(TicketDesk::class)->open($client, $department, 'سؤال', str_repeat('مرحبا ', 1000));
+        $this->assertSame([], $claude->requests);
+
+        // 85 cents of the 1 dollar limit are used: the rest is kept for what staff ask for.
+        AiUsage::create(['feature' => 'drafts', 'model' => 'claude-haiku-4-5', 'cost_micros' => 850_000]);
+        app(TicketDesk::class)->open($client, $department, 'سؤال', 'مرحبا');
+        $this->assertSame([], $claude->requests);
+    }
+
+    public function test_automatic_translations_wait_behind_other_background_work(): void
+    {
+        Queue::fake();
+        $this->setSettings(['ai.key' => self::KEY]);
+        $client = Client::factory()->create(['first_name' => 'Raz', 'language' => 'ar']);
+
+        app(TicketDesk::class)->open($client, TicketDepartment::query()->firstOrFail(), 'سؤال', 'مرحبا');
+
+        Queue::assertPushedOn(TranslateTicketReply::QUEUE, TranslateTicketReply::class);
+    }
+
+    public function test_the_ticket_subject_is_cleaned_before_it_reaches_the_ai(): void
+    {
+        $this->signInAdmin(Admin::factory()->create(['name' => 'Mer Las']));
+        $this->setSettings(['ai.key' => self::KEY]);
+        $ticket = $this->ticket('It does not work.');
+        $ticket->update(['subject' => 'cPanel login raz@example.com password: Hunter2x!']);
+        $claude = FakeClaude::install()
+            ->answer("Hello Raz,\n\nMer Las")
+            ->answer(['summary' => 'Raz cannot sign in to cPanel.', 'department' => 'Support', 'priority' => 'medium']);
+
+        $this->postJson(route('admin.tickets.ai.draft', $ticket))->assertOk();
+        $draft = $claude->lastSentText();
+        $this->postJson(route('admin.tickets.ai.summary', $ticket))->assertOk();
+        $summary = $claude->lastSentText();
+
+        foreach ([$draft, $summary] as $sent) {
+            $this->assertStringNotContainsString('Hunter2x', $sent);
+            $this->assertStringNotContainsString('raz@example.com', $sent);
+            $this->assertStringContainsString('password: [password]', $sent);
+            $this->assertStringContainsString('[email]', $sent);
+        }
     }
 
     public function test_english_messages_to_an_english_team_are_not_sent_for_translation(): void

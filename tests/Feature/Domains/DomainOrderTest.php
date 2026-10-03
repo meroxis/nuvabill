@@ -15,6 +15,7 @@ use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Order;
 use App\Models\TldPrice;
+use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -159,6 +160,40 @@ class DomainOrderTest extends TestCase
         Mail::assertSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => $mail->hasTo($warned->client->email) && str_contains($mail->subjectLine, 'expires in 7 days'));
         $this->assertSame(DomainStatus::Expired, $expired->fresh()->status);
         $this->assertSame(0, Invoice::query()->count(), 'No renewal invoice when auto-renew is off.');
+    }
+
+    public function test_every_configured_expiry_warning_is_sent_even_when_they_are_close_together(): void
+    {
+        Mail::fake();
+        app(Settings::class)->set('domains.expiry_notice_days', [7, 3, 1]);
+        $start = today();
+        Domain::factory()->for($this->client(['first_name' => 'Raz']))->expiringOn($start->copy()->addDays(7))->create(['name' => 'raz-shop.com', 'auto_renew' => false]);
+
+        for ($day = 0; $day <= 7; $day++) {
+            $this->travelTo($start->copy()->addDays($day)->setTime(0, 15));
+            $this->artisan('nuvabill:cron');
+        }
+
+        $subjects = Mail::sent(TemplatedMessage::class)->map(fn (TemplatedMessage $mail): string => $mail->subjectLine)->values()->all();
+        $this->assertCount(3, $subjects);
+        $this->assertStringContainsString('expires in 7 days', $subjects[0]);
+        $this->assertStringContainsString('expires in 3 days', $subjects[1]);
+        $this->assertStringContainsString('expires in 1 day', $subjects[2]);
+    }
+
+    public function test_domains_at_a_registrar_that_is_not_available_do_not_block_the_nightly_check(): void
+    {
+        $this->enableTestRegistrar();
+        Domain::factory()->count(25)->withRegistrar('gone')->create(['last_synced_at' => null]);
+        $moving = Domain::factory()->withRegistrar('testreg')->create(['status' => DomainStatus::PendingTransfer, 'last_synced_at' => now()->subDay()]);
+        $stale = Domain::factory()->withRegistrar('testreg')->create(['last_synced_at' => now()->subDays(8)]);
+
+        $this->artisan('nuvabill:cron');
+
+        $this->assertContains(['sync', $moving->name], TestRegistrar::$calls);
+        $this->assertContains(['sync', $stale->name], TestRegistrar::$calls);
+        $this->assertSame(DomainStatus::Active, $moving->fresh()->status);
+        $this->assertTrue($stale->fresh()->last_synced_at->isToday());
     }
 
     public function test_clients_manage_their_own_domains_only(): void

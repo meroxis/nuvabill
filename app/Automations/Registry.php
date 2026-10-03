@@ -396,16 +396,18 @@ class Registry
     private function makeTriggers(): array
     {
         $unpaid = fn (Model $invoice): bool => $invoice instanceof Invoice && $invoice->status === InvoiceStatus::Unpaid;
+        // A due date that staff move, a domain that expires again next year and a quote sent again are new occasions.
+        $dueDate = fn (Model $invoice): string => (string) $invoice->getAttribute('due_at')?->toDateString();
         $list = [
             new Trigger('client.registered', 'A client signs up', 'client', 'Clients'),
             new Trigger('order.placed', 'An order is placed', 'order', 'Orders'),
             new Trigger('invoice.paid', 'An invoice is paid', 'invoice', 'Invoices'),
             new Trigger('invoice.due_soon', 'An invoice is due soon', 'invoice', 'Invoices', 'days before the due date', ':count day before the due date|:count days before the due date',
                 fn (CarbonImmutable $today, int $days) => Invoice::query()->with('client')->where('status', InvoiceStatus::Unpaid)
-                    ->whereDate('due_at', '>=', $today)->whereDate('due_at', '<=', $today->addDays($days)), $unpaid),
+                    ->whereDate('due_at', '>=', $today)->whereDate('due_at', '<=', $today->addDays($days)), $unpaid, $dueDate),
             new Trigger('invoice.overdue', 'An invoice is overdue', 'invoice', 'Invoices', 'days after the due date', ':count day after the due date|:count days after the due date',
                 fn (CarbonImmutable $today, int $days) => Invoice::query()->with('client')->where('status', InvoiceStatus::Unpaid)
-                    ->whereDate('due_at', '<=', $today->subDays($days))->whereDate('due_at', '>=', $today->subDays($days + 7)), $unpaid),
+                    ->whereDate('due_at', '<=', $today->subDays($days))->whereDate('due_at', '>=', $today->subDays($days + 7)), $unpaid, $dueDate),
             new Trigger('service.activated', 'A service is set up', 'service', 'Services'),
             new Trigger('service.suspended', 'A service is suspended', 'service', 'Services', stillTrue: fn (Model $service): bool => $service instanceof Service && $service->status === ServiceStatus::Suspended),
             new Trigger('service.terminated', 'A service is terminated', 'service', 'Services'),
@@ -416,13 +418,15 @@ class Registry
             new Trigger('domain.expiring', 'A domain expires soon', 'domain', 'Domains', 'days before it expires', ':count day before it expires|:count days before it expires',
                 fn (CarbonImmutable $today, int $days) => Domain::query()->with('client')->where('status', DomainStatus::Active)
                     ->whereDate('expires_at', '>=', $today)->whereDate('expires_at', '<=', $today->addDays($days)),
-                fn (Model $domain): bool => $domain instanceof Domain && $domain->status === DomainStatus::Active),
+                fn (Model $domain): bool => $domain instanceof Domain && $domain->status === DomainStatus::Active,
+                fn (Model $domain): string => (string) $domain->getAttribute('expires_at')?->toDateString()),
             new Trigger('ticket.opened', 'A client opens a ticket', 'ticket', 'Support'),
             new Trigger('ticket.client_reply', 'A client replies to a ticket', 'ticket', 'Support'),
             new Trigger('quote.unanswered', 'A quote is not answered', 'quote', 'Orders', 'days after it was sent', ':count day after it was sent|:count days after it was sent',
                 fn (CarbonImmutable $today, int $days) => Quote::query()->with('client')->where('status', QuoteStatus::Sent)
                     ->where('sent_at', '<=', $today->subDays($days)->endOfDay())->where('sent_at', '>=', $today->subDays($days + 7)),
-                fn (Model $quote): bool => $quote instanceof Quote && $quote->status === QuoteStatus::Sent),
+                fn (Model $quote): bool => $quote instanceof Quote && $quote->status === QuoteStatus::Sent,
+                fn (Model $quote): string => (string) $quote->getAttribute('sent_at')?->timestamp),
         ];
 
         return collect($list)->keyBy(fn (Trigger $trigger): string => $trigger->key)->all();

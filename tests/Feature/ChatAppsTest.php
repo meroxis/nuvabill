@@ -6,8 +6,10 @@ use App\Chat\ChatMessages;
 use App\Chat\LinkCodes;
 use App\Chat\WhatsApp;
 use App\Chat\WhatsAppSetup;
+use App\Enums\ClientStatus;
 use App\Mail\TemplatedMessage;
 use App\Mail\TemplateMailer;
+use App\Models\ActivityLog;
 use App\Models\Admin;
 use App\Models\ChatLink;
 use App\Models\Client;
@@ -15,6 +17,7 @@ use App\Models\Invoice;
 use App\Models\Ticket;
 use App\Models\TicketDepartment;
 use App\Support\TicketDesk;
+use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
@@ -430,6 +433,143 @@ class ChatAppsTest extends TestCase
 
         $this->assertModelMissing($link);
         $this->assertModelExists($other);
+    }
+
+    public function test_one_word_whatsapp_messages_are_not_taken_for_link_codes(): void
+    {
+        Mail::fake();
+        $this->connectWhatsApp();
+        Http::fake(['graph.facebook.com/*' => Http::response(['messages' => [['id' => 'wamid.1']]])]);
+        $client = Client::factory()->create(['first_name' => 'Raz']);
+        Invoice::factory()->for($client)->create(['number' => 'INV-1042']);
+        ChatLink::create(['client_id' => $client->id, 'channel' => 'whatsapp', 'external_id' => '9647501234567']);
+        $sent = fn (string $text): bool => collect(Http::recorded())->contains(fn (array $call): bool => str_contains((string) ($call[0]['text']['body'] ?? ''), $text));
+
+        $this->postJson(route('webhooks.whatsapp', self::WHATSAPP_KEY), $this->whatsappMessage('9647501234567', 'Invoices'))->assertOk();
+        $this->postJson(route('webhooks.whatsapp', self::WHATSAPP_KEY), $this->whatsappMessage('9647501234567', 'Received'))->assertOk();
+
+        $this->assertTrue($sent('Your unpaid invoices'));
+        $this->assertFalse($sent('This code is old or wrong'));
+        $this->assertSame('Received', Ticket::query()->sole()->replies()->sole()->message);
+
+        // A stranger's one-word message is left to the owner too.
+        $before = count(Http::recorded());
+        $this->postJson(route('webhooks.whatsapp', self::WHATSAPP_KEY), $this->whatsappMessage('9647500000000', 'Services'))->assertOk();
+        $this->assertCount($before, Http::recorded());
+
+        // The code from the client area still links a chat.
+        $this->postJson(route('webhooks.whatsapp', self::WHATSAPP_KEY), $this->whatsappMessage('9647500000001', 'link '.LinkCodes::for($client)))->assertOk();
+        $this->assertTrue(ChatLink::query()->where('external_id', '9647500000001')->exists());
+    }
+
+    public function test_a_chat_that_floods_the_bot_is_slowed_down(): void
+    {
+        Mail::fake();
+        $this->connectTelegram();
+        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true, 'result' => []])]);
+        ChatLink::create(['client_id' => Client::factory()->create(['first_name' => 'Raz'])->id, 'channel' => 'telegram', 'external_id' => '555']);
+        $message = fn (int $number): TestResponse => $this->telegramUpdate(['message' => ['chat' => ['id' => 555, 'type' => 'private'], 'text' => 'Message '.$number]])->assertOk();
+        $toClient = fn (): array => collect(Http::recorded())->filter(fn (array $call): bool => str_ends_with($call[0]->url(), '/sendMessage') && $call[0]['chat_id'] === '555')->all();
+
+        foreach (range(1, 12) as $number) {
+            $message($number);
+        }
+
+        $ticket = Ticket::query()->sole();
+        $this->assertSame(10, $ticket->replies()->count());
+        $this->assertCount(11, $toClient(), 'Ten answers and one warning.');
+        $this->assertCount(1, collect($toClient())->filter(fn (array $call): bool => str_contains($call[0]['text'], 'too fast')));
+
+        $this->travel(61)->seconds();
+        $message(13);
+        $this->assertSame(11, $ticket->replies()->count());
+    }
+
+    public function test_a_closed_client_cannot_use_a_linked_chat(): void
+    {
+        $this->connectTelegram();
+        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true, 'result' => []])]);
+        $client = Client::factory()->create(['first_name' => 'Raz']);
+        Invoice::factory()->for($client)->create(['number' => 'INV-1042']);
+        $code = LinkCodes::for($client);
+        ChatLink::create(['client_id' => $client->id, 'channel' => 'telegram', 'external_id' => '555']);
+        $client->forceFill(['status' => ClientStatus::Closed])->save();
+        $send = fn (string $chat, string $text): TestResponse => $this->telegramUpdate(['message' => ['chat' => ['id' => (int) $chat, 'type' => 'private'], 'text' => $text]])->assertOk();
+
+        $send('555', '/invoices');
+        $send('555', 'Please open my account again');
+        $send('777', '/start '.$code);
+
+        $this->assertSame(0, Ticket::query()->count());
+        $this->assertFalse(ChatLink::query()->where('external_id', '777')->exists(), 'A code made before the account closed links nothing.');
+        Http::assertNotSent(fn (Request $request): bool => str_contains((string) $request['text'], 'Your unpaid invoices'));
+        Http::assertSent(fn (Request $request): bool => $request['chat_id'] === '555' && str_contains((string) $request['text'], 'This account is closed'));
+
+        // Disconnecting still works.
+        $send('555', '/stop');
+        $this->assertSame(0, ChatLink::query()->count());
+    }
+
+    public function test_a_link_code_works_when_the_cache_gives_the_client_id_back_as_text(): void
+    {
+        $client = Client::factory()->create(['first_name' => 'Raz']);
+        // Redis gives numbers back as strings.
+        Cache::put('chat-link:ABCD2345', (string) $client->id, now()->addMinutes(30));
+
+        $link = LinkCodes::redeem('abcd2345', ChatLink::TELEGRAM, '555', 'Raz');
+
+        $this->assertSame($client->id, $link?->client_id);
+        $this->assertNull(Cache::get('chat-link:ABCD2345'), 'A code works once.');
+        $this->assertNull(LinkCodes::redeem('abcd2345', ChatLink::TELEGRAM, '556', 'Raz'));
+
+        // The code on the account page stays the same between page views.
+        $code = LinkCodes::for($client);
+        Cache::put('chat-link:'.$code, (string) $client->id, now()->addMinutes(30));
+        $this->assertSame($code, LinkCodes::for($client));
+    }
+
+    public function test_qr_connect_shows_no_pin_when_meta_did_not_register_the_number(): void
+    {
+        $this->connectByQr(fn (Request $request) => Http::response(['error' => ['message' => 'Two step verification PIN Mismatch', 'code' => 133005]], 400));
+
+        $status = (string) session('status');
+        $this->assertStringContainsString('WhatsApp is connected: +964 750 123 4567.', $status);
+        $this->assertStringContainsString('Meta did not register this number yet', $status);
+        $this->assertStringNotContainsString('two-step PIN', $status);
+        $this->assertSame('1001', setting('chat.whatsapp_phone_id'), 'The connection is kept.');
+        $this->assertTrue(ActivityLog::query()->where('action', 'chat.failed')->exists());
+    }
+
+    public function test_qr_connect_shows_the_pin_meta_registered_the_number_with(): void
+    {
+        $pin = null;
+        $this->connectByQr(function (Request $request) use (&$pin) {
+            $pin = $request['pin'];
+
+            return Http::response(['success' => true]);
+        });
+
+        $this->assertMatchesRegularExpression('/^\d{6}$/', (string) $pin);
+        $this->assertStringContainsString('Its two-step PIN is '.$pin.'.', (string) session('status'));
+    }
+
+    /**
+     * Connect a new WhatsApp number with Meta's signup page; $register answers the register call.
+     */
+    private function connectByQr(Closure $register): void
+    {
+        URL::forceRootUrl('https://billing.example.com');
+        URL::forceScheme('https');
+        $this->signInAdmin();
+        Http::fake(['my.nuvabill.com/connect/whatsapp/status' => Http::response(['ready' => true])]);
+        $this->get(route('admin.settings.chat.edit'))->assertOk();
+        Http::fake(['graph.facebook.com/*' => fn (Request $request) => match (true) {
+            str_contains($request->url(), '/phone_numbers') => Http::response(['data' => [['id' => '1001', 'display_phone_number' => '+964 750 123 4567', 'verified_name' => 'YourHost']]]),
+            str_ends_with($request->url(), '1001/register') => $register($request),
+            default => Http::response(['data' => []]),
+        }]);
+
+        $this->postJson(route('admin.settings.chat.whatsapp.connect'), ['state' => session('chat.whatsapp_state'), 'token' => 'EAABtoken', 'waba_id' => '102290129340398'])->assertOk();
     }
 
     private function connectTelegram(): void

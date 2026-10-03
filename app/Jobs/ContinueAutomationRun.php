@@ -6,6 +6,7 @@ use App\Automations\Runner;
 use App\Models\AutomationRun;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Throwable;
 
 /**
  * Does the steps of a new automation run in the background, so a payment or a sign-up never
@@ -31,5 +32,14 @@ class ContinueAutomationRun implements ShouldQueue
         if ($run !== null) {
             $runner->continue($run);
         }
+    }
+
+    /**
+     * The worker gave up on the job: it took longer than the timeout, or the worker stopped. A run
+     * left "running" is marked failed, so staff see it and its remaining steps never half-happen.
+     */
+    public function failed(?Throwable $exception): void
+    {
+        app(Runner::class)->interrupted($this->runId);
     }
 }

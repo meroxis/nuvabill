@@ -21,6 +21,8 @@ final class Trigger
      * @param  string|null  $daysSentence  The same as a plural sentence: ":count day after the due date|:count days after the due date".
      * @param  (Closure(CarbonImmutable, int): Builder<covariant Model>)|null  $due  For timed triggers: the subjects due today.
      * @param  (Closure(Model): bool)|null  $stillTrue  Checked after every wait: when false, the run stops.
+     * @param  (Closure(Model): string)|null  $occasion  For timed triggers that can come back for the same subject, such as
+     *                                                   a domain that expires again next year: what tells this time apart.
      */
     public function __construct(
         public readonly string $key,
@@ -31,7 +33,19 @@ final class Trigger
         public readonly ?string $daysSentence = null,
         public readonly ?Closure $due = null,
         public readonly ?Closure $stillTrue = null,
+        public readonly ?Closure $occasion = null,
     ) {}
+
+    /**
+     * The occasion part of a timed run's dedupe key: "d30:2027-05-01" for a domain that expires
+     * on 1 May 2027, so the same domain gets a new run when it expires again next year.
+     */
+    public function occasionFor(Model $subject, int $days): string
+    {
+        $occasion = $this->occasion !== null ? (string) ($this->occasion)($subject) : '';
+
+        return 'd'.$days.($occasion !== '' ? ':'.$occasion : '');
+    }
 
     public function isTimed(): bool
     {
