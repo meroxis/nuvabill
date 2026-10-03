@@ -72,7 +72,7 @@ class SiteBackupTest extends TestCase
 
         $zip = $this->open($path = app(SiteBackup::class)->create(SiteBackup::TYPE_DATABASE));
 
-        $this->assertSame(['database.sqlite', 'RESTORE.txt'], $this->names($zip));
+        $this->assertSame([$this->databaseEntry(), 'RESTORE.txt'], $this->names($zip));
         $this->assertStringStartsWith(SiteBackup::prefix('database'), basename($path));
         $this->assertSame('Raz', $this->adminNameIn($zip));
     }
@@ -83,11 +83,11 @@ class SiteBackupTest extends TestCase
 
         $zip = $this->open(app(SiteBackup::class)->create(SiteBackup::TYPE_DATABASE, 'long-backup-password'));
 
-        $this->assertFalse($zip->getFromName('database.sqlite'));
+        $this->assertFalse($zip->getFromName($this->databaseEntry()));
         $this->assertStringContainsString('7-Zip', (string) $zip->getFromName('RESTORE.txt'));
 
         $zip->setPassword('long-backup-password');
-        $this->assertNotFalse($zip->getFromName('database.sqlite'));
+        $this->assertNotFalse($zip->getFromName($this->databaseEntry()));
     }
 
     public function test_only_the_two_newest_local_backups_of_each_type_are_kept(): void
@@ -176,6 +176,39 @@ class SiteBackupTest extends TestCase
         }
     }
 
+    /**
+     * Runs only against MySQL or MariaDB: a table a failed update made is gone after the restore,
+     * so the next try of that update does not stop at "table already exists" again.
+     */
+    #[Group('mysql')]
+    public function test_a_mysql_restore_removes_tables_a_failed_update_made(): void
+    {
+        if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            $this->markTestSkipped('Needs a MySQL or MariaDB test database.');
+        }
+
+        $site = $this->folder.DIRECTORY_SEPARATOR.'site';
+        $updates = $this->folder.DIRECTORY_SEPARATOR.'updates';
+        File::ensureDirectoryExists($site);
+        $tables = Schema::getTableListing(schemaQualified: false);
+
+        try {
+            $before = (new Backup($site, $updates))->create('before-test');
+
+            Schema::create('made_by_failed_update', function (Blueprint $table): void {
+                $table->id();
+                $table->foreignId('client_id')->nullable()->constrained();
+            });
+
+            (new Backup($site, $updates))->restore($before);
+
+            $this->assertFalse(Schema::hasTable('made_by_failed_update'));
+            $this->assertEqualsCanonicalizing($tables, Schema::getTableListing(schemaQualified: false), 'Every table of the backup is back.');
+        } finally {
+            Schema::dropIfExists('made_by_failed_update');
+        }
+    }
+
     public function test_the_backup_command_makes_either_type(): void
     {
         $this->artisan('nuvabill:backup', ['--database' => true])
@@ -201,8 +234,24 @@ class SiteBackupTest extends TestCase
         return array_map(fn (int $index): string => (string) $zip->getNameIndex($index), range(0, $zip->numFiles - 1));
     }
 
+    /**
+     * The database file in a backup: a copy of the SQLite file, or a dump of MySQL or MariaDB.
+     */
+    private function databaseEntry(): string
+    {
+        return in_array(DB::getDriverName(), ['mysql', 'mariadb'], true) ? 'database.sql' : 'database.sqlite';
+    }
+
     private function adminNameIn(ZipArchive $zip): string
     {
+        if ($this->databaseEntry() === 'database.sql') {
+            // One INSERT per row, with the values in the column order of the table.
+            preg_match('/^INSERT INTO `admins` VALUES \((.*)\);$/m', (string) $zip->getFromName('database.sql'), $match);
+            $values = str_getcsv($match[1] ?? '', ',', "'", '\\');
+
+            return (string) ($values[array_search('name', Schema::getColumnListing('admins'), true)] ?? '');
+        }
+
         $copy = $this->folder.DIRECTORY_SEPARATOR.'restored-'.Str::random(6).'.sqlite';
         file_put_contents($copy, $zip->getFromName('database.sqlite'));
         $pdo = new PDO('sqlite:'.$copy);

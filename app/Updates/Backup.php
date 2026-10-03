@@ -261,17 +261,84 @@ class Backup
     {
         $pdo = DB::connection()->getPdo();
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        $tables = [];
+        $statements = 0;
+        $mysql = in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
+
+        // The dump has one row per INSERT. Saved one by one, each row waits for the disk, and a large
+        // database takes long enough for PHP to stop half-way; so rows are committed in batches.
+        if ($mysql) {
+            $pdo->exec('SET autocommit=0');
+        }
 
         try {
             while (($line = fgets($stream)) !== false) {
                 $statement = rtrim($line, "\r\n");
 
-                if (trim($statement) !== '') {
-                    $pdo->exec($statement);
+                if (trim($statement) === '') {
+                    continue;
                 }
+
+                $pdo->exec($statement);
+
+                if (preg_match('/^CREATE TABLE `((?:[^`]|``)+)`/', $statement, $match) === 1) {
+                    $tables[] = str_replace('``', '`', $match[1]);
+                }
+
+                if ($mysql && ++$statements % 1000 === 0) {
+                    $pdo->exec('COMMIT');
+                }
+            }
+
+            if ($mysql) {
+                $pdo->exec('COMMIT');
             }
         } finally {
             fclose($stream);
+
+            // Turning autocommit back on also commits what is still open after an error, as before.
+            if ($mysql) {
+                try {
+                    $pdo->exec('SET autocommit=1');
+                } catch (Throwable) {
+                    // The connection is gone; the error that caused it is the one to report.
+                }
+            }
+        }
+
+        if ($mysql) {
+            $this->dropTablesMadeSince($pdo, $tables);
+        }
+    }
+
+    /**
+     * Tables a failed update made after the backup are removed too. Otherwise the next try of that
+     * update stops at "table already exists" and is rolled back again, every time.
+     *
+     * @param  list<string>  $backedUp
+     */
+    private function dropTablesMadeSince(PDO $pdo, array $backedUp): void
+    {
+        // A dump without tables is not a reason to empty the database.
+        if ($backedUp === []) {
+            return;
+        }
+
+        $current = $pdo->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_COLUMN, 0);
+        $extra = array_values(array_diff($current, $backedUp));
+
+        if ($extra === []) {
+            return;
+        }
+
+        $pdo->exec('SET FOREIGN_KEY_CHECKS=0');
+
+        try {
+            foreach ($extra as $table) {
+                $pdo->exec('DROP TABLE IF EXISTS `'.str_replace('`', '``', $table).'`');
+            }
+        } finally {
+            $pdo->exec('SET FOREIGN_KEY_CHECKS=1');
         }
     }
 

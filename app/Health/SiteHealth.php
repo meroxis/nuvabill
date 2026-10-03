@@ -101,7 +101,12 @@ class SiteHealth
      */
     public function run(string $trigger = 'manual'): HealthRun
     {
-        @set_time_limit(300);
+        // More time for the checks of a web request. The command line has no limit, and gets none
+        // here, so a long command that runs the checks first is not stopped later.
+        if ((int) ini_get('max_execution_time') > 0) {
+            @set_time_limit(300);
+        }
+
         $started = hrtime(true);
         $results = [];
 

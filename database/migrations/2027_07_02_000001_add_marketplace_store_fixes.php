@@ -55,6 +55,15 @@ return new class extends Migration
         }
 
         if (Schema::hasIndex('marketplace_downloads', 'marketplace_downloads_item_site_index')) {
+            // MySQL and MariaDB drop the index of the item foreign key once these indexes cover it, so it
+            // comes back first; without it the indexes cannot be dropped.
+            if (in_array(Schema::getConnection()->getDriverName(), ['mysql', 'mariadb'], true)
+                && ! Schema::hasIndex('marketplace_downloads', 'marketplace_downloads_marketplace_item_id_foreign')) {
+                Schema::table('marketplace_downloads', function (Blueprint $table) {
+                    $table->index('marketplace_item_id', 'marketplace_downloads_marketplace_item_id_foreign');
+                });
+            }
+
             Schema::table('marketplace_downloads', function (Blueprint $table) {
                 $table->dropIndex('marketplace_downloads_item_site_index');
                 $table->dropIndex('marketplace_downloads_item_ip_index');

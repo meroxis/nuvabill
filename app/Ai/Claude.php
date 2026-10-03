@@ -147,8 +147,11 @@ class Claude
             $outputConfig['format'] = ['type' => 'json_schema', 'schema' => $schema];
         }
 
-        // A web request waits for the answer; the newer models can take a while on long tickets.
-        set_time_limit(150);
+        // A web request waits for the answer; the newer models can take a while on long tickets. A queue
+        // worker has no limit and gets none here, so the jobs it runs after this one are not cut off.
+        if ((int) ini_get('max_execution_time') > 0) {
+            set_time_limit(150);
+        }
 
         try {
             $response = $this->factory->make($key)->beta->messages->create(

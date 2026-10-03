@@ -92,9 +92,11 @@ return new class extends Migration
             $table->dropColumn(['needs_review', 'fraud_reasons']);
         });
 
+        // The foreign key goes first: MySQL and MariaDB use the index for it, so the index cannot go before.
         Schema::table('invoice_items', function (Blueprint $table) {
+            $table->dropForeign(['domain_id']);
             $table->dropIndex(['domain_id', 'period_start']);
-            $table->dropConstrainedForeignId('domain_id');
+            $table->dropColumn('domain_id');
         });
 
         Schema::dropIfExists('domains');

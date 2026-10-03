@@ -47,6 +47,21 @@ class SiteHealthTest extends TestCase
         $this->get(route('admin.health.index'))->assertForbidden();
     }
 
+    public function test_a_check_on_the_command_line_adds_no_time_limit(): void
+    {
+        $limit = ini_get('max_execution_time');
+        set_time_limit(0);
+
+        try {
+            app(SiteHealth::class)->run('scheduled');
+
+            // The nightly command runs other work after the checks; a limit set here would stop it.
+            $this->assertSame('0', ini_get('max_execution_time'));
+        } finally {
+            ini_set('max_execution_time', (string) $limit);
+        }
+    }
+
     public function test_a_check_scores_the_site_and_emails_new_urgent_issues_once(): void
     {
         Mail::fake();
