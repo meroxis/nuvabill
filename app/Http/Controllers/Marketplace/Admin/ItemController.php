@@ -13,7 +13,8 @@ use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 /**
- * Staff manage listings: put items live or hide them, feature them, and set prices.
+ * Staff manage listings: put items live or hide them, feature them, set prices, and check the
+ * listing changes developers make after their item was approved.
  */
 class ItemController extends Controller
 {
@@ -59,5 +60,43 @@ class ItemController extends Controller
         Activity::log('marketplace.item', "Marketplace item {$item->name} saved");
 
         return redirect()->route('admin.store.items.index')->with('status', __(':name saved.', ['name' => $item->name]));
+    }
+
+    /**
+     * Approve or turn down the listing changes a developer made to an approved item. Only the
+     * changes staff saw are approved: when the developer changed them again, staff look again.
+     */
+    public function listing(Request $request, MarketplaceItem $item, ItemPublisher $publisher): RedirectResponse
+    {
+        $data = $request->validate([
+            'decision' => ['required', Rule::in(['approve', 'discard'])],
+            'seen' => ['required', 'string', 'max:64'],
+        ]);
+
+        if ($item->pending_listing === null) {
+            return back()->with('error', __('No listing changes are waiting.'));
+        }
+
+        if (! hash_equals(self::fingerprint($item), $data['seen'])) {
+            return back()->with('error', __('The developer changed the listing again. Check the changes once more.'));
+        }
+
+        if ($data['decision'] === 'approve') {
+            $publisher->approveListing($item, $request->user('admin'));
+
+            return back()->with('status', __('The listing changes are live.'));
+        }
+
+        $publisher->discardListing($item, $request->user('admin'));
+
+        return back()->with('status', __('The listing changes were turned down.'));
+    }
+
+    /**
+     * A short fingerprint of the waiting listing changes, sent with the decision form.
+     */
+    public static function fingerprint(MarketplaceItem $item): string
+    {
+        return hash('sha256', (string) json_encode($item->pending_listing));
     }
 }

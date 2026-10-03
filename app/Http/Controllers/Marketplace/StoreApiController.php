@@ -75,22 +75,11 @@ class StoreApiController extends Controller
         }
 
         $build = $builder->build($version, $license);
-        $isNewSite = ! MarketplaceDownload::query()->where('marketplace_item_id', $item->id)->where('site', License::normalizeSite($data['site']))->exists();
-
-        MarketplaceDownload::create([
-            'marketplace_item_id' => $item->id,
-            'marketplace_version_id' => $version->id,
-            'license_id' => $license?->id,
-            'site' => License::normalizeSite($data['site']),
-            'ip' => $request->ip(),
-        ]);
-
-        if ($isNewSite) {
-            $item->increment('installs_count');
-        }
+        $this->countDownload($request, $item, $version, $license, License::normalizeSite($data['site']));
 
         return response()->json([
-            'slug' => $item->slug,
+            // The slug the package was signed with. After a rename, older versions still carry the old one.
+            'slug' => $version->packageSlug(),
             'type' => $item->type->value,
             'version' => $version->version,
             // Signed without the scheme and host, so it still works behind a proxy that talks plain HTTP to this server.
@@ -98,6 +87,41 @@ class StoreApiController extends Controller
             'sha256' => $build['sha256'],
             'signature' => $build['signature'],
         ]);
+    }
+
+    /**
+     * Note the download, and count a new install. Anyone can download a free item for any site
+     * name, so a free item only counts a site from an address not seen before. Test sites like
+     * localhost never count, and the same download again within an hour is not saved twice.
+     */
+    private function countDownload(Request $request, MarketplaceItem $item, MarketplaceVersion $version, ?License $license, string $site): void
+    {
+        $ip = $request->ip();
+        $seen = MarketplaceDownload::query()
+            ->where('marketplace_item_id', $item->id)
+            ->where(fn ($query) => $query->where('site', $site)->when($license === null && $ip !== null, fn ($query) => $query->orWhere('ip', $ip)))
+            ->exists();
+
+        $repeat = $seen && MarketplaceDownload::query()
+            ->where('marketplace_item_id', $item->id)
+            ->where('site', $site)
+            ->where('ip', $ip)
+            ->where('created_at', '>=', now()->subHour())
+            ->exists();
+
+        if (! $repeat) {
+            MarketplaceDownload::create([
+                'marketplace_item_id' => $item->id,
+                'marketplace_version_id' => $version->id,
+                'license_id' => $license?->id,
+                'site' => $site,
+                'ip' => $ip,
+            ]);
+        }
+
+        if (! $seen && ! License::isTestSite($site)) {
+            $item->increment('installs_count');
+        }
     }
 
     public function check(Request $request): JsonResponse
@@ -136,6 +160,6 @@ class StoreApiController extends Controller
 
         $build = $builder->build($version, $owner);
 
-        return response()->download($build['path'], $version->item->slug.'-'.$version->version.'.zip', ['Content-Type' => 'application/zip']);
+        return response()->download($build['path'], $version->packageSlug().'-'.$version->version.'.zip', ['Content-Type' => 'application/zip']);
     }
 }

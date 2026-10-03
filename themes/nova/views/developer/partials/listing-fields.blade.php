@@ -26,18 +26,20 @@
     </div>
 </section>
 
-<section class="card" style="display:grid;gap:1rem" x-data="{ price: @js(old('price', $item->price ? \App\Support\Money::toDecimal($item->price) : '0')), share: {{ $share }} }">
+{{-- Amounts are in the item's own currency, which is the store's currency when the item was listed. --}}
+@php $currency = $item->currency ?: (string) setting('billing.currency'); @endphp
+<section class="card" style="display:grid;gap:1rem" x-data="{ price: @js(old('price', $item->price ? \App\Support\Money::toDecimal($item->price) : '0')), share: {{ $share }}, currency: @js($currency), fmt(value) { try { return new Intl.NumberFormat(document.documentElement.lang || undefined, { style: 'currency', currency: this.currency }).format(value); } catch (e) { return this.currency + ' ' + Number(value).toFixed(2); } } }">
     <h2 style="font-size:1.05rem">{{ $new ? __('3. Price') : __('Price') }}</h2>
     <div class="form-grid">
-        <x-input name="price" type="number" step="0.01" min="0" :label="__('Price for one site (:currency)', ['currency' => setting('billing.currency')])" :value="\App\Support\Money::toDecimal((int) $item->price)" x-model="price" :help="__('0 makes it free.')" />
+        <x-input name="price" type="number" step="0.01" min="0" :label="__('Price for one site (:currency)', ['currency' => $currency])" :value="\App\Support\Money::toDecimal((int) $item->price)" x-model="price" :help="__('0 makes it free.')" />
         <x-input name="update_price" type="number" step="0.01" min="0" :label="__('Yearly updates after year 1')" :value="\App\Support\Money::toDecimal((int) $item->update_price)" />
     </div>
     <div class="dev-split-box" x-show="Number(price) > 0">
         <div class="dev-split"><span :style="'width:' + share + '%'"></span><span :style="'width:' + (100 - share) + '%'"></span></div>
         <div style="display:flex;justify-content:space-between;font-size:.9rem;flex-wrap:wrap;gap:8px">
-            <span>{{ __('Buyer pays') }} <b x-text="'$' + Number(price).toFixed(2)"></b></span>
-            <span>{{ __('You get') }} <b x-text="'$' + (Number(price) * share / 100).toFixed(2)"></b></span>
-            <span>{{ __('Marketplace fee') }} <b x-text="'$' + (Number(price) * (100 - share) / 100).toFixed(2)"></b></span>
+            <span>{{ __('Buyer pays') }} <b x-text="fmt(Number(price))"></b></span>
+            <span>{{ __('You get') }} <b x-text="fmt(Number(price) * share / 100)"></b></span>
+            <span>{{ __('Marketplace fee') }} <b x-text="fmt(Number(price) * (100 - share) / 100)"></b></span>
         </div>
     </div>
 </section>

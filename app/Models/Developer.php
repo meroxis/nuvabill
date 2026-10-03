@@ -5,6 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
+use RuntimeException;
 
 /**
  * Someone who sells themes or extensions on the marketplace store. Usually a client account;
@@ -16,6 +18,13 @@ class Developer extends Model
     public const STATUS_ACTIVE = 'active';
 
     public const STATUS_SUSPENDED = 'suspended';
+
+    /**
+     * Slugs clients cannot get when they join, so nobody looks like the official developer.
+     *
+     * @var list<string>
+     */
+    public const RESERVED_SLUGS = ['nuvabill', 'official', 'marketplace', 'admin', 'staff', 'support'];
 
     protected $fillable = ['client_id', 'name', 'slug', 'website', 'bio', 'is_verified', 'is_official', 'share_percent', 'payout_method', 'payout_details', 'status'];
 
@@ -82,5 +91,30 @@ class Developer extends Model
     public function isActive(): bool
     {
         return $this->status === self::STATUS_ACTIVE;
+    }
+
+    /**
+     * The official developer with this name, made when it does not exist yet. A client account
+     * that has the same slug is never used for official items.
+     *
+     * @throws RuntimeException When the slug belongs to a developer that is not official.
+     */
+    public static function official(string $name): self
+    {
+        $slug = Str::slug($name);
+        $developer = self::query()->where('slug', $slug)->first();
+
+        if ($developer !== null && (! $developer->is_official || $developer->client_id !== null)) {
+            throw new RuntimeException("The developer slug {$slug} belongs to an account that is not official.");
+        }
+
+        return $developer ?? self::create([
+            'client_id' => null,
+            'name' => $name,
+            'slug' => $slug,
+            'is_official' => true,
+            'is_verified' => true,
+            'status' => self::STATUS_ACTIVE,
+        ]);
     }
 }

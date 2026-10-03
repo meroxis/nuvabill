@@ -29,12 +29,13 @@ class MarketplacePublish extends Command
             return self::FAILURE;
         }
 
-        $developer = Developer::query()->firstOrCreate(['slug' => Str::slug((string) $this->option('developer'))], [
-            'name' => (string) $this->option('developer'),
-            'is_official' => true,
-            'is_verified' => true,
-            'status' => Developer::STATUS_ACTIVE,
-        ]);
+        try {
+            $developer = Developer::official((string) $this->option('developer'));
+        } catch (Throwable $exception) {
+            $this->components->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
 
         $failed = 0;
 
@@ -65,6 +66,12 @@ class MarketplacePublish extends Command
         $type = $archive->type();
         $name = $archive->name();
         unset($archive);
+
+        $renamedTo = MarketplaceItem::renamedTo($slug);
+
+        if ($renamedTo !== null) {
+            throw new \RuntimeException("The slug {$slug} is an old slug of {$renamedTo}. Use the new slug in the package.");
+        }
 
         $item = MarketplaceItem::query()->firstOrNew(['slug' => $slug]);
 

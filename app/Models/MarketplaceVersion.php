@@ -89,4 +89,15 @@ class MarketplaceVersion extends Model
     {
         return storage_path('app/private/'.$this->file_path);
     }
+
+    /**
+     * The slug inside the package, which its signature covers. It is the item's slug from when
+     * the version was uploaded, so it stays the old one after the item is renamed.
+     */
+    public function packageSlug(): string
+    {
+        $slug = $this->manifest['slug'] ?? null;
+
+        return is_string($slug) && $slug !== '' ? $slug : $this->item->slug;
+    }
 }

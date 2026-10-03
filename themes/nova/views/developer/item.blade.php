@@ -42,7 +42,16 @@
             <form method="POST" action="{{ route('developer.items.update', $item) }}" enctype="multipart/form-data" style="display:grid;gap:16px">
                 @csrf
                 @method('PUT')
-                @include('theme::developer.partials.listing-fields', ['item' => $item, 'new' => false])
+                @if ($item->pending_listing)
+                    <section class="card notice-card">
+                        <span class="notice-icon"><x-icon name="shield" /></span>
+                        <div>
+                            <b>{{ __('Your listing changes wait for a reviewer') }}</b>
+                            <span>{{ __('Buyers see the listing as it was until a reviewer checks the new name, texts, links and screenshots.') }}</span>
+                        </div>
+                    </section>
+                @endif
+                @include('theme::developer.partials.listing-fields', ['item' => $item->withPendingListing(), 'new' => false])
                 <button class="btn" type="submit" style="justify-self:start">{{ __('Save listing') }}</button>
             </form>
         </div>

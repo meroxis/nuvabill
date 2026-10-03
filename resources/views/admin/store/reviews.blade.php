@@ -26,6 +26,13 @@
             @empty
                 <div class="empty">{{ __('Nothing here.') }}</div>
             @endforelse
+            @foreach ($listings as $listed)
+                <a class="review-entry" href="{{ route('admin.store.items.edit', $listed) }}">
+                    <b>{{ $listed->name }}</b>
+                    <span class="faint" style="font-size:.8rem">{{ $listed->developer->name }} · {{ $listed->updated_at->diffForHumans(short: true) }}</span>
+                    <span style="display:flex;gap:6px;flex-wrap:wrap"><x-pill tone="warn">{{ __('Listing changes waiting') }}</x-pill></span>
+                </a>
+            @endforeach
         </div>
 
         @if ($version)

@@ -11,6 +11,7 @@ use App\Support\WhiteLabel;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
+use RuntimeException;
 
 #[Signature('nuvabill:white-label-product {price : Price for the first year, for example 99} {renewal? : Price for each next year; the first year price if empty}')]
 #[Description('On the marketplace store: create or change the White-label license that removes the "Powered by Nuvabill" credit')]
@@ -33,12 +34,21 @@ class WhiteLabelProduct extends Command
             return self::FAILURE;
         }
 
-        $developer = Developer::query()->firstOrCreate(['slug' => 'nuvabill'], [
-            'name' => 'Nuvabill',
-            'is_official' => true,
-            'is_verified' => true,
-            'status' => Developer::STATUS_ACTIVE,
-        ]);
+        try {
+            $developer = Developer::official('Nuvabill');
+        } catch (RuntimeException $exception) {
+            $this->components->error($exception->getMessage());
+
+            return self::FAILURE;
+        }
+
+        $existing = MarketplaceItem::query()->where('slug', WhiteLabel::SLUG)->first();
+
+        if ($existing !== null && $existing->developer_id !== $developer->id) {
+            $this->components->error('The slug '.WhiteLabel::SLUG.' belongs to another developer.');
+
+            return self::FAILURE;
+        }
 
         $item = MarketplaceItem::query()->updateOrCreate(['slug' => WhiteLabel::SLUG], [
             'developer_id' => $developer->id,

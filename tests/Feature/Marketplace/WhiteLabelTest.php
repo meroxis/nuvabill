@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Marketplace;
 
+use App\Enums\BillingCycle;
 use App\Marketplace\PackageType;
 use App\Marketplace\Store\LicenseService;
 use App\Models\Client;
@@ -100,5 +101,22 @@ class WhiteLabelTest extends TestCase
         $result = app(LicenseService::class)->verify($item, $license->key, 'billing.example.org');
         $this->assertFalse($result['valid']);
         $this->assertSame('expired', $result['status']);
+    }
+
+    public function test_clearing_the_renewal_in_the_store_admin_keeps_the_license_yearly(): void
+    {
+        config(['nuvabill.marketplace.store' => true]);
+        (new MarketplaceStoreServiceProvider($this->app))->enable();
+        $this->artisan('nuvabill:white-label-product', ['price' => '99', 'renewal' => '49'])->assertSuccessful();
+        $item = MarketplaceItem::query()->where('slug', 'white-label')->sole();
+
+        $this->signInAdmin();
+        $this->put(route('admin.store.items.update', $item), ['status' => 'live', 'price' => '99', 'update_price' => ''])->assertRedirect();
+
+        $price = $item->refresh()->product->prices()->sole();
+        $this->assertSame(BillingCycle::Annually, $price->billing_cycle, 'A blank renewal means the first year price, not a key that never ends.');
+        $this->assertSame(9900, $price->price);
+        $this->assertSame(0, $price->setup_fee);
+        $this->get(route('marketplace.white-label'))->assertOk()->assertSee('Then $99.00 a year.');
     }
 }

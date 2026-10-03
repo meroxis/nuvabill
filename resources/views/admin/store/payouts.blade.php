@@ -18,15 +18,22 @@
                     <tr>
                         <td><a class="row-link" href="{{ route('admin.store.developers.edit', $developer) }}">{{ $developer->name }}</a></td>
                         <td>{{ \App\Http\Controllers\Marketplace\DeveloperController::PAYOUT_METHODS[$developer->payout_method] ?? __('Not set') }}</td>
-                        <td class="end num">{{ $owed[$developer->id]->sales }}</td>
+                        <td class="end num">{{ (int) $owed[$developer->id]->sales }}</td>
                         <td class="end num"><b>{{ money((int) $owed[$developer->id]->owed, $currency) }}</b></td>
                         <td class="end">
-                            <form method="POST" action="{{ route('admin.store.payouts.store') }}" style="display:flex;gap:6px;justify-content:flex-end" onsubmit="return confirm(@js(__('Did you already send :amount to :name?', ['amount' => money((int) $owed[$developer->id]->owed, $currency), 'name' => $developer->name])))">
-                                @csrf
-                                <input type="hidden" name="developer_id" value="{{ $developer->id }}">
-                                <input class="input" name="reference" placeholder="{{ __('Transfer reference') }}" aria-label="{{ __('Transfer reference') }}" style="max-width:170px;height:34px">
-                                <button class="btn btn-sm btn-primary" type="submit">{{ __('Mark paid') }}</button>
-                            </form>
+                            @if ((int) $owed[$developer->id]->owed > 0)
+                                {{-- Only the earnings shown here are marked paid, so a sale made after the page opened stays owed. --}}
+                                <form method="POST" action="{{ route('admin.store.payouts.store') }}" style="display:flex;gap:6px;justify-content:flex-end" onsubmit="return confirm(@js(__('Did you already send :amount to :name?', ['amount' => money((int) $owed[$developer->id]->owed, $currency), 'name' => $developer->name])))">
+                                    @csrf
+                                    <input type="hidden" name="developer_id" value="{{ $developer->id }}">
+                                    <input type="hidden" name="upto_id" value="{{ (int) $owed[$developer->id]->last_id }}">
+                                    <input type="hidden" name="amount" value="{{ (int) $owed[$developer->id]->owed }}">
+                                    <input class="input" name="reference" placeholder="{{ __('Transfer reference') }}" aria-label="{{ __('Transfer reference') }}" style="max-width:170px;height:34px">
+                                    <button class="btn btn-sm btn-primary" type="submit">{{ __('Mark paid') }}</button>
+                                </form>
+                            @else
+                                <span class="faint">—</span>
+                            @endif
                         </td>
                     </tr>
                 @empty

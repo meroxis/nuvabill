@@ -78,6 +78,8 @@ class Settings
         'marketplace.developer_share' => 83,
         // Store only: old slug => new slug of renamed items (nuvabill:marketplace-rename).
         'marketplace.renamed_items' => [],
+        // Store only: slugs developers cannot take, kept for official items that are not listed yet.
+        'marketplace.reserved_slugs' => [],
 
         'automation.enabled' => true,
         'automation.reminder_days' => [1, 3, 7],

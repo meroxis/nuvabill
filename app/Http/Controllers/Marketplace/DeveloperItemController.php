@@ -11,10 +11,13 @@ use App\Models\MarketplaceItem;
 use App\Models\MarketplaceMessage;
 use App\Models\MarketplaceVersion;
 use App\Support\Money;
+use Closure;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -50,16 +53,22 @@ class DeveloperItemController extends Controller
                 'status' => MarketplaceItem::STATUS_DRAFT,
             ]);
 
-            $this->saveScreenshots($item, $request->file('screenshots', []));
+            $screenshots = $this->storeScreenshots($item, $request->file('screenshots', []));
+
+            if ($screenshots !== null) {
+                $item->update(['screenshots' => $screenshots]);
+            }
 
             return $item;
         });
 
         $version = $uploader->upload($item, $request->file('package'), $request->input('changelog'));
 
-        return redirect()->route('developer.items.show', $item)->with($version->status === MarketplaceVersion::STATUS_PENDING ? 'status' : 'error', $version->status === MarketplaceVersion::STATUS_PENDING
-            ? __('Sent for review. The automatic checks are done; a person tests it next.')
-            : __('The automatic checks found problems. Fix them and upload a new version.'));
+        if ($version->status !== MarketplaceVersion::STATUS_PENDING) {
+            return $this->forgetFailedItem($item, $version);
+        }
+
+        return redirect()->route('developer.items.show', $item)->with('status', __('Sent for review. The automatic checks are done; a person tests it next.'));
     }
 
     public function show(Request $request, MarketplaceItem $item): View
@@ -79,15 +88,46 @@ class DeveloperItemController extends Controller
     {
         $this->authorizeItem($request, $item);
         $data = $this->validated($request, $item);
+        $attributes = $this->attributes($data);
+        $screenshots = $this->storeScreenshots($item, $request->file('screenshots', []));
 
-        $item->update($this->attributes($data));
-        $this->saveScreenshots($item, $request->file('screenshots', []));
+        if ($screenshots !== null) {
+            $attributes['screenshots'] = $screenshots;
+        }
+
+        if ($item->latest_version_id === null) {
+            $item->update($attributes);
+
+            return back()->with('status', __('Listing saved.'));
+        }
+
+        // An approved item: what buyers read waits for a reviewer. Prices, category and colours apply now.
+        $pending = (array) $item->pending_listing;
+
+        // New screenshots replace ones that were still waiting for review.
+        if ($screenshots !== null) {
+            foreach (array_diff((array) ($pending['screenshots'] ?? []), (array) $item->screenshots) as $file) {
+                File::delete(MediaController::path($item->slug, basename((string) $file)));
+            }
+        }
+
+        foreach (Arr::only($attributes, MarketplaceItem::REVIEWED_FIELDS) as $field => $value) {
+            if (($value ?? '') !== ($item->getAttribute($field) ?? '')) {
+                $pending[$field] = $value;
+            } else {
+                unset($pending[$field]);
+            }
+        }
+
+        $item->update(Arr::except($attributes, MarketplaceItem::REVIEWED_FIELDS) + ['pending_listing' => $pending !== [] ? $pending : null]);
 
         if ($item->isLive()) {
             $publisher->syncProduct($item);
         }
 
-        return back()->with('status', __('Listing saved.'));
+        return back()->with('status', $pending !== []
+            ? __('Listing saved. The new name, texts, links and screenshots go live after a reviewer checks them.')
+            : __('Listing saved.'));
     }
 
     public function upload(Request $request, MarketplaceItem $item, VersionUploader $uploader): RedirectResponse
@@ -131,6 +171,29 @@ class DeveloperItemController extends Controller
     }
 
     /**
+     * A new item whose first package failed the automatic checks is not kept, so it does not
+     * hold its short name. The developer fixes the package and sends the form again.
+     */
+    private function forgetFailedItem(MarketplaceItem $item, MarketplaceVersion $version): RedirectResponse
+    {
+        $problems = (string) $version->messages()->where('author_type', MarketplaceMessage::FROM_STAFF)->value('message');
+
+        DB::transaction(function () use ($item): void {
+            $item->versions()->each(function (MarketplaceVersion $version): void {
+                $version->messages()->delete();
+                $version->delete();
+            });
+            $item->delete();
+        });
+
+        File::delete($version->path());
+        File::deleteDirectory(dirname($version->path()));
+        File::deleteDirectory(MediaController::path($item->slug));
+
+        return back()->withInput()->withErrors(['package' => $problems !== '' ? $problems : __('The automatic checks found problems. Fix them and upload a new version.')]);
+    }
+
+    /**
      * @return array<string, string>
      */
     private function types(): array
@@ -147,7 +210,7 @@ class DeveloperItemController extends Controller
 
         return $request->validate([
             'name' => ['required', 'string', 'max:120'],
-            'slug' => $item ? ['nullable'] : ['required', 'string', 'max:64', 'regex:/^[a-z0-9][a-z0-9_-]*$/', Rule::unique('marketplace_items', 'slug')],
+            'slug' => $item ? ['nullable'] : ['required', 'string', 'max:64', 'regex:/^[a-z0-9][a-z0-9_-]*$/', Rule::unique('marketplace_items', 'slug'), $this->freeSlug(...)],
             'type' => $item ? ['nullable'] : ['required', Rule::enum(PackageType::class)->except(PackageType::License)],
             'category' => ['nullable', Rule::in(MarketplaceItem::CATEGORIES)],
             'summary' => ['required', 'string', 'max:200'],
@@ -162,6 +225,19 @@ class DeveloperItemController extends Controller
             'screenshots.*' => ['image', 'mimes:png,jpg,jpeg,webp', 'max:3072'],
             'changelog' => ['nullable', 'string', 'max:2000'],
         ], ['slug.unique' => __('Another item already uses this short name.')]);
+    }
+
+    /**
+     * The old slug of a renamed item stays with that item, and the slugs of what comes with
+     * Nuvabill or is kept for official items cannot be taken.
+     */
+    private function freeSlug(string $attribute, mixed $value, Closure $fail): void
+    {
+        if (MarketplaceItem::renamedTo((string) $value) !== null) {
+            $fail(__('Another item already uses this short name.'));
+        } elseif (MarketplaceItem::isReservedSlug((string) $value)) {
+            $fail(__('This short name is reserved.'));
+        }
     }
 
     /**
@@ -186,14 +262,17 @@ class DeveloperItemController extends Controller
     }
 
     /**
+     * Save uploaded screenshots in the item's media folder.
+     *
      * @param  array<int, UploadedFile>|UploadedFile|null  $files
+     * @return list<string>|null The new file names, or null when none were uploaded.
      */
-    private function saveScreenshots(MarketplaceItem $item, array|UploadedFile|null $files): void
+    private function storeScreenshots(MarketplaceItem $item, array|UploadedFile|null $files): ?array
     {
         $files = array_filter(is_array($files) ? $files : [$files]);
 
         if ($files === []) {
-            return;
+            return null;
         }
 
         $directory = MediaController::path($item->slug);
@@ -205,6 +284,6 @@ class DeveloperItemController extends Controller
             $names[] = $name;
         }
 
-        $item->update(['screenshots' => $names]);
+        return $names;
     }
 }

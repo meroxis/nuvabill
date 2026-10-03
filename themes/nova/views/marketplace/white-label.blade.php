@@ -27,8 +27,11 @@
 
         <aside class="card" style="display:grid;gap:1rem;align-content:start">
             @if ($price)
-                <div style="display:flex;align-items:baseline;gap:10px"><span class="mkt-big-price">{{ money($item->price, $item->currency) }}</span><span class="muted">{{ __('the first year') }}</span></div>
-                <p class="muted" style="margin:0">{{ __('Then :price a year. Cancel any time.', ['price' => money($item->update_price ?: $item->price, $item->currency)]) }}</p>
+                {{-- The terms come from the price row that is sold, so the page never promises a different deal. --}}
+                <div style="display:flex;align-items:baseline;gap:10px"><span class="mkt-big-price">{{ money($price->price + $price->setup_fee, $price->currency) }}</span>@if ($price->billing_cycle->isRecurring())<span class="muted">{{ __('the first year') }}</span>@endif</div>
+                @if ($price->billing_cycle->isRecurring())
+                    <p class="muted" style="margin:0">{{ __('Then :price a year. Cancel any time.', ['price' => money($price->price, $price->currency)]) }}</p>
+                @endif
                 <form method="POST" action="{{ route('cart.store') }}" style="display:grid;gap:.8rem">
                     @csrf
                     <input type="hidden" name="product_id" value="{{ $item->product_id }}">

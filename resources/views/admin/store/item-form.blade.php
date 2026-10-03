@@ -8,6 +8,42 @@
         @if ($item->isLive())<a class="btn" href="{{ route('marketplace.show', $item) }}" target="_blank" rel="noopener"><x-icon name="external" />{{ __('View listing') }}</a>@endif
     </div>
 
+    @if ($item->pending_listing)
+        {{-- Listing changes on an approved item wait here, so a reviewed item cannot change what buyers read on its own. --}}
+        @php
+            $labels = ['name' => __('Name'), 'summary' => __('Short description'), 'description' => __('Full description'), 'demo_url' => __('Demo link'), 'docs_url' => __('Help page link'), 'screenshots' => __('Screenshots')];
+            $show = fn (string $field, mixed $value) => $field === 'screenshots'
+                ? collect((array) $value)->map(fn ($file) => '<a href="'.e(route('marketplace.media', [$item->slug, basename((string) $file)])).'" target="_blank" rel="noopener">'.e(basename((string) $file)).'</a>')->implode(', ')
+                : e((string) $value);
+        @endphp
+        <section class="card" style="display:grid;gap:.8rem;max-width:760px;margin-bottom:16px">
+            <h2 style="font-size:1rem">{{ __('Listing changes waiting for review') }}</h2>
+            <p class="muted" style="margin:0">{{ __('The developer changed what buyers read. Check the new texts and links before they go live.') }}</p>
+            <div class="table-wrap"><table class="table">
+                <thead><tr><th></th><th>{{ __('Now') }}</th><th>{{ __('New') }}</th></tr></thead>
+                <tbody>
+                @foreach (array_intersect_key($item->pending_listing, $labels) as $field => $value)
+                    <tr>
+                        <td>{{ $labels[$field] }}</td>
+                        <td class="muted" style="overflow-wrap:anywhere">{!! $show($field, $item->getAttribute($field)) !!}</td>
+                        <td style="overflow-wrap:anywhere"><b>{!! $show($field, $value) !!}</b></td>
+                    </tr>
+                @endforeach
+                </tbody>
+            </table></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                @foreach (['approve' => __('Approve changes'), 'discard' => __('Turn down')] as $decision => $label)
+                    <form method="POST" action="{{ route('admin.store.items.listing', $item) }}">
+                        @csrf
+                        <input type="hidden" name="decision" value="{{ $decision }}">
+                        <input type="hidden" name="seen" value="{{ \App\Http\Controllers\Marketplace\Admin\ItemController::fingerprint($item) }}">
+                        <button class="btn {{ $decision === 'approve' ? 'btn-primary' : '' }}" type="submit">{{ $label }}</button>
+                    </form>
+                @endforeach
+            </div>
+        </section>
+    @endif
+
     <form method="POST" action="{{ route('admin.store.items.update', $item) }}" class="card" style="display:grid;gap:1rem;max-width:760px">
         @csrf
         @method('PUT')

@@ -97,7 +97,7 @@ class DeveloperController extends Controller
             'developer' => $developer,
             'currency' => $currency,
             'thisMonth' => $chart->last()['amount'],
-            'salesThisMonth' => DeveloperEarning::query()->where('developer_id', $developer->id)->where('created_at', '>=', now()->startOfMonth())->count(),
+            'salesThisMonth' => DeveloperEarning::query()->where('developer_id', $developer->id)->whereNull('credit_note_id')->where('created_at', '>=', now()->startOfMonth())->count(),
             'allTime' => (int) DeveloperEarning::query()->where('developer_id', $developer->id)->where('currency', $currency)->sum('developer_share'),
             'balance' => $developer->balance($currency),
             'chart' => $chart,
@@ -115,7 +115,8 @@ class DeveloperController extends Controller
         $developer->update([
             'name' => $data['name'],
             'website' => $data['website'] ?? null,
-            'bio' => $data['bio'] ?? null,
+            // The dashboard form has no bio field, so a form without one keeps it.
+            'bio' => array_key_exists('bio', $data) ? $data['bio'] : $developer->bio,
             'payout_method' => $data['payout_method'] ?? null,
             'payout_details' => filled($data['payout_details'] ?? null) ? $data['payout_details'] : $developer->payout_details,
         ]);
@@ -137,13 +138,16 @@ class DeveloperController extends Controller
         ]);
     }
 
+    /**
+     * A free slug for a new developer. Slugs kept for the official developer get a number too.
+     */
     private function uniqueSlug(string $name): string
     {
         $base = Str::slug($name) ?: 'developer';
         $slug = $base;
         $number = 2;
 
-        while (Developer::query()->where('slug', $slug)->exists()) {
+        while (in_array($slug, Developer::RESERVED_SLUGS, true) || Developer::query()->where('slug', $slug)->exists()) {
             $slug = $base.'-'.$number++;
         }
 

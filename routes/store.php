@@ -60,6 +60,7 @@ Route::middleware('web')->group(function (): void {
             Route::get('items', [AdminItemController::class, 'index'])->name('items.index');
             Route::get('items/{item}/edit', [AdminItemController::class, 'edit'])->name('items.edit');
             Route::put('items/{item}', [AdminItemController::class, 'update'])->name('items.update');
+            Route::post('items/{item}/listing', [AdminItemController::class, 'listing'])->name('items.listing');
 
             Route::get('developers', [AdminDeveloperController::class, 'index'])->name('developers.index');
             Route::get('developers/{developer}/edit', [AdminDeveloperController::class, 'edit'])->name('developers.edit');

@@ -25,7 +25,7 @@ class PayoutController extends Controller
         $owed = DeveloperEarning::query()
             ->whereNull('payout_id')
             ->where('currency', $currency)
-            ->selectRaw('developer_id, sum(developer_share) as owed, sum(fee) as fees, count(*) as sales')
+            ->selectRaw('developer_id, sum(developer_share) as owed, sum(fee) as fees, sum(case when credit_note_id is null then 1 else 0 end) as sales, max(id) as last_id')
             ->groupBy('developer_id')
             ->get()
             ->keyBy('developer_id');
@@ -42,12 +42,15 @@ class PayoutController extends Controller
     }
 
     /**
-     * Record that everything a developer was owed has been paid.
+     * Record that what staff saw owed, and confirmed sending, has been paid. Sales after the
+     * page was opened (later earnings) stay owed for the next payout.
      */
     public function store(Request $request): RedirectResponse
     {
         $data = $request->validate([
             'developer_id' => ['required', 'integer', 'exists:developers,id'],
+            'upto_id' => ['required', 'integer', 'min:1'],
+            'amount' => ['required', 'integer', 'min:1'],
             'reference' => ['nullable', 'string', 'max:190'],
             'notes' => ['nullable', 'string', 'max:500'],
         ]);
@@ -55,12 +58,22 @@ class PayoutController extends Controller
         $currency = (string) setting('billing.currency');
         $developer = Developer::query()->findOrFail($data['developer_id']);
 
-        $payout = DB::transaction(function () use ($developer, $currency, $data): ?Payout {
-            $earnings = DeveloperEarning::query()->where('developer_id', $developer->id)->whereNull('payout_id')->where('currency', $currency)->lockForUpdate()->get();
+        $payout = DB::transaction(function () use ($developer, $currency, $data): Payout|string {
+            $earnings = DeveloperEarning::query()
+                ->where('developer_id', $developer->id)
+                ->whereNull('payout_id')
+                ->where('currency', $currency)
+                ->where('id', '<=', (int) $data['upto_id'])
+                ->lockForUpdate()
+                ->get();
             $amount = (int) $earnings->sum('developer_share');
 
             if ($amount <= 0) {
-                return null;
+                return 'nothing';
+            }
+
+            if ($amount !== (int) $data['amount']) {
+                return 'changed';
             }
 
             $payout = $developer->payouts()->create([
@@ -77,8 +90,12 @@ class PayoutController extends Controller
             return $payout;
         });
 
-        if ($payout === null) {
+        if ($payout === 'nothing') {
             return back()->with('error', __(':name is not owed anything.', ['name' => $developer->name]));
+        }
+
+        if ($payout === 'changed') {
+            return back()->with('error', __('The amount owed to :name changed. Reload the page and check it again.', ['name' => $developer->name]));
         }
 
         Activity::log('payout.recorded', 'Payout of '.money($payout->amount, $currency)." to {$developer->name} recorded");

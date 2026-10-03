@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Marketplace\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Marketplace\Store\ItemPublisher;
+use App\Models\MarketplaceItem;
 use App\Models\MarketplaceVersion;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -52,6 +53,17 @@ class ReviewController extends Controller
             return back()->with('error', __('This version failed an automatic check. Ask for changes instead.'));
         }
 
+        if (! in_array($version->status, [MarketplaceVersion::STATUS_PENDING, MarketplaceVersion::STATUS_CHANGES], true)) {
+            return back()->with('error', __('This version was already reviewed.'));
+        }
+
+        // An older version approved after a newer one would sit next to it and confuse buyers.
+        $latest = $version->item->latestVersion;
+
+        if ($latest !== null && version_compare($version->version, $latest->version, '<=')) {
+            return back()->with('error', __('A newer version is already live. Reject this one.'));
+        }
+
         $publisher->approve($version, $request->user('admin'), $request->input('message'));
 
         return redirect()->route('admin.store.reviews.index')->with('status', __(':name :version is approved, signed and live.', ['name' => $version->item->name, 'version' => $version->version]));
@@ -86,6 +98,8 @@ class ReviewController extends Controller
                 'developer' => MarketplaceVersion::query()->where('status', MarketplaceVersion::STATUS_CHANGES)->count(),
             ],
             'version' => $version,
+            // Developers' listing changes on approved items, checked on the item's page.
+            'listings' => MarketplaceItem::query()->whereNotNull('pending_listing')->with('developer')->oldest('updated_at')->get(),
             'approvedThisWeek' => MarketplaceVersion::query()->where('status', MarketplaceVersion::STATUS_APPROVED)->where('reviewed_at', '>=', now()->subWeek())->count(),
         ]);
     }

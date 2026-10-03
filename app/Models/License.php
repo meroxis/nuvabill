@@ -29,12 +29,13 @@ class License extends Model
      */
     public const TEST_SITE_PATTERNS = ['localhost', '127.0.0.1', '*.test', '*.local', '*.localhost', '*.example', 'staging.*', 'dev.*'];
 
-    protected $fillable = ['key', 'marketplace_item_id', 'client_id', 'service_id', 'site', 'site_changes', 'status', 'updates_until', 'revoked_reason', 'last_seen_at'];
+    protected $fillable = ['key', 'marketplace_item_id', 'client_id', 'service_id', 'site', 'site_changes', 'site_changes_since', 'status', 'updates_until', 'revoked_reason', 'last_seen_at'];
 
     protected function casts(): array
     {
         return [
             'site_changes' => 'integer',
+            'site_changes_since' => 'datetime',
             'updates_until' => 'immutable_date',
             'last_seen_at' => 'datetime',
         ];

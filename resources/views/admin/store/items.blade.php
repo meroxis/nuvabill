@@ -8,7 +8,7 @@
             <tbody>
             @forelse ($items as $item)
                 <tr>
-                    <td><a class="row-link" href="{{ route('admin.store.items.edit', $item) }}">{{ $item->name }}</a>@if ($item->is_featured) <x-pill tone="info">{{ __('Featured') }}</x-pill>@endif<div class="faint" style="font-size:.8rem">{{ $item->type->label() }} · {{ $item->slug }}</div></td>
+                    <td><a class="row-link" href="{{ route('admin.store.items.edit', $item) }}">{{ $item->name }}</a>@if ($item->is_featured) <x-pill tone="info">{{ __('Featured') }}</x-pill>@endif @if ($item->pending_listing) <x-pill tone="warn">{{ __('Listing changes waiting') }}</x-pill>@endif<div class="faint" style="font-size:.8rem">{{ $item->type->label() }} · {{ $item->slug }}</div></td>
                     <td>{{ $item->developer->name }}</td>
                     <td class="mono">{{ $item->latestVersion?->version ?? '—' }}</td>
                     <td class="end num">{{ $item->isFree() ? __('Free') : money($item->price, $item->currency) }}</td>

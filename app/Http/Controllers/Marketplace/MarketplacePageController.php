@@ -51,9 +51,11 @@ class MarketplacePageController extends Controller
 
     public function show(Request $request, MarketplaceItem $item): View|RedirectResponse
     {
+        // An old link of a renamed item goes to its new address, also when another item took the old slug.
+        $item = MarketplaceItem::findBySlug((string) $request->route()?->originalParameter('item')) ?? $item;
+
         abort_unless($item->isLive(), 404);
 
-        // An old link of a renamed item goes to its new address.
         if ($request->route()?->originalParameter('item') !== $item->slug) {
             return redirect()->route('marketplace.show', $item, 301);
         }

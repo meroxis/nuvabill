@@ -5,7 +5,9 @@ namespace App\Marketplace\Store;
 use App\Marketplace\PackageSignature;
 use App\Models\License;
 use App\Models\MarketplaceVersion;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 use RuntimeException;
 use ZipArchive;
 
@@ -16,6 +18,8 @@ use ZipArchive;
  */
 class DownloadBuilder
 {
+    private const STAMP = '.nuvabill-license';
+
     public function __construct(private SigningKey $key) {}
 
     /**
@@ -29,27 +33,23 @@ class DownloadBuilder
             return ['path' => $version->path(), 'sha256' => $version->sha256, 'signature' => (string) $version->signature];
         }
 
-        $path = storage_path('app/private/marketplace/builds/'.$license->id.'/'.$version->item->slug.'-'.$version->version.'.zip');
+        // The slug inside the package, which stays the old one in versions made before a rename.
+        $slug = $version->packageSlug();
+        $path = storage_path('app/private/marketplace/builds/'.$license->id.'/'.$slug.'-'.$version->version.'.zip');
 
-        if (! is_file($path)) {
-            File::ensureDirectoryExists(dirname($path));
-
-            if (! copy($version->path(), $path)) {
-                throw new RuntimeException('The package file is missing on the store.');
+        // One build at a time per license and version, so two downloads never write the same file.
+        Cache::lock('marketplace-build:'.$license->id.':'.$version->id, 60)->block(30, function () use ($version, $license, $path): void {
+            if (! $this->isStamped($path)) {
+                $this->stampCopy($version, $license, $path);
             }
-
-            $zip = new ZipArchive;
-            $zip->open($path);
-            $zip->addFromString($this->prefix($zip).'.nuvabill-license', $this->stamp($license, $version));
-            $zip->close();
-        }
+        });
 
         $sha256 = (string) hash_file('sha256', $path);
 
         return [
             'path' => $path,
             'sha256' => $sha256,
-            'signature' => PackageSignature::sign($version->item->slug, $version->version, $sha256, $this->key->secret()),
+            'signature' => PackageSignature::sign($slug, $version->version, $sha256, $this->key->secret()),
         ];
     }
 
@@ -60,7 +60,7 @@ class DownloadBuilder
     {
         $data = [
             'license' => $license->publicId(),
-            'item' => $version->item->slug,
+            'item' => $version->packageSlug(),
             'version' => $version->version,
             'site' => $license->site,
             'key_ends' => substr($license->key, -4),
@@ -71,6 +71,62 @@ class DownloadBuilder
         $secret = base64_decode($this->key->secret(), true);
 
         return (string) json_encode($data + ['signature' => base64_encode(sodium_crypto_sign_detached($json, (string) $secret))], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    }
+
+    /**
+     * A finished build: a zip that opens and has the stamp. A copy cut off half way (a full
+     * disk) or left without the stamp is built again.
+     */
+    private function isStamped(string $path): bool
+    {
+        if (! is_file($path)) {
+            return false;
+        }
+
+        $zip = new ZipArchive;
+
+        if ($zip->open($path) !== true) {
+            return false;
+        }
+
+        $stamped = $zip->locateName($this->prefix($zip).self::STAMP) !== false;
+        $zip->close();
+
+        return $stamped;
+    }
+
+    /**
+     * Build the stamped copy in a temporary file next to it, then move it into place, so a
+     * build that fails half way never leaves a broken file behind.
+     */
+    private function stampCopy(MarketplaceVersion $version, License $license, string $path): void
+    {
+        File::ensureDirectoryExists(dirname($path));
+        $temporary = $path.'.tmp-'.Str::random(8);
+
+        try {
+            if (! is_file($version->path()) || ! @copy($version->path(), $temporary)) {
+                throw new RuntimeException('The package file is missing on the store.');
+            }
+
+            $zip = new ZipArchive;
+
+            if ($zip->open($temporary) !== true) {
+                throw new RuntimeException('The package file on the store cannot be opened.');
+            }
+
+            if (! $zip->addFromString($this->prefix($zip).self::STAMP, $this->stamp($license, $version)) || ! $zip->close()) {
+                throw new RuntimeException('The license could not be added to the package.');
+            }
+
+            if (! @rename($temporary, $path)) {
+                throw new RuntimeException('The package could not be saved on the store.');
+            }
+        } finally {
+            if (is_file($temporary)) {
+                @unlink($temporary);
+            }
+        }
     }
 
     /**

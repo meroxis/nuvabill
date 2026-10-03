@@ -48,7 +48,19 @@ class MarketplaceRename extends Command
             return self::FAILURE;
         }
 
-        DB::transaction(function () use ($item, $from, $to, $settings): void {
+        // An old slug of another item stays with that item. Renaming an item back to its own old slug is fine.
+        $aliasOf = MarketplaceItem::renamedTo($to);
+
+        if ($aliasOf !== null && $aliasOf !== $from) {
+            $this->components->error("The slug {$to} is an old slug of {$aliasOf}, so sites that installed {$to} would get this item.");
+
+            return self::FAILURE;
+        }
+
+        // This item took a slug another item had before. That slug keeps pointing to the other item.
+        $keepsOldSlug = MarketplaceItem::renamedTo($from) === null;
+
+        DB::transaction(function () use ($item, $from, $to, $settings, $keepsOldSlug): void {
             $item->update(['slug' => $to]);
 
             // The store's own product for the item finds it by slug.
@@ -69,7 +81,10 @@ class MarketplaceRename extends Command
                 }
             }
 
-            $renamed[$from] = $to;
+            if ($keepsOldSlug) {
+                $renamed[$from] = $to;
+            }
+
             unset($renamed[$to]);
             $settings->set('marketplace.renamed_items', $renamed);
         });
@@ -79,7 +94,9 @@ class MarketplaceRename extends Command
         }
 
         Activity::log('marketplace.renamed', "Marketplace item {$item->name}: slug {$from} is now {$to}");
-        $this->components->info("{$item->name} is now at {$to}. Licenses stay valid, and {$from} keeps working for existing sites and links.");
+        $this->components->info($keepsOldSlug
+            ? "{$item->name} is now at {$to}. Licenses stay valid, and {$from} keeps working for existing sites and links."
+            : "{$item->name} is now at {$to}. {$from} stays with the item that had it first.");
 
         return self::SUCCESS;
     }

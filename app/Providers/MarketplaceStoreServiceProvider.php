@@ -6,8 +6,10 @@ use App\Events\InvoicePaid;
 use App\Events\ServiceActivated;
 use App\Marketplace\Store\EarningsRecorder;
 use App\Marketplace\Store\LicenseService;
+use App\Models\CreditNote;
 use App\Models\License;
 use App\Support\ServicePanels;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
@@ -32,6 +34,11 @@ class MarketplaceStoreServiceProvider extends ServiceProvider
     {
         Event::listen(ServiceActivated::class, fn (ServiceActivated $event) => $this->app->make(LicenseService::class)->issueFor($event->service));
         Event::listen(InvoicePaid::class, fn (InvoicePaid $event) => $this->app->make(EarningsRecorder::class)->record($event->invoice));
+
+        // A credit note takes back the developer's share, once the credit note and the invoice are saved.
+        Event::listen('eloquent.created: '.CreditNote::class, fn (CreditNote $creditNote) => DB::afterCommit(
+            fn () => rescue(fn () => $this->app->make(EarningsRecorder::class)->reverse($creditNote))
+        ));
 
         $this->app->make(ServicePanels::class)->add(function ($service): ?array {
             $license = License::query()->with('item')->where('service_id', $service->id)->first();

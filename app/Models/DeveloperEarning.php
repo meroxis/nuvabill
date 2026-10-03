@@ -7,10 +7,11 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * A developer's share of one paid invoice line for their item: a sale or a yearly update renewal.
+ * A row with a credit note takes back (negative amounts) the share of money that was refunded.
  */
 class DeveloperEarning extends Model
 {
-    protected $fillable = ['developer_id', 'marketplace_item_id', 'license_id', 'invoice_id', 'gross', 'developer_share', 'fee', 'share_percent', 'currency', 'payout_id'];
+    protected $fillable = ['developer_id', 'marketplace_item_id', 'license_id', 'invoice_id', 'credit_note_id', 'gross', 'developer_share', 'fee', 'share_percent', 'currency', 'payout_id'];
 
     protected function casts(): array
     {

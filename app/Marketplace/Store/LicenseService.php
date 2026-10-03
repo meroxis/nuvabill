@@ -8,6 +8,7 @@ use App\Models\License;
 use App\Models\MarketplaceItem;
 use App\Models\Service;
 use App\Support\Activity;
+use Illuminate\Support\Facades\DB;
 
 /**
  * License keys for paid marketplace items: made when the purchase is paid and set up, checked by
@@ -126,18 +127,37 @@ class LicenseService
     }
 
     /**
-     * Let the owner move a key to a new site, a few times a year.
+     * Let the owner move a key to a new site, a few times a year. The year starts with the
+     * first move and is counted on its own, so daily license checks do not keep it going.
      */
     public function moveToNewSite(License $license): bool
     {
-        if ($license->site_changes >= License::SITE_CHANGES_PER_YEAR && $license->updated_at?->gt(now()->subYear())) {
-            return false;
+        $moved = DB::transaction(function () use ($license): bool {
+            $locked = License::query()->lockForUpdate()->findOrFail($license->id);
+
+            if ($locked->site_changes_since === null || $locked->site_changes_since->lte(now()->subYear())) {
+                $locked->site_changes = 0;
+                $locked->site_changes_since = now();
+            }
+
+            if ($locked->site_changes >= License::SITE_CHANGES_PER_YEAR) {
+                return false;
+            }
+
+            $locked->site = null;
+            $locked->site_changes++;
+            $locked->save();
+
+            return true;
+        });
+
+        $license->refresh();
+
+        if ($moved) {
+            Activity::log('license.moved', "License {$license->publicId()} released from its site", $license->service, $license->client);
         }
 
-        $license->update(['site' => null, 'site_changes' => $license->site_changes + 1]);
-        Activity::log('license.moved', "License {$license->publicId()} released from its site", $license->service, $license->client);
-
-        return true;
+        return $moved;
     }
 
     /**

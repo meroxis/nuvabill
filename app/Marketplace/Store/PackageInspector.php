@@ -26,12 +26,31 @@ class PackageInspector
      *
      * @var list<string>
      */
-    private const ENCODED_MARKERS = ['ionCube Loader', 'sg_load(', 'SourceGuardian', 'zend_loader', '<?php //0', 'eval(gzinflate', 'eval(base64_decode', 'eval(str_rot13', 'eval(gzuncompress'];
+    private const ENCODED_MARKERS = ['ionCube Loader', 'sg_load(', 'SourceGuardian', 'zend_loader', '<?php //0'];
 
     /**
+     * Running decoded text as code, also with spaces or an @ in between: eval (base64_decode(...
+     */
+    private const ENCODED_EVAL = '/\beval\s*\(\s*@?\s*(base64_decode|gzinflate|gzuncompress|gzdecode|str_rot13|hex2bin)\s*\(/i';
+
+    /**
+     * An include or require of a file that does not end in .php, which can hide PHP in any file.
+     */
+    private const OTHER_FILE_INCLUDE = '/(?<![\w$>:@\\\\])(include|require)(?:_once)?\b[^;]*?[\'"][^\'"]*\.(?!php[\'"])[a-z0-9]+[\'"]/i';
+
+    /**
+     * File types that can run as PHP (or are programs), so they are not allowed in a package.
+     *
      * @var list<string>
      */
-    private const BLOCKED_EXTENSIONS = ['phar', 'exe', 'dll', 'so', 'sh', 'bat', 'cmd', 'com', 'jar', 'htaccess'];
+    private const BLOCKED_EXTENSIONS = ['phar', 'phtml', 'pht', 'phps', 'php3', 'php4', 'php5', 'php7', 'php8', 'inc', 'exe', 'dll', 'so', 'sh', 'bat', 'cmd', 'com', 'jar', 'htaccess'];
+
+    /**
+     * Documentation may show PHP examples; it is still checked for hidden code.
+     *
+     * @var list<string>
+     */
+    private const DOCUMENT_EXTENSIONS = ['md', 'markdown'];
 
     /**
      * @return array{ok: bool, slug: string, version: string, name: string, type: string, manifest: array<string, mixed>, permissions: list<string>, checks: list<array{key: string, title: string, text: string, level: string}>}
@@ -93,6 +112,7 @@ class PackageInspector
         $risky = [];
         $encoded = [];
         $blocked = [];
+        $hidden = [];
         $phpFiles = 0;
 
         foreach ($archive->files() as $file) {
@@ -105,23 +125,37 @@ class PackageInspector
                 continue;
             }
 
+            $code = $archive->contents($file);
+
+            // PHP runs from any file a .php file includes, so every file with PHP in it is checked.
             if ($extension !== 'php') {
-                continue;
+                if (! $this->hasPhp($code)) {
+                    continue;
+                }
+
+                if (! in_array($extension, self::DOCUMENT_EXTENSIONS, true)) {
+                    $hidden[] = $file;
+                }
             }
 
             $phpFiles++;
-            $code = $archive->contents($file);
 
-            foreach (self::ENCODED_MARKERS as $marker) {
-                if (stripos($code, $marker) !== false) {
-                    $encoded[] = $file;
+            if (preg_match(self::ENCODED_EVAL, $code)) {
+                $encoded[] = $file;
+            } else {
+                foreach (self::ENCODED_MARKERS as $marker) {
+                    if (stripos($code, $marker) !== false) {
+                        $encoded[] = $file;
 
-                    break;
+                        break;
+                    }
                 }
             }
 
             foreach (preg_split('/\R/', $code) ?: [] as $number => $line) {
-                if (preg_match('/(?<![\w$>:\\\\])('.implode('|', self::RISKY_FUNCTIONS).')\s*\(/i', $line, $match) || preg_match('/`[^`]*\$[^`]*`/', $line)) {
+                if (preg_match('/(?<![\w$>:\\\\])('.implode('|', self::RISKY_FUNCTIONS).')\s*\(/i', $line, $match)
+                    || preg_match(self::OTHER_FILE_INCLUDE, $line, $match)
+                    || preg_match('/`[^`]*\$[^`]*`/', $line)) {
                     $risky[] = $file.':'.($number + 1).' '.($match[1] ?? 'backticks').'()';
                 }
             }
@@ -130,6 +164,10 @@ class PackageInspector
         $checks[] = $encoded === []
             ? $this->check('encoded', __('Readable code'), __('No encoded or hidden code in :count PHP files', ['count' => $phpFiles]))
             : $this->check('encoded', __('Encoded or hidden code'), __('The marketplace only accepts readable code: :files', ['files' => implode(', ', array_slice($encoded, 0, 5))]), 'fail');
+
+        if ($hidden !== []) {
+            $checks[] = $this->check('hidden', __('PHP code in other files'), __('PHP code only goes in .php files: :files', ['files' => implode(', ', array_slice($hidden, 0, 5))]), 'fail');
+        }
 
         $checks[] = $risky === []
             ? $this->check('functions', __('No risky functions'), __('No exec(), eval() or similar calls'))
@@ -157,11 +195,20 @@ class PackageInspector
         $found = [];
 
         foreach ($archive->files() as $file) {
-            if (! in_array(strtolower(pathinfo($file, PATHINFO_EXTENSION)), ['php', 'js'], true)) {
+            $extension = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+
+            if (in_array($extension, self::BLOCKED_EXTENSIONS, true)) {
                 continue;
             }
 
-            preg_match_all('#https://([a-z0-9.-]+\.[a-z]{2,})#i', $archive->contents($file), $matches);
+            $contents = $archive->contents($file);
+
+            // Code that runs: PHP and JavaScript files, and any other file with PHP in it.
+            if (! in_array($extension, ['php', 'js', 'mjs', 'cjs'], true) && ! $this->hasPhp($contents)) {
+                continue;
+            }
+
+            preg_match_all('#\bhttps?://([a-z0-9.-]+\.[a-z]{2,})#i', $contents, $matches);
 
             foreach ($matches[1] as $host) {
                 $found[strtolower($host)] = true;
@@ -183,6 +230,15 @@ class PackageInspector
         }
 
         return [$this->check('connections', __('Addresses not in the permissions'), __('The code mentions :hosts. List them as "http:host" permissions or explain them to the reviewer.', ['hosts' => implode(', ', array_slice($undeclared, 0, 6))]), 'warn')];
+    }
+
+    /**
+     * Whether a file holds PHP code. "<?=" only counts in text, where it cannot appear by chance.
+     */
+    private function hasPhp(string $contents): bool
+    {
+        return stripos($contents, '<?php') !== false
+            || (! str_contains(substr($contents, 0, 8000), "\0") && str_contains($contents, '<?='));
     }
 
     /**
