@@ -23,7 +23,7 @@ class DemoResetTest extends TestCase
         File::ensureDirectoryExists(dirname($database));
         File::put($database, 'old demo data');
 
-        config(['nuvabill.demo' => true, 'database.connections.sqlite.database' => $database]);
+        config(['nuvabill.demo' => true, 'database.default' => 'sqlite', 'database.connections.sqlite.database' => $database]);
         DB::purge('sqlite');
 
         try {
@@ -54,7 +54,7 @@ class DemoResetTest extends TestCase
         $visitor->exec('insert into visits default values');
         $this->assertFileExists($database.'-journal');
 
-        config(['nuvabill.demo' => true, 'database.connections.sqlite.database' => $database]);
+        config(['nuvabill.demo' => true, 'database.default' => 'sqlite', 'database.connections.sqlite.database' => $database]);
         DB::purge('sqlite');
 
         try {

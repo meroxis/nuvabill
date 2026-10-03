@@ -55,6 +55,8 @@ class ClientEmailCaseTest extends TestCase
 
     public function test_older_emails_are_lowercased_unless_another_client_already_has_that_address(): void
     {
+        $this->needsCaseTwins();
+
         $mixed = Client::factory()->create();
         $taken = Client::factory()->create();
         $twin = Client::factory()->create();
@@ -81,6 +83,8 @@ class ClientEmailCaseTest extends TestCase
 
     public function test_a_client_whose_email_differs_only_in_letter_case_still_signs_in_with_its_own_spelling(): void
     {
+        $this->needsCaseTwins();
+
         Sleep::fake();
         $lower = Client::factory()->create(['password' => 'lower-password-1']);
         $twin = Client::factory()->create(['password' => 'twin-password-1']);
@@ -142,6 +146,8 @@ class ClientEmailCaseTest extends TestCase
 
     public function test_site_health_lists_clients_that_share_an_email(): void
     {
+        $this->needsCaseTwins();
+
         $lower = Client::factory()->create();
         $twin = Client::factory()->create();
         Client::factory()->create(['email' => 'mer.las@example.com']);
@@ -175,5 +181,16 @@ class ClientEmailCaseTest extends TestCase
             'password' => 'secret-pass-1',
             'password_confirmation' => 'secret-pass-1',
         ];
+    }
+
+    /**
+     * Two clients whose emails differ only in letter case exist only on SQLite. On MySQL and MariaDB
+     * the unique email index already ignores letter case, so such a pair cannot be made.
+     */
+    private function needsCaseTwins(): void
+    {
+        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            $this->markTestSkipped('MySQL and MariaDB cannot hold two emails that differ only in letter case.');
+        }
     }
 }

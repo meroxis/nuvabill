@@ -56,7 +56,12 @@ class MysqlMigrationsTest extends TestCase
         $this->artisan('migrate:fresh');
 
         // Where MySQL and MariaDB used to stop: the prices table without its unique index, and nothing after it.
-        Schema::table('product_addon_prices', fn (Blueprint $table) => $table->dropUnique('product_addon_prices_cycle_unique'));
+        // The foreign key uses that index, so it goes first and comes back with an index of its own.
+        Schema::table('product_addon_prices', function (Blueprint $table) {
+            $table->dropForeign(['product_addon_id']);
+            $table->dropUnique('product_addon_prices_cycle_unique');
+        });
+        Schema::table('product_addon_prices', fn (Blueprint $table) => $table->foreign('product_addon_id')->references('id')->on('product_addons')->cascadeOnDelete());
         Schema::drop('service_addons');
 
         (require database_path('migrations/2026_10_01_000001_create_coupons_and_product_addons_tables.php'))->up();

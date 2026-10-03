@@ -34,8 +34,8 @@ class ThrottlePerRouteTest extends TestCase
     public function test_a_clients_requests_do_not_throttle_the_staff_member_with_the_same_id(): void
     {
         $product = Product::factory()->priced(999)->create(['requires_domain' => false]);
-        $client = Client::factory()->create(['first_name' => 'Raz', 'last_name' => 'Las']);
-        $admin = Admin::factory()->create(['name' => 'Mer Las']);
+        $client = Client::factory()->create(['first_name' => 'Mer', 'last_name' => 'Las']);
+        $admin = Admin::factory()->create(['name' => 'Raz']);
         $this->assertSame($client->id, $admin->id);
 
         $this->actingAs($client, 'web');
