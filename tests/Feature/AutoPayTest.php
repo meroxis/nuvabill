@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Automation\DailyAutomation;
 use App\Billing\InvoiceManager;
 use App\Enums\InvoiceStatus;
+use App\Extensions\ExtensionManager;
 use App\Mail\TemplatedMessage;
 use App\Models\Admin;
 use App\Models\Client;
@@ -113,7 +114,27 @@ class AutoPayTest extends TestCase
             && $request['off_session'] === 'true' && $request['confirm'] === 'true'
             && $request['customer'] === 'cus_raz' && $request['payment_method'] === 'pm_visa'
             && (int) $request['amount'] === 1299
-            && $request->header('Idempotency-Key')[0] === 'nuvabill-invoice-'.$invoice->id.'-1299-try-0');
+            && $request->header('Idempotency-Key')[0] === $this->idempotencyKey('invoice-'.$invoice->id.'-1299-try-0')
+            && $request['metadata']['attempt'] === 'invoice-'.$invoice->id.'-1299-try-0');
+    }
+
+    public function test_two_sites_on_one_stripe_account_never_send_the_same_idempotency_key(): void
+    {
+        Http::fake(['api.stripe.com/v1/payment_intents' => Http::response(['id' => 'pi_auto', 'status' => 'succeeded', 'amount_received' => 1299, 'currency' => 'usd'])]);
+        $client = $this->client();
+        $method = $this->saveCard($client);
+        $invoice = $this->renewalInvoice($client);
+        $gateway = app(ExtensionManager::class)->gateway('stripe');
+
+        // Both sites number their invoices from 1, so both have an "invoice-1-1299-try-0".
+        $gateway->chargeSaved($method, $invoice, 'invoice-1-1299-try-0');
+        config(['app.key' => 'base64:'.base64_encode(str_repeat('b', 32))]);
+        $gateway->chargeSaved($method, $invoice, 'invoice-1-1299-try-0');
+
+        [$siteA, $siteB] = Http::recorded()->map(fn (array $pair): Request => $pair[0])->values()->all();
+        $this->assertNotSame($siteA->header('Idempotency-Key')[0], $siteB->header('Idempotency-Key')[0]);
+        $this->assertStringEndsWith('-invoice-1-1299-try-0', $siteB->header('Idempotency-Key')[0]);
+        $this->assertSame($this->idempotencyKey('invoice-1-1299-try-0'), $siteB->header('Idempotency-Key')[0]);
     }
 
     public function test_wallet_credit_is_used_first(): void
@@ -258,7 +279,7 @@ class AutoPayTest extends TestCase
             'api-m.sandbox.paypal.com/v2/checkout/orders/ORDER1/capture' => Http::response([
                 'id' => 'ORDER1', 'status' => 'COMPLETED',
                 'payment_source' => ['paypal' => ['email_address' => 'raz@example.test', 'attributes' => ['vault' => ['id' => 'VAULT1', 'status' => 'VAULTED', 'customer' => ['id' => 'CUST1']]]]],
-                'purchase_units' => [['custom_id' => '1', 'payments' => ['captures' => [['id' => 'CAP1', 'status' => 'COMPLETED', 'amount' => ['value' => '12.99', 'currency_code' => 'USD']]]]]],
+                'purchase_units' => [['custom_id' => '1:'.substr(hash_hmac('sha256', 'nuvabill-paypal-site', (string) config('app.key')), 0, 24), 'payments' => ['captures' => [['id' => 'CAP1', 'status' => 'COMPLETED', 'amount' => ['value' => '12.99', 'currency_code' => 'USD']]]]]],
             ]),
             'api-m.sandbox.paypal.com/v2/checkout/orders' => Http::response([
                 'id' => 'ORDER2', 'status' => 'COMPLETED',
@@ -392,7 +413,7 @@ class AutoPayTest extends TestCase
 
         $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
         Http::assertSent(fn (Request $request): bool => $request->method() === 'GET' && $request['customer'] === 'cus_raz');
-        $this->assertSame(['nuvabill-invoice-1-1299-try-0', 'nuvabill-invoice-1-1299-try-0'], $keys);
+        $this->assertSame([$this->idempotencyKey('invoice-1-1299-try-0'), $this->idempotencyKey('invoice-1-1299-try-0')], $keys);
     }
 
     public function test_a_try_stripe_took_before_the_answer_was_lost_is_found_and_not_charged_again(): void
@@ -429,6 +450,14 @@ class AutoPayTest extends TestCase
 
         $this->assertSame(InvoiceStatus::Unpaid, $invoice->fresh()->status);
         $this->assertSame(0, $invoice->transactions()->count());
+    }
+
+    /**
+     * The Idempotency-Key this site sends Stripe for one try: the attempt with this site's part.
+     */
+    private function idempotencyKey(string $attemptKey): string
+    {
+        return 'nuvabill-'.substr(hash_hmac('sha256', 'nuvabill-stripe-checkout', (string) config('app.key')), 0, 12).'-'.$attemptKey;
     }
 
     /**

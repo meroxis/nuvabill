@@ -289,6 +289,18 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
         return substr(hash_hmac('sha256', 'nuvabill-stripe-checkout', (string) config('app.key')), 0, 32);
     }
 
+    /**
+     * The Idempotency-Key of one try of an automatic payment, at most 255 characters. Unclear tries
+     * are found again by the attempt in their metadata, not by this key.
+     */
+    private function idempotencyKey(string $attemptKey): string
+    {
+        $site = substr($this->siteMarker(), 0, 12);
+        $key = 'nuvabill-'.$site.'-'.$attemptKey;
+
+        return strlen($key) <= 255 ? $key : 'nuvabill-'.$site.'-'.hash('sha256', $attemptKey);
+    }
+
     public function startSavingMethod(Client $client, string $returnUrl, string $cancelUrl): PaymentStart
     {
         $separator = str_contains($returnUrl, '?') ? '&' : '?';
@@ -334,8 +346,10 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
         }
 
         $response = $this->api()->asForm()
-            // The same attempt sent twice (a timeout, then a retry) charges the card once.
-            ->withHeaders(['Idempotency-Key' => 'nuvabill-'.$attemptKey])
+            // The same attempt sent twice (a timeout, then a retry) charges the card once. Stripe keeps
+            // keys for the whole account, so the site part keeps two Nuvabill sites on one account apart,
+            // as both number invoices from 1.
+            ->withHeaders(['Idempotency-Key' => $this->idempotencyKey($attemptKey)])
             ->post(self::API.'/payment_intents', [
                 'amount' => $invoice->balance(),
                 'currency' => strtolower($invoice->currency),

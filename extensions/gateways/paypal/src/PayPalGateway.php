@@ -17,6 +17,7 @@ use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use App\Models\Transaction;
 use App\Support\Money;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Client\Response;
 use Illuminate\Http\Request;
@@ -45,6 +46,13 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
      * Marks an unclear automatic payment kept by its PayPal order, when PayPal did not send the capture.
      */
     private const ORDER_REFERENCE = 'order:';
+
+    /**
+     * Orders made before Nuvabill 0.6.12 name only the invoice in custom_id, without this site's
+     * marker. Their payments still count until this day, which leaves time for slow ones such as
+     * eChecks. This can go in a later release.
+     */
+    private const UNMARKED_ORDERS_UNTIL = '2026-11-15';
 
     public function settingsFields(): array
     {
@@ -114,7 +122,7 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
             'intent' => 'CAPTURE',
             'purchase_units' => [[
                 'reference_id' => (string) $invoice->id,
-                'custom_id' => (string) $invoice->id,
+                'custom_id' => $this->customId($invoice),
                 'description' => __('Invoice :number', ['number' => $invoice->displayNumber()]),
                 'amount' => [
                     'currency_code' => $invoice->currency,
@@ -164,7 +172,9 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
         $unit = $response->json('purchase_units.0', []);
         $capture = $unit['payments']['captures'][0] ?? null;
 
-        if (($capture['status'] ?? null) !== 'COMPLETED' || (int) ($unit['custom_id'] ?? $capture['custom_id'] ?? 0) !== $invoice->id) {
+        // Only this site's order for this invoice pays it: a client cannot bring back an order they
+        // paid on another site that uses the same PayPal account.
+        if (($capture['status'] ?? null) !== 'COMPLETED' || $this->invoiceFromCustomId($unit['custom_id'] ?? $capture['custom_id'] ?? null, $this->takesUnmarkedOrders()) !== $invoice->id) {
             return null;
         }
 
@@ -186,11 +196,13 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
             return WebhookResult::invalid('PayPal could not verify this webhook.');
         }
 
-        $capture = $event['resource'] ?? [];
-        $invoiceId = (int) ($capture['custom_id'] ?? 0);
+        // PayPal sends the payments of the whole app to every webhook on it, for example those of
+        // another Nuvabill site, so only payments with this site's marker count.
+        $capture = is_array($event['resource'] ?? null) ? $event['resource'] : [];
+        $invoiceId = $this->invoiceFromCustomId($capture['custom_id'] ?? null, $this->takesUnmarkedOrders());
 
-        if ($invoiceId === 0 || ($capture['status'] ?? null) !== 'COMPLETED') {
-            return WebhookResult::ignored('Capture is not for a Nuvabill invoice.');
+        if ($invoiceId === null || ($capture['status'] ?? null) !== 'COMPLETED') {
+            return WebhookResult::ignored('Capture is not for an invoice of this site.');
         }
 
         return WebhookResult::paid($this->resultFromCapture($capture, $invoiceId));
@@ -337,7 +349,7 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
                 'intent' => 'CAPTURE',
                 'purchase_units' => [[
                     'reference_id' => (string) $invoice->id,
-                    'custom_id' => (string) $invoice->id,
+                    'custom_id' => $this->customId($invoice),
                     'invoice_id' => $attempt,
                     'description' => __('Invoice :number', ['number' => $invoice->displayNumber()]),
                     'amount' => ['currency_code' => $invoice->currency, 'value' => Money::toDecimal($invoice->balance())],
@@ -413,7 +425,8 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
 
         $capture = $response->json();
 
-        if (! is_array($capture) || (string) ($capture['custom_id'] ?? '') !== (string) $invoice->id) {
+        // This site kept the capture's ID itself, so a try sent before the site marker still counts.
+        if (! is_array($capture) || $this->invoiceFromCustomId($capture['custom_id'] ?? null, true) !== $invoice->id) {
             return null;
         }
 
@@ -442,7 +455,7 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
         $unit = (array) $response->json('purchase_units.0', []);
         $capture = $unit['payments']['captures'][0] ?? null;
 
-        if ((string) ($unit['custom_id'] ?? $capture['custom_id'] ?? '') !== (string) $invoice->id) {
+        if ($this->invoiceFromCustomId($unit['custom_id'] ?? $capture['custom_id'] ?? null, true) !== $invoice->id) {
             return null;
         }
 
@@ -453,6 +466,51 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
         return $response->json('status') === 'COMPLETED'
             ? ChargeResult::pending(__('PayPal did not say whether it took the payment. The payment is checked before the next try.'), self::ORDER_REFERENCE.$orderId)
             : ChargeResult::failed(__('PayPal could not take the payment.'));
+    }
+
+    /**
+     * The custom_id of this site's orders: the invoice and this site's marker. Made from the app key,
+     * so every site has its own and staff never need to enter one. PayPal allows 127 characters.
+     */
+    private function customId(Invoice $invoice): string
+    {
+        return $invoice->id.':'.$this->siteMarker();
+    }
+
+    /**
+     * The invoice a payment's custom_id names, or null when this site did not make the order.
+     * With $unmarked, a bare invoice number also counts, as orders made before 0.6.12 carry.
+     */
+    private function invoiceFromCustomId(mixed $customId, bool $unmarked): ?int
+    {
+        $customId = is_int($customId) ? (string) $customId : $customId;
+
+        if (! is_string($customId)) {
+            return null;
+        }
+
+        if (preg_match('/^([1-9]\d{0,17}):([0-9a-f]{24})$/', $customId, $match) === 1) {
+            return hash_equals($this->siteMarker(), $match[2]) ? (int) $match[1] : null;
+        }
+
+        return $unmarked && preg_match('/^[1-9]\d{0,17}$/', $customId) === 1 ? (int) $customId : null;
+    }
+
+    /**
+     * Whether a payment without the site marker may still be from an order this site made before 0.6.12.
+     */
+    private function takesUnmarkedOrders(): bool
+    {
+        return now()->lt(CarbonImmutable::parse(self::UNMARKED_ORDERS_UNTIL));
+    }
+
+    /**
+     * Marks this site's orders at PayPal, so two Nuvabill sites on one PayPal app never pay each
+     * other's invoices.
+     */
+    private function siteMarker(): string
+    {
+        return substr(hash_hmac('sha256', 'nuvabill-paypal-site', (string) config('app.key')), 0, 24);
     }
 
     /**

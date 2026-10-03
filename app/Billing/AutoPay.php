@@ -118,8 +118,9 @@ class AutoPay
     }
 
     /**
-     * Pay the invoice now: wallet credit first, then the saved method. $by names the staff member
-     * who pressed "Charge now"; their attempt does not change the automatic schedule.
+     * Pay the invoice now: wallet credit first, then the saved method. An earlier try whose result
+     * is not known comes before both. $by names the staff member who pressed "Charge now"; their
+     * attempt does not change the automatic schedule.
      */
     public function charge(Invoice $invoice, ?PaymentMethod $method = null, ?string $by = null): ChargeResult
     {
@@ -144,7 +145,19 @@ class AutoPay
                 return $this->settle($invoice, PaymentMethod::query()->find($pending['method'] ?? 0), $earlier, $by, $pending);
             }
 
-            if ($this->wallet->enabled()) {
+            // One key per try: the same try sent twice is charged once at the gateway. An unclear try
+            // the gateway cannot rule out is sent again as it was, with its own method and key, even
+            // when the client chose another default or staff chose a method. A new method or wallet
+            // credit could pay the invoice a second time; the same try cannot.
+            $repeat = $pending !== null && $this->mustRepeat($pending);
+
+            if ($repeat) {
+                $method = $this->methodOfTry($invoice, $pending);
+
+                if ($method === null) {
+                    return $this->settle($invoice, null, ChargeResult::pending(__('The last payment try is not clear, and its payment method can no longer be used. Check the payment at the payment service and record it here, or ask the client to pay the invoice.')), $by, $pending);
+                }
+            } elseif ($this->wallet->enabled()) {
                 $this->wallet->pay($invoice);
                 $invoice->refresh();
 
@@ -160,11 +173,6 @@ class AutoPay
                 return ChargeResult::failed(__('No saved card or PayPal account can pay this invoice.'));
             }
 
-            // One key per try: the same try sent twice is charged once at the gateway. An unclear try
-            // is sent again with its own key when the gateway cannot be asked about it, or can only
-            // be asked with the ID that try never brought back.
-            $repeat = $pending !== null && ($pending['gateway'] ?? null) === $method->gateway
-                && (! $gateway instanceof ChecksSavedCharges || ($gateway instanceof RepeatsUnclearCharges && ! isset($pending['reference'])));
             $attemptKey = $repeat
                 ? (string) $pending['key']
                 : 'invoice-'.$invoice->id.'-'.$invoice->balance().'-'.($by === null ? 'try-'.$invoice->autopay_attempts : 'staff-'.now()->getTimestampMs());
@@ -254,6 +262,42 @@ class AutoPay
         }
 
         return $result;
+    }
+
+    /**
+     * Whether an unclear try that checkPending() let through must be sent again as it was: the
+     * gateway cannot be asked about it, or can only be asked with the ID the try never brought back.
+     * Then "no payment found" does not mean nothing was charged.
+     *
+     * @param  array<string, mixed>  $pending
+     */
+    private function mustRepeat(array $pending): bool
+    {
+        $gateway = $this->methods->gateway((string) ($pending['gateway'] ?? ''));
+
+        return ! isset($pending['reference'])
+            && (! $gateway instanceof ChecksSavedCharges || $gateway instanceof RepeatsUnclearCharges);
+    }
+
+    /**
+     * The client's saved method an unclear try was sent with, or null when it was removed or its
+     * gateway is turned off, so the try cannot be sent again.
+     *
+     * @param  array<string, mixed>  $pending
+     */
+    private function methodOfTry(Invoice $invoice, array $pending): ?PaymentMethod
+    {
+        $slug = (string) ($pending['gateway'] ?? '');
+
+        if ($slug === '' || $this->methods->gateway($slug) === null || ! is_string($pending['key'] ?? null)) {
+            return null;
+        }
+
+        return PaymentMethod::query()
+            ->whereKey((int) ($pending['method'] ?? 0))
+            ->where('client_id', $invoice->client_id)
+            ->where('gateway', $slug)
+            ->first();
     }
 
     /**

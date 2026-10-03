@@ -5,6 +5,7 @@ namespace Tests\Feature\Gateways;
 use App\Automation\DailyAutomation;
 use App\Billing\AutoPay;
 use App\Billing\InvoiceManager;
+use App\Billing\SavedMethods;
 use App\Enums\InvoiceStatus;
 use App\Extensions\ExtensionManager;
 use App\Mail\TemplatedMessage;
@@ -244,12 +245,155 @@ class PayPalAutoPayTest extends TestCase
         Mail::assertNotSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => str_contains($mail->subjectLine, 'We could not charge'));
     }
 
+    public function test_an_unclear_try_is_sent_again_to_paypal_when_the_client_makes_a_card_the_default(): void
+    {
+        $this->enableGateway('stripe', ['secret_key' => 'sk_test_123', 'webhook_secret' => 'whsec_test']);
+        $answers = [
+            Http::response(['name' => 'INTERNAL_SERVER_ERROR'], 503),
+            Http::response(['name' => 'INTERNAL_SERVER_ERROR'], 503),
+            Http::response($this->order('COMPLETED'), 201),
+        ];
+        Http::fake([
+            self::API.'/v1/oauth2/token' => Http::response(['access_token' => 'token']),
+            self::API.'/v2/checkout/orders' => function () use (&$answers) {
+                return array_shift($answers);
+            },
+            'api.stripe.com/*' => Http::response(['id' => 'pi_card', 'status' => 'succeeded', 'amount_received' => 1299, 'currency' => 'usd']),
+        ]);
+        $client = $this->clientWithPayPal();
+        $invoice = $this->renewalInvoice($client);
+
+        // PayPal does not answer, so it may have taken the money.
+        app(DailyAutomation::class)->run();
+        $this->assertArrayNotHasKey('reference', $invoice->fresh()->autopay_pending);
+
+        // Before the next night Raz makes a card the default and adds funds to the wallet.
+        app(SavedMethods::class)->makeDefault($this->card($client));
+        $client->forceFill(['credit' => 500])->save();
+
+        Carbon::setTestNow('2026-10-13 00:15:00');
+        app(DailyAutomation::class)->run();
+
+        // The same PayPal try is sent again, and PayPal gives back the one payment it made.
+        $invoice->refresh();
+        $this->assertSame(InvoiceStatus::Paid, $invoice->status);
+        $this->assertSame(['CAP1'], $invoice->transactions()->pluck('reference')->all());
+        $this->assertCount(3, $this->orderRequests());
+        $this->assertSame([$this->attemptId('invoice-1-1299-try-0')], array_values(array_unique(array_map(fn (Request $request): string => $request->header('PayPal-Request-Id')[0], $this->orderRequests()))));
+        $this->assertSame(500, $client->fresh()->credit);
+        Http::assertNotSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.stripe.com/'));
+    }
+
+    public function test_staff_charging_after_paypal_refused_a_repeated_attempt_does_not_charge_the_new_default_card(): void
+    {
+        $this->enableGateway('stripe', ['secret_key' => 'sk_test_123', 'webhook_secret' => 'whsec_test']);
+        Http::fake([
+            self::API.'/v1/oauth2/token' => Http::response(['access_token' => 'token']),
+            self::API.'/v2/checkout/orders' => Http::response(['name' => 'UNPROCESSABLE_ENTITY', 'details' => [['issue' => 'DUPLICATE_INVOICE_ID', 'description' => 'Duplicate Invoice ID detected.']]], 422),
+            'api.stripe.com/*' => Http::response(['id' => 'pi_card', 'status' => 'succeeded', 'amount_received' => 1299, 'currency' => 'usd']),
+        ]);
+        $client = $this->clientWithPayPal();
+        $invoice = $this->renewalInvoice($client);
+
+        // PayPal says this try was sent before: it may already have the money.
+        app(DailyAutomation::class)->run();
+        $card = $this->card($client);
+        app(SavedMethods::class)->makeDefault($card);
+
+        Carbon::setTestNow('2026-10-12 01:15:00');
+        $this->assertTrue(app(AutoPay::class)->charge($invoice, $card, 'Mer Las')->isPending());
+        Carbon::setTestNow('2026-10-13 00:15:00');
+        app(DailyAutomation::class)->run();
+
+        $invoice->refresh();
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->status);
+        $this->assertSame(0, $invoice->transactions()->count());
+        $this->assertSame(['paypal', 'invoice-1-1299-try-0'], [$invoice->autopay_pending['gateway'], $invoice->autopay_pending['key']]);
+        $this->assertCount(3, $this->orderRequests());
+        $this->assertSame([$this->attemptId('invoice-1-1299-try-0')], array_values(array_unique(array_map(fn (Request $request): string => $request['purchase_units'][0]['invoice_id'], $this->orderRequests()))));
+        Http::assertNotSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.stripe.com/'));
+    }
+
+    public function test_an_unclear_try_whose_paypal_account_was_removed_is_left_for_staff_to_check(): void
+    {
+        $this->enableGateway('stripe', ['secret_key' => 'sk_test_123', 'webhook_secret' => 'whsec_test']);
+        Http::fake([
+            self::API.'/v1/oauth2/token' => Http::response(['access_token' => 'token']),
+            self::API.'/v2/checkout/orders' => Http::response(['name' => 'INTERNAL_SERVER_ERROR'], 503),
+            self::API.'/v3/vault/payment-tokens/*' => Http::response(null, 204),
+            'api.stripe.com/*' => Http::response(['id' => 'pi_card', 'status' => 'succeeded', 'amount_received' => 1299, 'currency' => 'usd']),
+        ]);
+        $client = $this->clientWithPayPal();
+        $invoice = $this->renewalInvoice($client);
+
+        app(DailyAutomation::class)->run();
+        $pending = $invoice->fresh()->autopay_pending;
+
+        // Raz saves a card and removes the PayPal account, so the card pays renewals from now on.
+        $card = $this->card($client);
+        app(SavedMethods::class)->forget($client->paymentMethods()->where('gateway', 'paypal')->sole(), 'Raz');
+        $this->assertTrue($card->fresh()->is_default);
+
+        Carbon::setTestNow('2026-10-13 00:15:00');
+        app(DailyAutomation::class)->run();
+
+        $invoice->refresh();
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->status);
+        $this->assertSame(0, $invoice->transactions()->count());
+        $this->assertSame(0, $invoice->autopay_attempts);
+        $this->assertSame($pending, $invoice->autopay_pending);
+        $this->assertSame('The last payment try is not clear, and its payment method can no longer be used. Check the payment at the payment service and record it here, or ask the client to pay the invoice.', $invoice->autopay_error);
+        $this->assertCount(2, $this->orderRequests());
+        Http::assertNotSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://api.stripe.com/'));
+        Mail::assertNotSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => str_contains($mail->subjectLine, 'We could not charge'));
+    }
+
+    public function test_a_try_sent_before_the_site_marker_is_still_found_and_not_charged_again(): void
+    {
+        Carbon::setTestNow('2026-12-01 00:15:00');
+        Http::fake([
+            self::API.'/v1/oauth2/token' => Http::response(['access_token' => 'token']),
+            self::API.'/v2/checkout/orders' => Http::response($this->order('COMPLETED'), 201),
+            // A capture made before 0.6.12 names only the invoice.
+            self::API.'/v2/payments/captures/CAP1' => Http::response($this->capture('COMPLETED', customId: '1')),
+        ]);
+        $client = $this->clientWithPayPal();
+        $invoice = $this->renewalInvoice($client);
+        $invoice->forceFill(['autopay_pending' => [
+            'gateway' => 'paypal', 'method' => $client->paymentMethods()->sole()->id, 'customer' => 'CUST1',
+            'key' => 'invoice-1-1299-try-0', 'since' => '2026-11-30T00:15:00+00:00', 'reference' => 'CAP1',
+        ]])->save();
+
+        app(DailyAutomation::class)->run();
+
+        $invoice->refresh();
+        $this->assertSame(InvoiceStatus::Paid, $invoice->status);
+        $this->assertSame(['CAP1'], $invoice->transactions()->pluck('reference')->all());
+        $this->assertCount(0, $this->orderRequests());
+    }
+
     /**
      * The ID this site sends PayPal for one try of an automatic payment.
      */
     private function attemptId(string $attemptKey): string
     {
         return 'nuvabill-'.substr(hash_hmac('sha256', 'nuvabill-paypal-attempt', (string) config('app.key')), 0, 12).'-'.$attemptKey;
+    }
+
+    /**
+     * The custom_id this site puts on its PayPal orders for invoice 1, which PayPal sends back.
+     */
+    private function customId(): string
+    {
+        return '1:'.substr(hash_hmac('sha256', 'nuvabill-paypal-site', (string) config('app.key')), 0, 24);
+    }
+
+    private function card(Client $client): PaymentMethod
+    {
+        return PaymentMethod::query()->create([
+            'client_id' => $client->id, 'gateway' => 'stripe', 'type' => PaymentMethod::TYPE_CARD, 'reference' => 'pm_visa',
+            'customer_reference' => 'cus_raz', 'brand' => 'visa', 'last4' => '4242', 'expires_month' => 8, 'expires_year' => 2028, 'is_default' => false,
+        ]);
     }
 
     /**
@@ -271,7 +415,7 @@ class PayPalAutoPayTest extends TestCase
         return [
             'id' => 'ORDER1',
             'status' => 'COMPLETED',
-            'purchase_units' => [['custom_id' => '1', 'payments' => ['captures' => [
+            'purchase_units' => [['custom_id' => $this->customId(), 'payments' => ['captures' => [
                 ['id' => 'CAP1', 'status' => $captureStatus, 'amount' => ['currency_code' => 'USD', 'value' => '12.99']],
             ]]]],
         ];
@@ -280,9 +424,9 @@ class PayPalAutoPayTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private function capture(string $status): array
+    private function capture(string $status, ?string $customId = null): array
     {
-        return ['id' => 'CAP1', 'status' => $status, 'custom_id' => '1', 'amount' => ['currency_code' => 'USD', 'value' => '12.99']];
+        return ['id' => 'CAP1', 'status' => $status, 'custom_id' => $customId ?? $this->customId(), 'amount' => ['currency_code' => 'USD', 'value' => '12.99']];
     }
 
     private function clientWithPayPal(): Client
