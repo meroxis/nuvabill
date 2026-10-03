@@ -28,6 +28,7 @@ use App\Models\Server;
 use App\Models\Service;
 use App\Models\Ticket;
 use App\Models\TicketDepartment;
+use App\Models\TicketReply;
 use App\Models\TldPrice;
 use App\Models\Transaction;
 use App\Support\Activity;
@@ -429,6 +430,51 @@ class WhmcsImportTest extends TestCase
         $this->assertFalse(ImportMapping::query()->where(['source' => 'whmcs', 'entity' => 'client', 'source_id' => 2])->exists());
         $this->assertSame($mer->id, ImportMapping::query()->where(['source' => 'whmcs', 'entity' => 'client_erased', 'source_id' => 2])->value('local_id'));
         $this->assertTrue(ImportMapping::query()->where(['source' => 'whmcs', 'entity' => 'client', 'source_id' => 1])->exists(), 'Other clients keep their mapping');
+    }
+
+    public function test_the_upgrade_erases_again_what_an_earlier_rerun_put_back(): void
+    {
+        $this->seedWhmcs();
+        $whmcs = DB::connection(self::CONNECTION);
+        $whmcs->table('tblclients')->where('id', 2)->update(['firstname' => 'Mer', 'lastname' => 'Las', 'companyname' => 'Blue Cedar Web', 'phonenumber' => '+9647501234567', 'address1' => '12 Cloud Street', 'city' => 'Erbil', 'notes' => 'Prefers phone calls', 'status' => 'Active']);
+        $whmcs->table('tbltickets')->insert(['id' => 9, 'tid' => '482914', 'did' => 1, 'userid' => 2, 'date' => '2026-09-22 08:00:00', 'title' => 'Please close my account', 'message' => 'Remove my data, thanks.', 'status' => 'Open', 'urgency' => 'Low', 'lastreply' => '2026-09-22 08:00:00', 'service' => '', 'ipaddress' => '198.51.100.8']);
+        $this->runImport();
+        $mer = Client::query()->where('email', 'sam@example.com')->firstOrFail();
+        app(ClientPrivacy::class)->erase($mer, Admin::factory()->create());
+
+        // Before this version erasing kept the client mapping, so the next run put everything back.
+        ImportMapping::query()->where('entity', 'client_erased')->update(['entity' => 'client']);
+        $whmcs->table('tblticketreplies')->insert(['id' => 3, 'tid' => 9, 'userid' => 2, 'admin' => '', 'date' => '2026-09-23 08:00:00', 'message' => 'My new phone is +9647709876543.']);
+        $this->runImport();
+        $mer->refresh();
+        $this->assertSame('Mer', $mer->first_name);
+        $this->assertSame(ClientStatus::Active, $mer->status);
+        $this->assertSame(1, Ticket::query()->where('client_id', $mer->id)->count());
+
+        (require database_path('migrations/2027_07_02_000117_import_mark_erased_clients.php'))->up();
+
+        $mer->refresh();
+        $this->assertTrue($mer->isErased());
+        $this->assertSame('Erased', $mer->first_name);
+        $this->assertSame("client #{$mer->id}", $mer->last_name);
+        $this->assertNull($mer->company_name);
+        $this->assertNull($mer->phone);
+        $this->assertNull($mer->address_1);
+        $this->assertNull($mer->city);
+        $this->assertNull($mer->notes);
+        $this->assertSame(ClientStatus::Closed, $mer->status);
+        $this->assertSame(0, Ticket::query()->where('client_id', $mer->id)->count(), 'The tickets the run created again are gone');
+        $this->assertFalse(TicketReply::query()->where('message', 'like', '%9647709876543%')->exists());
+
+        $raz = Client::query()->where('email', 'raz@example.com')->firstOrFail();
+        $this->assertSame('Raz', $raz->first_name, 'Clients that were not erased stay as they are');
+        $this->assertSame(2, TicketReply::query()->whereIn('ticket_id', Ticket::query()->where('client_id', $raz->id)->select('id'))->count());
+
+        $this->runImport();
+        $mer->refresh();
+        $this->assertSame('Erased', $mer->first_name);
+        $this->assertSame(ClientStatus::Closed, $mer->status);
+        $this->assertSame(0, Ticket::query()->where('client_id', $mer->id)->count());
     }
 
     public function test_a_department_with_the_same_name_is_linked_and_never_changed(): void

@@ -16,6 +16,7 @@ use App\Models\Quote;
 use App\Models\Service;
 use App\Models\Ticket;
 use App\Models\TicketDepartment;
+use App\Models\TicketReply;
 use App\Support\Activity;
 use App\Support\ClientPrivacy;
 use App\Support\TicketDesk;
@@ -184,6 +185,51 @@ class PrivacyTest extends TestCase
         $this->assertFalse(ImportMapping::query()->whereIn('entity', ['client', 'client_link'])->where('local_id', $client->id)->exists());
         $this->assertTrue(ImportMapping::query()->where(['entity' => 'client', 'source_id' => 19, 'local_id' => $other->id])->exists(), 'Other clients keep their mapping');
         $this->assertTrue(ImportMapping::query()->where(['entity' => 'service', 'source_id' => 17])->exists());
+    }
+
+    public function test_the_upgrade_erases_again_what_an_import_put_back_and_keeps_what_invoices_show(): void
+    {
+        // Erased before this version, then an import run put the data back and opened the client again.
+        $raz = Client::factory()->create(['first_name' => 'Raz', 'last_name' => '', 'company_name' => 'Raz Studio', 'address_1' => '12 Cloud Street', 'phone' => '+9647501234567', 'notes' => 'Prefers phone calls', 'tags' => ['VIP'], 'status' => ClientStatus::Active]);
+        $raz->forceFill(['erased_at' => now()->subMonth()])->save();
+        Invoice::factory()->for($raz)->paid()->create();
+        $mer = Client::factory()->create(['first_name' => 'Mer', 'last_name' => 'Las', 'phone' => '+9647701112233', 'notes' => 'Prefers email']);
+
+        $imported = Ticket::factory()->create(['client_id' => $raz->id, 'subject' => 'Please close my account']);
+        $openedHere = Ticket::factory()->create(['client_id' => $raz->id, 'subject' => 'Refund for the last invoice']);
+        $mersTicket = Ticket::factory()->create(['client_id' => $mer->id, 'subject' => 'A new domain']);
+
+        foreach ([$imported, $openedHere, $mersTicket] as $ticket) {
+            TicketReply::query()->create(['ticket_id' => $ticket->id, 'author_type' => 'client', 'author_id' => $ticket->client_id, 'message' => 'Hello']);
+        }
+
+        foreach ([['client', 17, $raz->id], ['ticket', 9, $imported->id], ['client', 18, $mer->id], ['ticket', 10, $mersTicket->id]] as [$entity, $sourceId, $localId]) {
+            ImportMapping::query()->create(['source' => 'whmcs', 'entity' => $entity, 'source_id' => $sourceId, 'local_id' => $localId]);
+        }
+
+        (require database_path('migrations/2027_07_02_000117_import_mark_erased_clients.php'))->up();
+
+        $raz->refresh();
+        $this->assertSame('Raz', $raz->first_name, 'The paid invoice keeps the name, company and address');
+        $this->assertSame('Raz Studio', $raz->company_name);
+        $this->assertSame('12 Cloud Street', $raz->address_1);
+        $this->assertNull($raz->phone);
+        $this->assertNull($raz->notes);
+        $this->assertNull($raz->tags);
+        $this->assertSame(ClientStatus::Closed, $raz->status);
+        $this->assertTrue($raz->isErased());
+        $this->assertSame($raz->id, ImportMapping::query()->where(['source' => 'whmcs', 'entity' => 'client_erased', 'source_id' => 17])->value('local_id'));
+
+        $this->assertModelMissing($imported);
+        $this->assertSame(0, TicketReply::query()->where('ticket_id', $imported->id)->count());
+        $this->assertModelExists($openedHere);
+        $this->assertSame(1, TicketReply::query()->where('ticket_id', $openedHere->id)->count(), 'A ticket staff opened here stays');
+
+        $mer->refresh();
+        $this->assertSame('+9647701112233', $mer->phone, 'Clients that were not erased stay as they are');
+        $this->assertSame('Prefers email', $mer->notes);
+        $this->assertModelExists($mersTicket);
+        $this->assertSame(1, TicketReply::query()->where('ticket_id', $mersTicket->id)->count());
     }
 
     public function test_erasing_tells_staff_about_a_card_the_gateway_did_not_remove(): void
