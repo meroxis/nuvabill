@@ -74,14 +74,14 @@ class StoreTest extends TestCase
         $this->get(route('developer.dashboard'))->assertOk()->assertSee('Raz Studio');
 
         $this->post(route('developer.items.store'), [
-            'name' => 'Paper', 'slug' => 'paper', 'type' => 'theme', 'summary' => 'A calm light theme.',
+            'name' => 'Paper', 'slug' => 'calm', 'type' => 'theme', 'summary' => 'A calm light theme.',
             'price' => '25', 'update_price' => '9', 'own_code' => '1',
-            'package' => $this->upload($this->zip('paper', '1.0.0', 'theme.json', ['requires' => '>=0.3.0'])),
-        ])->assertRedirect(route('developer.items.show', 'paper'));
+            'package' => $this->upload($this->zip('calm', '1.0.0', 'theme.json', ['requires' => '>=0.3.0'])),
+        ])->assertRedirect(route('developer.items.show', 'calm'));
 
         $version = MarketplaceVersion::query()->sole();
         $this->assertSame(MarketplaceVersion::STATUS_PENDING, $version->status);
-        $this->get(route('developer.items.show', 'paper'))->assertOk()->assertSee('Readable code')->assertSee('In review');
+        $this->get(route('developer.items.show', 'calm'))->assertOk()->assertSee('Readable code')->assertSee('In review');
 
         $admin = $this->signInAdmin();
         $this->get(route('admin.store.reviews.index'))->assertRedirect(route('admin.store.reviews.show', $version));
@@ -92,7 +92,7 @@ class StoreTest extends TestCase
         $version->refresh();
         $item = MarketplaceItem::query()->sole();
         $this->assertSame(MarketplaceVersion::STATUS_APPROVED, $version->status);
-        $this->assertTrue(PackageSignature::verify('paper', '1.0.0', $version->sha256, (string) $version->signature, $this->publicKey));
+        $this->assertTrue(PackageSignature::verify('calm', '1.0.0', $version->sha256, (string) $version->signature, $this->publicKey));
         $this->assertTrue($item->isLive());
         $this->assertSame($admin->id, $version->reviewer_id);
         $this->assertSame(2500, $item->product->prices->sole()->price + $item->product->prices->sole()->setup_fee);
