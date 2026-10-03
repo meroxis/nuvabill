@@ -88,6 +88,14 @@ class PlanChanges
         $today = CarbonImmutable::instance($today ?? today())->startOfDay();
         $end = $service->next_due_date;
         $start = $end->subMonthsNoOverflow((int) $service->billing_cycle->months());
+        // A due date on the day the service started (or that month's last day) was billed from the
+        // same day before it, as BillingCycle::advance moves it: 31 Mar - 29 Apr for 30 Apr, not 30 Mar.
+        $anchor = $service->registration_date?->day;
+
+        if ($anchor !== null && $end->day === min($anchor, $end->daysInMonth)) {
+            $start = $start->setDay(min($anchor, $start->daysInMonth));
+        }
+
         $periodDays = max(1, (int) round($start->diffInDays($end)));
         $daysLeft = max(0, min($periodDays, (int) round($today->diffInDays($end, false))));
 

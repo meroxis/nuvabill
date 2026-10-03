@@ -5,10 +5,12 @@ namespace Tests\Feature\Billing;
 use App\Billing\InvoiceManager;
 use App\Billing\LineItems;
 use App\Billing\PaymentRecorder;
+use App\Billing\PlanChanges;
 use App\Billing\RenewalGenerator;
 use App\Models\Client;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\Product;
 use App\Models\Service;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -66,6 +68,27 @@ class BillingAnniversaryTest extends TestCase
 
         $this->assertSame('2027-04-14', $line->period_end->toDateString());
         $this->assertSame('2027-04-15', $service->fresh()->next_due_date->toDateString());
+    }
+
+    public function test_a_plan_change_counts_the_days_of_the_period_that_was_billed(): void
+    {
+        $this->travelTo(CarbonImmutable::parse('2027-02-10 10:00:00'));
+        $business = Product::factory()->priced(2000)->create(['name' => 'Business']);
+
+        // Due date => days in the period before it: 31 Jan - 27 Feb, 28 Feb - 30 Mar, 31 Mar - 29 Apr.
+        $periods = ['2027-02-28' => 28, '2027-03-31' => 31, '2027-04-30' => 30, '2027-05-31' => 31];
+
+        foreach ($periods as $due => $days) {
+            $service = $this->service(['registration_date' => '2027-01-31', 'next_due_date' => $due]);
+            $quote = app(PlanChanges::class)->quote($service, $business, CarbonImmutable::parse($due)->subDays(10));
+
+            $this->assertSame($days, $quote['period_days'], "The period before {$due}.");
+            $this->assertSame(10, $quote['days_left']);
+        }
+
+        // A due date staff moved to mid-month counts from the same day a month before: 15 Mar - 14 Apr.
+        $moved = $this->service(['registration_date' => '2027-01-31', 'next_due_date' => '2027-04-15']);
+        $this->assertSame(31, app(PlanChanges::class)->quote($moved, $business, CarbonImmutable::parse('2027-04-05'))['period_days']);
     }
 
     /**

@@ -16,12 +16,14 @@ use App\Models\PaymentMethod;
 use App\Models\Product;
 use App\Models\Service;
 use App\Support\Activity;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use PDOException;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -161,12 +163,30 @@ class LongTextFitsTest extends TestCase
 
         Invoice::creating(function (Invoice $invoice) use ($raz): void {
             if ($invoice->client_id === $raz->id) {
-                throw new RuntimeException('Data too long for column description');
+                throw new QueryException('mysql', 'insert into invoice_items (description) values (?)', ['line-text-marker'], new PDOException("SQLSTATE[22001]: String data, right truncated: 1406 Data too long for column 'description' at row 1"), ['driver' => 'mysql', 'host' => 'db-host-marker', 'port' => 3306, 'database' => 'nuvabill']);
             }
         });
 
         $this->assertSame(1, app(RenewalGenerator::class)->generate());
         $this->assertSame([$merLas->id], Invoice::query()->pluck('client_id')->all());
+
+        // Staff see on the client's page that this client was not invoiced, with the database's reason
+        // and without the server details and SQL.
+        $entry = ActivityLog::query()->where('action', 'invoice.renewal_failed')->sole();
+        $this->assertSame($raz->id, $entry->client_id);
+        $this->assertStringContainsString("Renewal invoice for client #{$raz->id} could not be created: SQLSTATE[22001]", $entry->description);
+        $this->assertStringNotContainsString('db-host-marker', $entry->description);
+        $this->assertStringNotContainsString('line-text-marker', $entry->description);
+    }
+
+    public function test_a_renewal_that_fails_for_another_reason_is_logged_with_it(): void
+    {
+        $raz = $this->client('Raz', 'raz@example.test');
+        Service::factory()->for($raz)->create(['recurring_amount' => 1000, 'next_due_date' => today()->addDays(3)]);
+        Invoice::creating(fn () => throw new RuntimeException('Number sequence is locked'));
+
+        $this->assertSame(0, app(RenewalGenerator::class)->generate());
+        $this->assertSame("Renewal invoice for client #{$raz->id} could not be created: Number sequence is locked", ActivityLog::query()->where('action', 'invoice.renewal_failed')->sole()->description);
     }
 
     private function autoPaySetUp(): void

@@ -19,13 +19,16 @@ use Illuminate\Support\Carbon;
 final class AttentionList
 {
     /**
-     * Things staff should act on today.
+     * Things staff should act on today. An item is only for staff who may open the page it links to,
+     * so a support role does not see the counts of orders or overdue invoices.
      *
      * @return list<array{key: string, tone: string, text: string, url: string|null, action: string|null}>
      */
     public static function items(): array
     {
         $items = [];
+        $admin = auth('admin')->user();
+        $may = fn (string $permission): bool => (bool) $admin?->hasPermission($permission);
 
         $lastRun = setting('automation.last_run_at');
 
@@ -41,7 +44,7 @@ final class AttentionList
 
         $health = rescue(fn () => HealthRun::query()->latest('id')->first(['id', 'urgent_count']), null, report: false);
 
-        if ($health !== null && $health->urgent_count > 0 && auth('admin')->user()?->hasPermission('security.manage')) {
+        if ($health !== null && $health->urgent_count > 0 && $may('security.manage')) {
             $items[] = [
                 'key' => 'health',
                 'tone' => 'crit',
@@ -51,7 +54,7 @@ final class AttentionList
             ];
         }
 
-        $stuck = Service::query()
+        $stuck = ! $may('services.manage') ? 0 : Service::query()
             ->where('status', ServiceStatus::Pending)
             ->whereHas('invoiceItems.invoice', fn ($query) => $query->where('status', InvoiceStatus::Paid))
             ->count();
@@ -66,7 +69,7 @@ final class AttentionList
             ];
         }
 
-        $waitingDomains = Domain::query()
+        $waitingDomains = ! $may('domains.manage') ? 0 : Domain::query()
             ->where('status', DomainStatus::Pending)
             ->whereHas('invoiceItems.invoice', fn ($query) => $query->where('status', InvoiceStatus::Paid))
             ->count();
@@ -81,7 +84,8 @@ final class AttentionList
             ];
         }
 
-        $toReview = Order::query()->where('status', OrderStatus::Pending)->where('needs_review', true)->count();
+        $mayOrders = $may('orders.manage');
+        $toReview = ! $mayOrders ? 0 : Order::query()->where('status', OrderStatus::Pending)->where('needs_review', true)->count();
 
         if ($toReview > 0) {
             $items[] = [
@@ -93,7 +97,7 @@ final class AttentionList
             ];
         }
 
-        $pendingOrders = Order::query()->where('status', OrderStatus::Pending)->count();
+        $pendingOrders = ! $mayOrders ? 0 : Order::query()->where('status', OrderStatus::Pending)->count();
 
         if ($pendingOrders > 0) {
             $items[] = [
@@ -105,7 +109,7 @@ final class AttentionList
             ];
         }
 
-        $overdue = Invoice::query()->where('status', InvoiceStatus::Unpaid)->whereDate('due_at', '<', today()->subDays(7))->count();
+        $overdue = ! $may('billing.view') ? 0 : Invoice::query()->where('status', InvoiceStatus::Unpaid)->whereDate('due_at', '<', today()->subDays(7))->count();
 
         if ($overdue > 0) {
             $items[] = [

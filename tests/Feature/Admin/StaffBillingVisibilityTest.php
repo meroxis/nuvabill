@@ -5,13 +5,17 @@ namespace Tests\Feature\Admin;
 use App\Billing\InvoiceManager;
 use App\Billing\PaymentRecorder;
 use App\Billing\Wallet;
+use App\Enums\OrderStatus;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Models\ActivityLog;
 use App\Models\Admin;
 use App\Models\ApiToken;
 use App\Models\Client;
 use App\Models\Invoice;
+use App\Models\Order;
 use App\Models\Transaction;
 use App\Support\Activity;
+use App\Support\AttentionList;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
@@ -123,6 +127,61 @@ class StaffBillingVisibilityTest extends TestCase
             ->assertSee('INV-778899')
             ->assertSee('$123.45')
             ->assertSee('$50.00');
+    }
+
+    public function test_the_client_activity_leaves_out_payments_and_wallet_changes_without_billing_view(): void
+    {
+        $this->setSettings(['wallet.enabled' => true]);
+        $client = $this->client();
+        $invoice = app(InvoiceManager::class)->create($client, [['description' => 'Hosting', 'amount' => 12345]]);
+        app(PaymentRecorder::class)->record($invoice, 12345, 'stripe', 'ch_activity_1');
+        Activity::log('client.updated', "Client #{$client->id} profile-change-marker", $client);
+
+        $this->signInAdmin(Admin::factory()->create(['name' => 'Mer Las']));
+        $this->post(route('admin.clients.wallet', $client), ['amount' => '50', 'reason' => 'wallet-reason-marker'])->assertSessionHasNoErrors();
+        $this->assertTrue(ActivityLog::query()->where('action', 'payment.received')->exists());
+        $this->assertTrue(ActivityLog::query()->where('action', 'wallet.changed')->exists());
+        // The owner's "New balance" message is not part of what the next staff member sees.
+        $this->flushSession();
+
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.view'])->create(['name' => 'Raz']));
+        $this->get(route('admin.clients.show', $client))
+            ->assertOk()
+            ->assertSee('profile-change-marker')
+            ->assertDontSee('$123.45')
+            ->assertDontSee($invoice->number)
+            ->assertDontSee('$50.00')
+            ->assertDontSee('wallet-reason-marker');
+
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.view', 'billing.view'])->create(['name' => 'Mer Las']));
+        $this->get(route('admin.clients.show', $client))
+            ->assertOk()
+            ->assertSee('profile-change-marker')
+            ->assertSee('Payment of $123.45 received for invoice '.$invoice->number)
+            ->assertSee('Added $50.00 (wallet): wallet-reason-marker');
+    }
+
+    public function test_the_attention_list_shows_overdue_invoices_and_orders_only_to_staff_who_may_open_them(): void
+    {
+        $client = $this->client();
+        app(InvoiceManager::class)->create($client, [['description' => 'Hosting', 'amount' => 999]], dueAt: today()->subDays(10));
+        Order::factory()->create(['client_id' => $client->id, 'status' => OrderStatus::Pending]);
+
+        $keys = fn (): array => array_values(array_intersect(array_column(AttentionList::items(), 'key'), ['orders.pending', 'invoices.overdue']));
+
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.view', 'support.manage'])->create(['name' => 'Raz']));
+        $this->assertSame([], $keys());
+        $this->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertDontSee('more than 7 days overdue')
+            ->assertDontSee('waiting for payment or review');
+
+        $this->signInAdmin(Admin::factory()->create(['name' => 'Mer Las']));
+        $this->assertSame(['orders.pending', 'invoices.overdue'], $keys());
+        $this->get(route('admin.dashboard'))
+            ->assertOk()
+            ->assertSee('more than 7 days overdue')
+            ->assertSee('waiting for payment or review');
     }
 
     public function test_the_api_gives_the_wallet_balance_only_to_keys_that_may_see_billing(): void

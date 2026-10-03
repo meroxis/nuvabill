@@ -18,6 +18,7 @@ use App\Support\Activity;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -97,7 +98,9 @@ class RenewalGenerator
                 continue;
             } catch (Throwable $exception) {
                 // One invoice that cannot be saved is reported, and the other clients still get theirs.
+                // Staff see it on the client's page too: until it is fixed, this client is not invoiced.
                 report($exception);
+                rescue(fn () => Activity::log('invoice.renewal_failed', "Renewal invoice for client #{$group['client']->id} could not be created: ".self::reason($exception), $group['client'], $group['client']));
 
                 continue;
             }
@@ -115,6 +118,17 @@ class RenewalGenerator
         }
 
         return $created;
+    }
+
+    /**
+     * Why an invoice could not be saved, for the activity log. A database error keeps only the
+     * database's own message, without the server details and the SQL that Laravel adds.
+     */
+    private static function reason(Throwable $exception): string
+    {
+        return $exception instanceof QueryException
+            ? (string) $exception->getPrevious()?->getMessage()
+            : $exception->getMessage();
     }
 
     /**

@@ -80,7 +80,8 @@ class ClientController extends Controller
         return view('admin.clients.show', [
             'client' => $client,
             'unpaid' => $canBilling ? $client->unpaidInvoicesTotal() : null,
-            'activity' => ActivityLog::query()->where('client_id', $client->id)->with('actor')->latest('id')->limit(10)->get(),
+            // Payments, wallet changes and card failures are logged here too, with their amounts.
+            'activity' => ActivityLog::query()->where('client_id', $client->id)->unless($canBilling, fn ($query) => $query->withoutBilling())->with('actor')->latest('id')->limit(10)->get(),
             'walletEntries' => $canBilling ? $client->creditTransactions()->with('admin')->latest('id')->limit(6)->get() : collect(),
             'privacyBlockers' => app(ClientPrivacy::class)->blockers($client),
         ]);
