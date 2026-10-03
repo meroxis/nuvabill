@@ -4,11 +4,14 @@ namespace App\Billing;
 
 use App\Enums\InvoiceStatus;
 use App\Models\Client;
+use App\Models\CreditTransaction;
 use App\Models\Invoice;
+use App\Models\Transaction;
 use App\Support\Activity;
 use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
+use RuntimeException;
 
 /**
  * Creates invoices and keeps their totals and numbers correct.
@@ -94,19 +97,91 @@ class InvoiceManager
         return $invoice;
     }
 
+    /**
+     * Cancel an unpaid or draft invoice. Money already paid on it (often from the wallet) goes back
+     * into the client's wallet, so nothing stays on a cancelled invoice.
+     *
+     * @throws RuntimeException When money was paid on it and the client's wallet is in another
+     *                          currency with no exchange rate; the invoice is not cancelled then.
+     */
     public function cancel(Invoice $invoice): Invoice
     {
-        if (in_array($invoice->status, [InvoiceStatus::Unpaid, InvoiceStatus::Draft], true)) {
-            DB::transaction(function () use ($invoice): void {
-                $invoice->update(['status' => InvoiceStatus::Cancelled]);
-                // The periods on it may be invoiced again.
-                $invoice->items()->whereNotNull('billing_key')->update(['billing_key' => null]);
-            });
+        // The row is locked and read again, so a payment that lands at the same time is not overwritten.
+        $cancelled = DB::transaction(function () use ($invoice): bool {
+            $locked = Invoice::query()->with('client')->lockForUpdate()->findOrFail($invoice->id);
+
+            if (! in_array($locked->status, [InvoiceStatus::Unpaid, InvoiceStatus::Draft], true)) {
+                return false;
+            }
+
+            $this->returnPayments($locked);
+            $locked->update(['status' => InvoiceStatus::Cancelled, 'amount_paid' => 0]);
+            // The periods on it may be invoiced again.
+            $locked->items()->whereNotNull('billing_key')->update(['billing_key' => null]);
+
+            return true;
+        });
+
+        $invoice->refresh();
+
+        if ($cancelled) {
             Activity::log('invoice.cancelled', "Cancelled invoice {$invoice->displayNumber()}", $invoice);
             app(PlanChanges::class)->cancelForInvoice($invoice);
         }
 
         return $invoice;
+    }
+
+    /**
+     * Put what was paid on an invoice that is being cancelled back into the client's wallet. Each
+     * payment gets a matching refund line, so the invoice's payments add up to nothing.
+     *
+     * @throws RuntimeException When the wallet is in another currency with no exchange rate.
+     */
+    private function returnPayments(Invoice $invoice): void
+    {
+        $left = $invoice->amount_paid;
+
+        // Money an add-on already put back for this invoice does not go back twice.
+        if ($left > 0 && $invoice->currency === $invoice->client->currency) {
+            $left -= (int) CreditTransaction::query()->where('invoice_id', $invoice->id)->where('amount', '>', 0)->sum('amount');
+        }
+
+        if ($left <= 0) {
+            return;
+        }
+
+        $recorder = app(PaymentRecorder::class);
+        $number = $invoice->displayNumber();
+        $label = __('Returned from cancelled invoice :number', ['number' => $number]);
+        $convertedLabel = fn (array $rate): string => __('Returned from cancelled invoice :number (:amount at 1 :from = :rate :to)', ['number' => $number] + $rate);
+        $transactions = $invoice->transactions()->get();
+        $refunds = $transactions->where('type', 'refund');
+        $parts = [];
+
+        foreach ($transactions->where('type', 'payment')->sortBy('id') as $payment) {
+            $refunded = -(int) $refunds->filter(fn (Transaction $refund): bool => ($refund->meta['refund_of'] ?? null) === $payment->id)->sum('amount');
+            $part = min($left, $payment->amount - $refunded);
+
+            if ($part > 0) {
+                $parts[] = [$part, $payment];
+                $left -= $part;
+            }
+        }
+
+        // Paid without a payment line, for example on an imported invoice.
+        if ($left > 0) {
+            $parts[] = [$left, null];
+        }
+
+        foreach ($parts as [$amount, $payment]) {
+            if (! $recorder->returnToWallet($invoice, $amount, $payment, $label, $convertedLabel)) {
+                throw new RuntimeException(__('This invoice has :amount paid on it, and the client\'s wallet is in :currency with no exchange rate to give it back. Add a rate in Settings → Currencies first.', [
+                    'amount' => money($invoice->amount_paid, $invoice->currency),
+                    'currency' => $invoice->client->currency,
+                ]));
+            }
+        }
     }
 
     public function numberFor(Invoice $invoice): string

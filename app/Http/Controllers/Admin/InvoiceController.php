@@ -9,6 +9,7 @@ use App\Billing\InvoicePdf;
 use App\Billing\PaymentRecorder;
 use App\Billing\RefundIssuer;
 use App\Billing\SavedMethods;
+use App\Billing\Wallet;
 use App\Enums\InvoiceStatus;
 use App\Extensions\ExtensionManager;
 use App\Extensions\ExtensionManifest;
@@ -24,6 +25,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -87,7 +89,7 @@ class InvoiceController extends Controller
         ]);
     }
 
-    public function store(Request $request, InvoiceManager $invoices, TemplateMailer $mailer): RedirectResponse
+    public function store(Request $request, InvoiceManager $invoices, TemplateMailer $mailer, PaymentRecorder $payments): RedirectResponse
     {
         $data = $request->validate([
             'client' => ['required', 'string', 'max:190'],
@@ -109,30 +111,45 @@ class InvoiceController extends Controller
             throw ValidationException::withMessages(['client' => __('No client has that ID or email.')]);
         }
 
-        $invoice = $invoices->create(
-            $client,
-            array_map(fn (array $item): array => [
-                'description' => $item['description'],
-                'amount' => Money::toMinor($item['amount']),
-                'taxed' => (bool) ($item['taxed'] ?? true),
-            ], array_values($data['items'])),
-            dueAt: CarbonImmutable::parse($data['due_at']),
-            status: $request->boolean('draft') ? InvoiceStatus::Draft : InvoiceStatus::Unpaid,
-            notes: $data['notes'] ?? null,
-        );
+        // Lines below zero are discounts; the invoice as a whole cannot be. Such an invoice is rolled back.
+        $invoice = DB::transaction(function () use ($invoices, $client, $data, $request): Invoice {
+            $invoice = $invoices->create(
+                $client,
+                array_map(fn (array $item): array => [
+                    'description' => $item['description'],
+                    'amount' => Money::toMinor($item['amount']),
+                    'taxed' => (bool) ($item['taxed'] ?? true),
+                ], array_values($data['items'])),
+                dueAt: CarbonImmutable::parse($data['due_at']),
+                status: $request->boolean('draft') ? InvoiceStatus::Draft : InvoiceStatus::Unpaid,
+                notes: $data['notes'] ?? null,
+            );
 
-        if ($invoice->status === InvoiceStatus::Unpaid && $request->boolean('send_email')) {
+            if ($invoice->total < 0) {
+                throw ValidationException::withMessages(['items' => __('The invoice total cannot be below zero.')]);
+            }
+
+            return $invoice;
+        });
+
+        if ($invoice->status === InvoiceStatus::Unpaid && $invoice->total === 0) {
+            // Nothing to pay: it is settled now, like a free renewal, instead of waiting as unpaid.
+            $payments->settleFreeInvoice($invoice);
+        } elseif ($invoice->status === InvoiceStatus::Unpaid && $request->boolean('send_email')) {
             $mailer->send('invoice.created', $client, TemplateMailer::invoiceContext($invoice));
         }
 
         return redirect()->route('admin.invoices.show', $invoice)->with('status', __('Invoice created.'));
     }
 
-    public function recordPayment(Request $request, Invoice $invoice, PaymentRecorder $payments): RedirectResponse
+    public function recordPayment(Request $request, Invoice $invoice, PaymentRecorder $payments, ExtensionManager $extensions): RedirectResponse
     {
+        // The methods the form offers. Wallet payments are made from the wallet, never typed in.
+        $methods = $extensions->ofType(ExtensionManifest::TYPE_GATEWAY)->keys()->push('manual')->reject(fn (string $method): bool => $method === Wallet::GATEWAY);
+
         $data = $request->validate([
             'amount' => ['required', 'numeric', 'min:0.01'],
-            'method' => ['required', 'string', 'max:50'],
+            'method' => ['required', 'string', Rule::in($methods->all())],
             'reference' => ['nullable', 'string', 'max:190'],
             'paid_at' => ['required', 'date', 'before_or_equal:today'],
         ]);
@@ -141,13 +158,21 @@ class InvoiceController extends Controller
             return back()->with('error', __('Only unpaid invoices can take a payment.'));
         }
 
-        $payments->record(
+        $transaction = $payments->record(
             $invoice,
             Money::toMinor($data['amount']),
             $data['method'],
             $data['reference'] ?: null,
             paidAt: CarbonImmutable::parse($data['paid_at'])->setTimeFrom(now()),
         );
+
+        // The same method and reference are recorded once; an earlier payment with them was found instead.
+        if (! $transaction->wasRecentlyCreated || $transaction->invoice_id !== $invoice->id) {
+            return back()->withInput()->with('error', __('Reference :reference was already recorded on invoice :number. Use a different reference.', [
+                'reference' => $transaction->reference,
+                'number' => $transaction->invoice?->displayNumber() ?? '—',
+            ]));
+        }
 
         return back()->with('status', __('Payment recorded.'));
     }
@@ -197,18 +222,39 @@ class InvoiceController extends Controller
         return back()->with('status', __('Credit note :number was made.', ['number' => $creditNote->number]));
     }
 
-    public function publish(Invoice $invoice, InvoiceManager $invoices): RedirectResponse
+    public function publish(Invoice $invoice, InvoiceManager $invoices, PaymentRecorder $payments): RedirectResponse
     {
         $invoices->publish($invoice);
+
+        // A draft that comes to nothing is settled at once instead of waiting as unpaid.
+        if ($invoice->status === InvoiceStatus::Unpaid && $invoice->total === 0) {
+            $payments->settleFreeInvoice($invoice);
+        }
 
         return back()->with('status', __('Invoice published. The client can now see and pay it.'));
     }
 
+    /**
+     * Cancel an unpaid or draft invoice. Money already paid on it goes back to the client's wallet.
+     */
     public function cancel(Invoice $invoice, InvoiceManager $invoices): RedirectResponse
     {
-        $invoices->cancel($invoice);
+        $paid = $invoice->amount_paid;
 
-        return back()->with('status', __('Invoice cancelled.'));
+        try {
+            $invoices->cancel($invoice);
+        } catch (RuntimeException $exception) {
+            return back()->with('error', $exception->getMessage());
+        }
+
+        // It was paid or closed in the meantime, for example by a payment that just arrived.
+        if ($invoice->status !== InvoiceStatus::Cancelled) {
+            return back()->with('error', __('Only unpaid invoices can be cancelled.'));
+        }
+
+        return back()->with('status', $paid > 0
+            ? __('Invoice cancelled. The :amount paid on it went back to the client\'s wallet.', ['amount' => money($paid, $invoice->currency)])
+            : __('Invoice cancelled.'));
     }
 
     public function email(Invoice $invoice, TemplateMailer $mailer): RedirectResponse

@@ -46,7 +46,7 @@ class RenewalGenerator
             ->where('status', InvoiceStatus::Unpaid)
             ->where('total', 0)
             ->whereHas('items', fn (Builder $query) => $query->whereNotNull('billing_key'))
-            ->each(fn (Invoice $invoice) => app(PaymentRecorder::class)->settleFreeInvoice($invoice));
+            ->eachById(fn (Invoice $invoice) => app(PaymentRecorder::class)->settleFreeInvoice($invoice));
 
         /** @var array<string, array{client: Client, currency: string, due: CarbonImmutable, items: list<array<string, mixed>>}> $groups */
         $groups = [];

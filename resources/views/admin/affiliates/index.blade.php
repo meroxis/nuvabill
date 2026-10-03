@@ -39,8 +39,9 @@
             <x-checkbox name="recurring" :label="__('Also pay on renewals')" :help="__('Off: only the first order of each referred client earns a commission.')" :checked="setting('affiliates.recurring')" />
             <x-input name="hold_days" type="number" min="0" max="365" :label="__('Days on hold')" :value="setting('affiliates.hold_days')" required :help="__('Commissions wait this long, so a refund can cancel them.')" />
             <x-input name="cookie_days" type="number" min="1" max="365" :label="__('Days a link is remembered')" :value="setting('affiliates.cookie_days')" required />
-            @if ($waiting > 0)
-                <p class="help" style="margin:0">{{ __('Commissions available to affiliates now: :amount. Affiliates can move them to their wallet themselves.', ['amount' => money((int) $waiting, setting('billing.currency'))]) }}</p>
+            @if ($waiting->isNotEmpty())
+                {{-- One amount per currency; amounts in different currencies are never added together. --}}
+                <p class="help" style="margin:0">{{ __('Commissions available to affiliates now: :amount. Affiliates can move them to their wallet themselves.', ['amount' => $waiting->map(fn (int $total, string $currency): string => money($total, $currency))->implode(', ')]) }}</p>
             @endif
             <div><button class="btn btn-primary" type="submit">{{ __('Save') }}</button></div>
         </form>

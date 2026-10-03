@@ -14,7 +14,9 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Invoices in the API. Amounts are in cents (minor units), like everywhere in the API.
@@ -52,19 +54,32 @@ class InvoiceController extends Controller
         ]);
 
         $client = Client::findOrFail($data['client_id']);
-        $invoice = $invoices->create(
-            $client,
-            array_map(fn (array $item): array => array_filter([
-                'description' => $item['description'],
-                'amount' => (int) $item['amount'],
-                'taxed' => array_key_exists('taxed', $item) ? (bool) $item['taxed'] : null,
-            ], fn ($value) => $value !== null), array_values($data['items'])),
-            dueAt: isset($data['due_at']) ? CarbonImmutable::parse($data['due_at']) : null,
-            status: $request->boolean('draft') ? InvoiceStatus::Draft : InvoiceStatus::Unpaid,
-            notes: $data['notes'] ?? null,
-        );
+        // Lines below zero are discounts; the invoice as a whole cannot be. Such an invoice is rolled back.
+        $invoice = DB::transaction(function () use ($invoices, $client, $data, $request): Invoice {
+            $invoice = $invoices->create(
+                $client,
+                array_map(fn (array $item): array => array_filter([
+                    'description' => $item['description'],
+                    'amount' => (int) $item['amount'],
+                    'taxed' => array_key_exists('taxed', $item) ? (bool) $item['taxed'] : null,
+                ], fn ($value) => $value !== null), array_values($data['items'])),
+                dueAt: isset($data['due_at']) ? CarbonImmutable::parse($data['due_at']) : null,
+                status: $request->boolean('draft') ? InvoiceStatus::Draft : InvoiceStatus::Unpaid,
+                notes: $data['notes'] ?? null,
+            );
 
-        if ($invoice->status === InvoiceStatus::Unpaid && $request->boolean('send_email')) {
+            if ($invoice->total < 0) {
+                throw ValidationException::withMessages(['items' => __('The invoice total cannot be below zero.')]);
+            }
+
+            return $invoice;
+        });
+
+        if ($invoice->status === InvoiceStatus::Unpaid && $invoice->total === 0) {
+            // Nothing to pay: it is settled now instead of waiting as unpaid.
+            app(PaymentRecorder::class)->settleFreeInvoice($invoice);
+            $invoice->refresh();
+        } elseif ($invoice->status === InvoiceStatus::Unpaid && $request->boolean('send_email')) {
             $mailer->send('invoice.created', $client, TemplateMailer::invoiceContext($invoice));
         }
 

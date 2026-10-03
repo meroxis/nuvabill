@@ -355,7 +355,7 @@ class AutoPay
             ->where('autopay_attempts', 0)
             ->whereDate('due_at', '>', $today->addDays($before))
             ->whereDate('due_at', '<=', $today->addDays($before + $days))
-            ->each(function (Invoice $invoice) use (&$sent): void {
+            ->eachById(function (Invoice $invoice) use (&$sent): void {
                 $method = $this->methodFor($invoice);
 
                 if ($method === null) {

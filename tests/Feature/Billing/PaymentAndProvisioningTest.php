@@ -5,6 +5,7 @@ namespace Tests\Feature\Billing;
 use App\Billing\Cart;
 use App\Billing\OrderPlacer;
 use App\Billing\PaymentRecorder;
+use App\Enums\AutoSetup;
 use App\Enums\BillingCycle;
 use App\Enums\InvoiceStatus;
 use App\Enums\OrderStatus;
@@ -28,10 +29,10 @@ class PaymentAndProvisioningTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function placeCpanelOrder(Server $server, string $email = 'raz@example.test'): Invoice
+    private function placeCpanelOrder(Server $server, string $email = 'raz@example.test', AutoSetup $setup = AutoSetup::OnPayment): Invoice
     {
         $client = Client::factory()->create(['email' => $email]);
-        $product = Product::factory()->cpanel($server)->priced(899)->create();
+        $product = Product::factory()->cpanel($server)->priced(899)->create(['auto_setup' => $setup]);
 
         $cart = app(Cart::class);
         $cart->add($product, BillingCycle::Monthly, 'razstudio.com');
@@ -98,14 +99,14 @@ class PaymentAndProvisioningTest extends TestCase
     {
         Queue::fake();
         Http::fake(['*/json-api/createacct*' => Http::response(['metadata' => ['result' => 1, 'reason' => 'Account Creation Ok']])]);
-        $invoice = $this->placeCpanelOrder(Server::factory()->create());
+        // Set up as soon as the order is placed: the setup is queued while the order still waits.
+        $this->placeCpanelOrder(Server::factory()->create(), setup: AutoSetup::OnOrder);
         $order = Order::query()->sole();
-        app(PaymentRecorder::class)->record($invoice, 899, 'stripe', 'pi_queued');
         Queue::assertPushed(ProvisionService::class);
         $queued = $order->services()->sole();
 
         $this->signInAdmin();
-        $this->post(route('admin.orders.cancel', $order))->assertRedirect();
+        $this->post(route('admin.orders.cancel', $order))->assertSessionHas('status');
         (new ProvisionService($queued))->handle(app(Provisioner::class));
 
         $this->assertSame(ServiceStatus::Cancelled, $queued->fresh()->status);

@@ -127,24 +127,49 @@ class Affiliates
         $today = CarbonImmutable::parse($today ?? today());
         $released = 0;
 
+        // By id, not by page: each commission leaves the "pending" list as it is handled.
         AffiliateCommission::query()
-            ->with('invoice')
+            ->with('invoice.creditNotes')
             ->where('status', AffiliateCommission::STATUS_PENDING)
             ->whereDate('available_at', '<=', $today)
-            ->each(function (AffiliateCommission $commission) use (&$released): void {
-                $status = $commission->invoice?->status === InvoiceStatus::Paid ? AffiliateCommission::STATUS_AVAILABLE : AffiliateCommission::STATUS_CANCELLED;
-
-                // Only a commission that is still on hold changes, so a second run cannot release it again.
-                $changed = AffiliateCommission::query()->whereKey($commission->id)
-                    ->where('status', AffiliateCommission::STATUS_PENDING)
-                    ->update(['status' => $status]);
-
-                if ($changed === 1 && $status === AffiliateCommission::STATUS_AVAILABLE) {
+            ->eachById(function (AffiliateCommission $commission) use (&$released): void {
+                if ($this->releaseOne($commission) === AffiliateCommission::STATUS_AVAILABLE) {
                     $released++;
                 }
             });
 
         return $released;
+    }
+
+    /**
+     * Release one commission on hold. It becomes available for the part of the invoice the client
+     * kept: credit notes that took back part of it cut it by the same share. When nothing was kept
+     * (the invoice was refunded), it is cancelled.
+     *
+     * @return string|null The new status, or null when the commission was no longer on hold.
+     */
+    public function releaseOne(AffiliateCommission $commission): ?string
+    {
+        $commission->loadMissing('invoice.creditNotes');
+        $invoice = $commission->invoice;
+        $kept = $invoice?->status === InvoiceStatus::Paid && $invoice->total > 0 ? $invoice->creditableAmount() : 0;
+        $amount = $kept > 0 ? (int) round($commission->amount * $kept / $invoice->total) : 0;
+        $changes = $amount > 0
+            ? ['status' => AffiliateCommission::STATUS_AVAILABLE, 'amount' => $amount]
+            : ['status' => AffiliateCommission::STATUS_CANCELLED];
+
+        // Only a commission that is still on hold changes, so a second run cannot release it again.
+        $changed = AffiliateCommission::query()->whereKey($commission->id)
+            ->where('status', AffiliateCommission::STATUS_PENDING)
+            ->update($changes);
+
+        if ($changed !== 1) {
+            return null;
+        }
+
+        $commission->forceFill($changes)->syncOriginal();
+
+        return $changes['status'];
     }
 
     /**

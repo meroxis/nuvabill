@@ -6,6 +6,7 @@ use App\Billing\Affiliates;
 use App\Http\Controllers\Controller;
 use App\Models\Affiliate;
 use App\Models\AffiliateCommission;
+use App\Models\Client;
 use App\Support\Activity;
 use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
@@ -24,10 +25,22 @@ class AffiliateController extends Controller
             'affiliates' => Affiliate::query()
                 ->with('client')
                 ->withCount('referrals')
-                ->withSum(['commissions as earned' => fn ($query) => $query->whereIn('status', [AffiliateCommission::STATUS_PENDING, AffiliateCommission::STATUS_AVAILABLE, AffiliateCommission::STATUS_PAID])], 'amount')
+                // Only commissions in the affiliate's own currency, like the totals on their page.
+                ->withSum(['commissions as earned' => fn ($query) => $query
+                    ->whereIn('status', [AffiliateCommission::STATUS_PENDING, AffiliateCommission::STATUS_AVAILABLE, AffiliateCommission::STATUS_PAID])
+                    ->where('affiliate_commissions.currency', Client::query()->select('currency')->whereColumn('clients.id', 'affiliates.client_id')),
+                ], 'amount')
                 ->latest('id')
                 ->paginate(25),
-            'waiting' => AffiliateCommission::query()->where('status', AffiliateCommission::STATUS_AVAILABLE)->sum('amount'),
+            // One total per currency, never added together; the default currency comes first.
+            'waiting' => AffiliateCommission::query()
+                ->where('status', AffiliateCommission::STATUS_AVAILABLE)
+                ->selectRaw('currency, sum(amount) as total')
+                ->groupBy('currency')
+                ->pluck('total', 'currency')
+                ->map(fn (mixed $total): int => (int) $total)
+                ->filter(fn (int $total): bool => $total > 0)
+                ->sortBy(fn (int $total, string $currency): string => ($currency === setting('billing.currency') ? '0' : '1').$currency),
         ]);
     }
 
@@ -80,7 +93,7 @@ class AffiliateController extends Controller
     /**
      * Release a commission early, cancel it, or mark it paid after paying the affiliate yourself.
      */
-    public function commission(Request $request, AffiliateCommission $commission, string $action): RedirectResponse
+    public function commission(Request $request, AffiliateCommission $commission, string $action, Affiliates $affiliates): RedirectResponse
     {
         $allowed = match ($action) {
             'release' => $commission->status === AffiliateCommission::STATUS_PENDING,
@@ -91,13 +104,25 @@ class AffiliateController extends Controller
 
         abort_unless($allowed, 422);
 
-        $commission->update(match ($action) {
-            'release' => ['status' => AffiliateCommission::STATUS_AVAILABLE],
-            'cancel' => ['status' => AffiliateCommission::STATUS_CANCELLED],
-            'paid' => ['status' => AffiliateCommission::STATUS_PAID, 'paid_at' => now()],
-        });
+        // Only a commission still in the status checked above changes, so a move to the wallet
+        // that happened meanwhile is never overwritten.
+        $changed = $action === 'release'
+            ? $affiliates->releaseOne($commission) !== null
+            : AffiliateCommission::query()->whereKey($commission->id)->where('status', $commission->status)->update(match ($action) {
+                'cancel' => ['status' => AffiliateCommission::STATUS_CANCELLED],
+                'paid' => ['status' => AffiliateCommission::STATUS_PAID, 'paid_at' => now()],
+            }) === 1;
 
+        if (! $changed) {
+            return back()->with('error', __('This commission changed in the meantime. Reload the page and try again.'));
+        }
+
+        $commission->refresh();
         Activity::log('affiliate.commission', "Commission #{$commission->id} of ".money($commission->amount, $commission->currency).": {$action}", client: $commission->affiliate->client);
+
+        if ($action === 'release' && $commission->status === AffiliateCommission::STATUS_CANCELLED) {
+            return back()->with('status', __('The invoice was refunded or is not paid, so the commission was cancelled.'));
+        }
 
         return back()->with('status', __('Commission updated.'));
     }

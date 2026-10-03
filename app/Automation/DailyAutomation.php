@@ -148,7 +148,7 @@ class DailyAutomation
             ->where('status', DomainStatus::Active)
             ->whereNotNull('expires_at')
             ->whereDate('expires_at', '<', $today)
-            ->each(function (Domain $domain) use (&$expired): void {
+            ->eachById(function (Domain $domain) use (&$expired): void {
                 $domain->update(['status' => DomainStatus::Expired]);
                 Activity::log('domain.expired', "Domain {$domain->name} expired", $domain);
                 $expired++;
@@ -176,7 +176,7 @@ class DailyAutomation
             ->whereDate('expires_at', '>=', $today)
             ->whereDate('expires_at', '<=', $today->addDays($days->max()))
             ->where(fn (Builder $query) => $query->whereNull('expiry_notice_sent_at')->orWhere('expiry_notice_sent_at', '<', now()->subDays(5)))
-            ->each(function (Domain $domain) use ($today, $days): void {
+            ->eachById(function (Domain $domain) use ($today, $days): void {
                 $daysLeft = (int) $today->diffInDays($domain->expires_at);
 
                 if (! $days->contains(fn (int $day): bool => $daysLeft <= $day && $daysLeft > $day - 5)) {
@@ -212,6 +212,8 @@ class DailyAutomation
             ->with('client')
             ->where('status', InvoiceStatus::Unpaid)
             ->whereDate('due_at', '<', $today)
+            // An invoice with nothing left to pay is never chased.
+            ->whereColumn('amount_paid', '<', 'total')
             // While a saved card is still to be tried again, the failed-payment email already told the client.
             ->where(fn (Builder $query) => $query->whereNull('autopay_retry_at')->orWhere('autopay_retry_at', '<=', now()))
             ->each(function (Invoice $invoice) use ($today, $days, &$sent): void {

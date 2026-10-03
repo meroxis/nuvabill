@@ -308,11 +308,15 @@ class PlanChanges
             throw new RuntimeException(__('The renewal with the new plan is already invoiced, so this change can no longer stop.'));
         }
 
-        $change->update(['status' => PlanChange::STATUS_CANCELLED]);
-
-        if ($change->invoice !== null && $change->invoice->status === InvoiceStatus::Unpaid) {
-            $this->invoices->cancel($change->invoice);
+        // The invoice goes first and is read again under a lock: money paid on it goes back to the
+        // wallet. When that cannot happen, or a payment settled it meanwhile, the change stays.
+        if ($change->invoice !== null && $this->invoices->cancel($change->invoice)->status === InvoiceStatus::Paid) {
+            throw new RuntimeException(__('The invoice for this change is already paid, so the change can no longer stop.'));
         }
+
+        // Only a change that is still waiting stops; one applied in the meantime stays applied.
+        PlanChange::query()->whereKey($change->id)->where('status', PlanChange::STATUS_PENDING)->update(['status' => PlanChange::STATUS_CANCELLED]);
+        $change->refresh();
 
         Activity::log('service.plan_change_cancelled', "Plan change for service #{$change->service_id} stopped", $change->service);
     }

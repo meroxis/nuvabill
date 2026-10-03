@@ -9,6 +9,7 @@ use App\Models\CreditNote;
 use App\Models\CreditTransaction;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\Locales;
 use Illuminate\Support\Facades\Cache;
@@ -51,8 +52,19 @@ class CreditNotes
         }
 
         try {
-            $invoice = $invoice->fresh(['items', 'client', 'creditNotes']);
+            $invoice = $invoice->fresh(['items', 'client', 'creditNotes', 'transactions']);
             $this->check($invoice, $amount, $method);
+
+            // A refund that stopped halfway (a gateway error) already sent part of the money back.
+            $refunded = -(int) $invoice->transactions->where('type', 'refund')->sum('amount');
+            $covered = (int) $invoice->creditNotes->where('method', CreditNote::METHOD_REFUND)->sum('total');
+            $toSend = $method === CreditNote::METHOD_REFUND ? $amount - max(0, $refunded - $covered) : 0;
+
+            // Only money that came in as a recorded payment can be sent back. The rest (for example
+            // credit applied in another billing system before an import) is checked before anything moves.
+            if ($toSend > 0 && $toSend > ($refundable = $this->refundable($invoice))) {
+                throw new InvalidArgumentException(__('Only :amount of this invoice can be sent back, because only that much came in as recorded payments. Credit the rest to the wallet, or settle it yourself.', ['amount' => money($refundable, $invoice->currency)]));
+            }
 
             // Money first: funds added to the wallet leave it before they are sent back, so they
             // cannot be spent and refunded both. When the refund fails, they go back into the wallet.
@@ -62,16 +74,14 @@ class CreditNotes
                 $this->wallet->change($invoice->client, -$fromWallet, __('Funds taken back from invoice :number', ['number' => $invoice->displayNumber()]), $invoice, $admin);
             }
 
-            // When a gateway refuses the refund, there is no credit note to take back. A refund
-            // that stopped halfway (a gateway error) already sent part of the money back.
+            // When a gateway refuses the refund, or sends back less, there is no credit note to take back.
             if ($method === CreditNote::METHOD_REFUND) {
-                $refunded = -(int) $invoice->transactions()->where('type', 'refund')->sum('amount');
-                $covered = (int) $invoice->creditNotes->where('method', CreditNote::METHOD_REFUND)->sum('total');
-                $toSend = $amount - max(0, $refunded - $covered);
-
                 try {
-                    if ($toSend > 0) {
-                        $this->refunds->refundAmount($invoice, $toSend, $throughGateway);
+                    if ($toSend > 0 && ($sent = $this->refunds->refundAmount($invoice, $toSend, $throughGateway)) < $toSend) {
+                        throw new RuntimeException(__('Only :sent of :amount was sent back. Make a credit note for :sent to record it, and settle the rest another way.', [
+                            'sent' => money($sent, $invoice->currency),
+                            'amount' => money($toSend, $invoice->currency),
+                        ]));
                     }
                 } catch (Throwable $exception) {
                     $sent = -(int) $invoice->transactions()->where('type', 'refund')->sum('amount') - $refunded;
@@ -177,6 +187,21 @@ class CreditNotes
         if ($this->fundsToTakeBack($invoice, $amount) > $credit) {
             throw new InvalidArgumentException(__('The client already spent part of these funds. Their wallet holds :amount, so take back at most that much.', ['amount' => money($credit, $invoice->client->currency)]));
         }
+    }
+
+    /**
+     * How much can still be sent back: what the recorded payments brought in and no refund sent
+     * back yet, never more than the invoice total. The same sum RefundIssuer::refundAmount() works
+     * through, in minor units.
+     */
+    private function refundable(Invoice $invoice): int
+    {
+        $refunds = $invoice->transactions->where('type', 'refund');
+        $fromPayments = (int) $invoice->transactions->where('type', 'payment')->sum(
+            fn (Transaction $payment): int => max(0, $payment->amount + (int) $refunds->filter(fn (Transaction $refund): bool => ($refund->meta['refund_of'] ?? null) === $payment->id)->sum('amount')),
+        );
+
+        return max(0, min($fromPayments, $invoice->total + (int) $refunds->sum('amount')));
     }
 
     /**

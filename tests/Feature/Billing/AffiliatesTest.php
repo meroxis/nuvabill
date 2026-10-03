@@ -95,7 +95,8 @@ class AffiliatesTest extends TestCase
         $this->put(route('admin.affiliates.update', $affiliate), ['status' => 'active', 'percent' => '25'])->assertSessionHas('status');
         $this->assertSame(25.0, $affiliate->fresh()->rate());
 
-        $invoice = Invoice::factory()->create(['total' => 1000]);
+        // Commissions are earned on paid invoices.
+        $invoice = Invoice::factory()->paid()->create(['total' => 1000]);
         $commission = $affiliate->commissions()->create(['client_id' => $invoice->client_id, 'invoice_id' => $invoice->id, 'amount' => 250, 'currency' => 'USD', 'status' => 'pending', 'available_at' => today()->addDays(14)]);
 
         $this->post(route('admin.affiliates.commission', [$commission, 'paid']))->assertStatus(422);

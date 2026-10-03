@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Client;
 
 use App\Billing\PlanChanges;
+use App\Enums\InvoiceStatus;
 use App\Http\Controllers\Controller;
 use App\Models\PlanChange;
 use App\Models\Product;
@@ -73,7 +74,10 @@ class PlanChangeController extends Controller
             try {
                 $changes->cancel($pending);
             } catch (RuntimeException $exception) {
-                return back()->with('error', $exception->getMessage());
+                // Money on the invoice that cannot go back to the wallet by itself needs staff.
+                $stuck = $pending->invoice?->refresh()->status === InvoiceStatus::Unpaid && $pending->invoice->amount_paid > 0;
+
+                return back()->with('error', $stuck ? __('Part of the invoice for this change is already paid. Contact us to stop the change.') : $exception->getMessage());
             }
         }
 

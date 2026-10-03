@@ -5,10 +5,12 @@ namespace App\Billing;
 use App\Enums\InvoiceStatus;
 use App\Events\InvoicePaid;
 use App\Extensions\Gateways\PaymentResult;
+use App\Models\CreditTransaction;
 use App\Models\Invoice;
 use App\Models\Transaction;
 use App\Support\Activity;
 use Carbon\CarbonInterface;
+use Closure;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -75,6 +77,15 @@ class PaymentRecorder
             'paid_at' => $paidAt ?? now(),
         ]);
 
+        // A payment that reaches a cancelled or refunded invoice (a gateway that confirmed late)
+        // goes to the wallet, so it is not left on an invoice nobody can pay or refund.
+        if (in_array($invoice->status, [InvoiceStatus::Cancelled, InvoiceStatus::Refunded], true)) {
+            $this->creditClosedInvoicePayment($invoice, $transaction);
+            $invoice->save();
+
+            return [$transaction, false];
+        }
+
         $paidBefore = $invoice->amount_paid;
         $invoice->amount_paid += $amount;
         $becamePaid = false;
@@ -106,28 +117,104 @@ class PaymentRecorder
      */
     private function creditSurplus(Invoice $invoice, int $surplus): void
     {
-        $client = $invoice->client;
         $number = $invoice->displayNumber();
+        $entry = $this->toWallet(
+            $invoice,
+            $surplus,
+            __('Overpayment on invoice :number', ['number' => $number]),
+            fn (array $rate): string => __('Overpayment on invoice :number (:amount at 1 :from = :rate :to)', ['number' => $number] + $rate),
+        );
 
-        if ($invoice->currency === $client->currency) {
-            app(Wallet::class)->change($client, $surplus, __('Overpayment on invoice :number', ['number' => $number]), $invoice);
+        if ($entry === null) {
+            Activity::log('payment.overpaid', 'Overpayment of '.money($surplus, $invoice->currency)." on invoice {$number} was not added to the {$invoice->client->currency} wallet: there is no exchange rate. Settle it by hand.", $invoice);
+        }
+    }
+
+    /**
+     * A payment on a cancelled or refunded invoice goes into the client's wallet, with a refund
+     * line that matches it. Without an exchange rate for the wallet it stays on the invoice for
+     * staff to settle, and the activity log says so.
+     */
+    private function creditClosedInvoicePayment(Invoice $invoice, Transaction $payment): void
+    {
+        $number = $invoice->displayNumber();
+        $amount = money($payment->amount, $invoice->currency);
+        $returned = $this->returnToWallet(
+            $invoice,
+            $payment->amount,
+            $payment,
+            __('Payment on closed invoice :number', ['number' => $number]),
+            fn (array $rate): string => __('Payment on closed invoice :number (:amount at 1 :from = :rate :to)', ['number' => $number] + $rate),
+        );
+
+        if ($returned) {
+            Activity::log('payment.on_closed_invoice', "Payment of {$amount} arrived on {$invoice->status->value} invoice {$number} and was added to the client's wallet.", $invoice);
 
             return;
+        }
+
+        $invoice->amount_paid += $payment->amount;
+        Activity::log('payment.on_closed_invoice', "Payment of {$amount} arrived on {$invoice->status->value} invoice {$number} and was not added to the {$invoice->client->currency} wallet: there is no exchange rate. Settle it by hand.", $invoice);
+    }
+
+    /**
+     * Give money paid on an invoice back into the client's wallet. With a payment, a refund line
+     * that matches it is written too, so the invoice's payments add up to what it kept. A wallet
+     * in another currency gets the amount at the exchange rate staff set.
+     *
+     * @param  int  $amount  In minor units of the invoice's currency.
+     * @param  Closure(array{amount: string, from: string, rate: string, to: string}): string  $convertedLabel  The wallet line when the amount is converted.
+     * @return bool False when the wallet is in another currency with no exchange rate; nothing changes then.
+     */
+    public function returnToWallet(Invoice $invoice, int $amount, ?Transaction $payment, string $label, Closure $convertedLabel): bool
+    {
+        $entry = $this->toWallet($invoice, $amount, $label, $convertedLabel);
+
+        if ($entry === null) {
+            return false;
+        }
+
+        if ($payment !== null) {
+            Transaction::create([
+                'client_id' => $invoice->client_id,
+                'invoice_id' => $invoice->id,
+                'gateway' => Wallet::GATEWAY,
+                'reference' => 'wallet-'.$entry->id,
+                'type' => 'refund',
+                'amount' => -$amount,
+                'currency' => $invoice->currency,
+                'meta' => ['refund_of' => $payment->id, 'through_gateway' => true],
+                'paid_at' => now(),
+            ]);
+        }
+
+        return true;
+    }
+
+    /**
+     * Add money from an invoice to the client's wallet, at the exchange rate staff set when the
+     * wallet is in another currency. Returns null, and adds nothing, when there is no rate.
+     *
+     * @param  Closure(array{amount: string, from: string, rate: string, to: string}): string  $convertedLabel
+     */
+    private function toWallet(Invoice $invoice, int $amount, string $label, Closure $convertedLabel): ?CreditTransaction
+    {
+        $client = $invoice->client;
+
+        if ($invoice->currency === $client->currency) {
+            return app(Wallet::class)->change($client, $amount, $label, $invoice);
         }
 
         $rates = app(ExchangeRates::class);
         $rate = $rates->rate($invoice->currency, $client->currency);
-        $converted = $rates->convert($surplus, $invoice->currency, $client->currency);
+        $converted = $rates->convert($amount, $invoice->currency, $client->currency);
 
         if ($rate === null || $converted === null || $converted <= 0) {
-            Activity::log('payment.overpaid', 'Overpayment of '.money($surplus, $invoice->currency)." on invoice {$number} was not added to the {$client->currency} wallet: there is no exchange rate. Settle it by hand.", $invoice);
-
-            return;
+            return null;
         }
 
-        app(Wallet::class)->change($client, $converted, __('Overpayment on invoice :number (:amount at 1 :from = :rate :to)', [
-            'number' => $number,
-            'amount' => money($surplus, $invoice->currency),
+        return app(Wallet::class)->change($client, $converted, $convertedLabel([
+            'amount' => money($amount, $invoice->currency),
             'from' => $invoice->currency,
             'rate' => rtrim(rtrim(number_format($rate, 6, '.', ''), '0'), '.'),
             'to' => $client->currency,
