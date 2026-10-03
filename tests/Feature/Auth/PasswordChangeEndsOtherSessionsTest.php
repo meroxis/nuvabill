@@ -3,10 +3,13 @@
 namespace Tests\Feature\Auth;
 
 use App\Models\Client;
+use App\Models\SocialAccount;
 use App\Security\Totp;
+use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Password;
 use Tests\TestCase;
 
@@ -48,6 +51,35 @@ class PasswordChangeEndsOtherSessionsTest extends TestCase
         $this->assertGuest('web');
     }
 
+    public function test_a_session_ended_by_a_password_reset_cannot_connect_google(): void
+    {
+        $client = Client::factory()->create(['email' => 'raz@example.test', 'password' => 'old-password-1']);
+        app(Settings::class)->set('social.google', ['enabled' => true, 'client_id' => 'id-google', 'client_secret' => 'secret-google']);
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'g-token']),
+            'openidconnect.googleapis.com/v1/userinfo' => Http::response(['sub' => 'g-other', 'email' => 'mer.las@example.test', 'email_verified' => true]),
+        ]);
+
+        // A stolen session that had already started connecting someone else's Google account.
+        $other = $this->signedInSession();
+        $other['social_login'] = ['provider' => 'google', 'state' => 'state-1', 'verifier' => 'verifier-1', 'client_id' => $client->id];
+
+        $this->switchTo([]);
+        $token = Password::broker('clients')->createToken($client);
+        $this->post(route('client.password.update'), ['token' => $token, 'email' => 'raz@example.test', 'password' => 'new-password-1', 'password_confirmation' => 'new-password-1'])
+            ->assertRedirect(route('client.login'));
+
+        // The Google routes sign that session out first, so it can neither finish nor start a connection.
+        $this->switchTo($other)->get(route('client.social.callback', ['provider' => 'google', 'state' => 'state-1', 'code' => 'auth-code']))
+            ->assertRedirect(route('client.login'));
+        $this->assertGuest('web');
+
+        $this->switchTo($other)->get(route('client.social.redirect', 'google'))->assertRedirect(route('client.login'));
+        $this->assertGuest('web');
+        $this->assertSame(0, SocialAccount::query()->count());
+        Http::assertNothingSent();
+    }
+
     public function test_password_checks_on_the_account_page_are_rate_limited(): void
     {
         $client = Client::factory()->create(['password' => 'old-password-1']);
@@ -70,10 +102,10 @@ class PasswordChangeEndsOtherSessionsTest extends TestCase
         $this->actingAs($client, 'web');
 
         foreach (range(1, 6) as $try) {
-            $this->delete(route('client.account.two-factor.destroy'), ['current_password' => 'wrong-password-'.$try])->assertSessionHasErrors('current_password');
+            $this->delete(route('client.account.two-factor.destroy'), ['two_factor_current_password' => 'wrong-password-'.$try])->assertSessionHasErrors('two_factor_current_password');
         }
 
-        $this->delete(route('client.account.two-factor.destroy'), ['current_password' => 'old-password-1'])->assertStatus(429);
+        $this->delete(route('client.account.two-factor.destroy'), ['two_factor_current_password' => 'old-password-1'])->assertStatus(429);
         $this->assertTrue($client->fresh()->hasTwoFactorEnabled());
     }
 

@@ -43,6 +43,12 @@ class TwoFactorChallengeController extends Controller
             'recovery_code' => ['nullable', 'string', 'max:20'],
         ]);
 
+        // One check at a time per account, so codes sent at the same moment are all counted.
+        return SignInLimiter::oneCodeAtATime('admin', $admin->id, fn (): RedirectResponse => $this->attempt($request, $admin));
+    }
+
+    private function attempt(Request $request, Admin $admin): RedirectResponse
+    {
         if (SignInLimiter::codesLocked('admin', $admin->id)) {
             return $this->stop($request);
         }

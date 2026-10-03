@@ -84,14 +84,15 @@ class EmailCode
     /**
      * Clients without a password prove a change is theirs (a new email, a first password, turning
      * off two-factor sign-in) with a code sent to their current email, so a stolen session alone
-     * cannot do it. Stops with a form error under "email_code" when the code is wrong.
+     * cannot do it. Stops with a form error under $field ("email_code" unless the form names it
+     * otherwise) when the code is wrong.
      *
      * @throws ValidationException
      */
-    public function confirm(Client $client, mixed $code): void
+    public function confirm(Client $client, mixed $code, string $field = 'email_code'): void
     {
         if (! is_string($code) || ! $this->check($client, self::CONFIRM, $code)) {
-            throw ValidationException::withMessages(['email_code' => __('That code is not right, or it is too old. Ask for a new code.')]);
+            throw ValidationException::withMessages([$field => __('That code is not right, or it is too old. Ask for a new code.')]);
         }
     }
 

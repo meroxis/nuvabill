@@ -24,6 +24,7 @@ use App\Http\Middleware\SetLocale;
 use App\Http\Middleware\TrackAffiliateLink;
 use App\Http\Middleware\VerifyCaptcha;
 use App\Models\SeoRedirect;
+use App\Security\OwnerCheck;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -130,6 +131,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );
+
+        // Passwords typed on the Account page are never kept in the session after a form error.
+        $exceptions->dontFlash(OwnerCheck::PASSWORD_FIELDS);
 
         // A store page that got a new web address: send visitors and search engines to it.
         $exceptions->render(function (NotFoundHttpException $exception, Request $request) {

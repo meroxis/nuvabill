@@ -9,6 +9,7 @@ use App\Security\Totp;
 use Carbon\CarbonInterval;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Sleep;
@@ -135,6 +136,43 @@ class StaffLoginTest extends TestCase
             ->post(route('admin.login'), ['email' => 'owner@example.test', 'password' => 'password'])
             ->assertSessionHasErrors(['email' => 'Too many tries. Wait 15 minutes, then try again.']);
         $this->assertGuest('admin');
+    }
+
+    public function test_a_code_is_not_checked_while_another_code_for_the_account_is_being_checked(): void
+    {
+        Sleep::fake(syncWithCarbon: true);
+        $secret = Totp::generateSecret();
+        $admin = Admin::factory()->create(['email' => 'owner@example.test']);
+        $admin->forceFill(['two_factor_secret' => $secret, 'two_factor_confirmed_at' => now()])->save();
+        $this->post(route('admin.login'), ['email' => 'owner@example.test', 'password' => 'password'])->assertRedirect(route('admin.two-factor.challenge'));
+
+        // Another request (from any IP address) is checking a code for this account. Codes sent at the
+        // same moment wait their turn, so each one is counted before the next is checked.
+        $busy = Cache::lock('admin-2fa:'.$admin->id.':check', 10);
+        $this->assertTrue($busy->get());
+
+        $this->post(route('admin.two-factor.challenge'), ['code' => Totp::codeAt($secret, intdiv(time(), 30))])->assertStatus(429);
+        $this->assertGuest('admin');
+
+        $busy->release();
+        $this->post(route('admin.two-factor.challenge'), ['code' => Totp::codeAt($secret, intdiv(time(), 30))])->assertRedirect(route('admin.dashboard'));
+        $this->assertAuthenticatedAs($admin, 'admin');
+    }
+
+    public function test_a_password_is_not_checked_while_another_password_for_the_email_is_being_checked(): void
+    {
+        Sleep::fake(syncWithCarbon: true);
+        $admin = Admin::factory()->create(['email' => 'owner@example.test']);
+
+        $busy = Cache::lock('admin-login:'.sha1('owner@example.test').':check', 10);
+        $this->assertTrue($busy->get());
+
+        $this->post(route('admin.login'), ['email' => 'owner@example.test', 'password' => 'password'])->assertStatus(429);
+        $this->assertGuest('admin');
+
+        $busy->release();
+        $this->post(route('admin.login'), ['email' => 'owner@example.test', 'password' => 'password'])->assertRedirect(route('admin.dashboard'));
+        $this->assertAuthenticatedAs($admin, 'admin');
     }
 
     public function test_a_used_two_factor_code_cannot_be_used_again_with_spaces_inside(): void

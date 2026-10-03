@@ -12,6 +12,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\TemplateMailer;
 use App\Models\Client;
 use App\Models\SocialAccount;
+use App\Security\OwnerCheck;
 use App\Support\Activity;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -29,25 +30,36 @@ use Throwable;
  */
 class SocialLoginController extends Controller
 {
+    /**
+     * "Continue with Google" on the sign-in and sign-up pages. Signed-in clients connect a provider
+     * from their Account page instead, see connect().
+     */
     public function redirect(Request $request, string $provider, SocialLogin $social): RedirectResponse
     {
         $driver = $social->provider($provider) ?? abort(404);
 
-        if ($request->user('web') === null) {
-            LoginController::rememberReturnPath($request);
+        if ($request->user('web') !== null) {
+            return redirect()->to(route('client.account.edit').'#connected-accounts');
         }
 
-        $state = Str::random(40);
-        $verifier = Str::random(64);
+        LoginController::rememberReturnPath($request);
 
-        $request->session()->put('social_login', [
-            'provider' => $provider,
-            'state' => $state,
-            'verifier' => $verifier,
-            'client_id' => $request->user('web')?->id,
-        ]);
+        return $this->start($request, $driver, null);
+    }
 
-        return redirect()->away($driver->authorizeUrl($state, $verifier));
+    /**
+     * Connect a provider to the signed-in client. It becomes a way to sign in that outlasts a new
+     * password, so the client first proves it is them (the password, or an emailed code): a stolen
+     * session alone cannot add a way back in.
+     */
+    public function connect(Request $request, string $provider, SocialLogin $social, OwnerCheck $owner): RedirectResponse
+    {
+        $driver = $social->provider($provider) ?? abort(404);
+        $client = $request->user('web');
+
+        $owner->confirm($request, $client, 'connect_');
+
+        return $this->start($request, $driver, $client);
     }
 
     public function callback(Request $request, string $provider, SocialLogin $social, TemplateMailer $mailer): RedirectResponse
@@ -76,7 +88,7 @@ class SocialLoginController extends Controller
         $account = SocialAccount::query()->where('provider', $provider)->where('provider_user_id', $user->id)->first();
 
         if ($current !== null) {
-            return $this->connect($current, $account, $driver, $user);
+            return $this->finishConnect($current, $account, $driver, $user);
         }
 
         if ($account !== null) {
@@ -120,7 +132,26 @@ class SocialLoginController extends Controller
         return back()->with('status', __('Disconnected. You can connect it again at any time.'));
     }
 
-    private function connect(Client $client, ?SocialAccount $account, Provider $driver, SocialUser $user): RedirectResponse
+    /**
+     * Send the browser to the provider. $client is the signed-in client when connecting, so the
+     * callback only links the provider to that same client.
+     */
+    private function start(Request $request, Provider $driver, ?Client $client): RedirectResponse
+    {
+        $state = Str::random(40);
+        $verifier = Str::random(64);
+
+        $request->session()->put('social_login', [
+            'provider' => $driver->slug(),
+            'state' => $state,
+            'verifier' => $verifier,
+            'client_id' => $client?->id,
+        ]);
+
+        return redirect()->away($driver->authorizeUrl($state, $verifier));
+    }
+
+    private function finishConnect(Client $client, ?SocialAccount $account, Provider $driver, SocialUser $user): RedirectResponse
     {
         if ($account !== null && $account->client_id !== $client->id) {
             return redirect()->route('client.account.edit')->with('error', __('This :provider account is already connected to another client account.', ['provider' => $driver->name()]));

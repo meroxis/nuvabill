@@ -121,7 +121,9 @@ Route::middleware('guest:web')->group(function (): void {
 
 Route::post('logout', [LoginController::class, 'destroy'])->middleware('auth:web')->name('client.logout');
 
-Route::middleware('throttle:20,1')->whereIn('provider', array_keys(SocialLogin::PROVIDERS))->group(function (): void {
+// auth.session: a session that a new password ended cannot finish connecting a provider here.
+// It does nothing for guests.
+Route::middleware(['throttle:20,1', 'auth.session'])->whereIn('provider', array_keys(SocialLogin::PROVIDERS))->group(function (): void {
     Route::get('auth/{provider}/redirect', [SocialLoginController::class, 'redirect'])->name('client.social.redirect');
     Route::get('auth/{provider}/callback', [SocialLoginController::class, 'callback'])->name('client.social.callback');
 });
@@ -201,5 +203,6 @@ Route::middleware(['auth:web', 'auth.session', 'client.active', 'client.two-fact
     Route::delete('account/payment-methods/{paymentMethod}', [PaymentMethodController::class, 'destroy'])->whereNumber('paymentMethod')->name('account.payment-methods.destroy');
     Route::post('account/payment-methods/add/{gateway}', [PaymentMethodController::class, 'store'])->where('gateway', '[a-z0-9_-]+')->middleware('throttle:10,1')->name('account.payment-methods.store');
     Route::get('account/payment-methods/add/{gateway}/return', [PaymentMethodController::class, 'finish'])->where('gateway', '[a-z0-9_-]+')->name('account.payment-methods.return');
+    Route::post('account/social/{provider}', [SocialLoginController::class, 'connect'])->whereIn('provider', array_keys(SocialLogin::PROVIDERS))->middleware('throttle:6,1,client-reauth')->name('account.social.connect');
     Route::delete('account/social/{provider}', [SocialLoginController::class, 'destroy'])->whereIn('provider', array_keys(SocialLogin::PROVIDERS))->name('account.social.destroy');
 });

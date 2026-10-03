@@ -12,6 +12,7 @@ use App\Mail\TemplateMailer;
 use App\Models\ChatLink;
 use App\Models\Client;
 use App\Security\EmailCode;
+use App\Security\OwnerCheck;
 use App\Security\Totp;
 use App\Support\Activity;
 use App\Support\Countries;
@@ -93,7 +94,7 @@ class AccountController extends Controller
         ];
     }
 
-    public function update(Request $request, EmailCode $codes, TemplateMailer $mailer): RedirectResponse
+    public function update(Request $request, OwnerCheck $owner, TemplateMailer $mailer): RedirectResponse
     {
         $client = $request->user('web');
 
@@ -118,7 +119,7 @@ class AccountController extends Controller
         // Password resets and sign-in codes go to this email, so changing it needs proof that this is
         // the account owner and not someone with a stolen session.
         if ($emailChanged) {
-            $this->confirmOwner($request, $client, $codes);
+            $owner->confirm($request, $client, 'details_');
         }
 
         $client->update($data);
@@ -170,20 +171,6 @@ class AccountController extends Controller
         return $codes->send($client, EmailCode::CONFIRM)
             ? back()->with('status', __('We sent a code to :email. It works for 10 minutes.', ['email' => $client->email]))
             : back()->with('error', __('Please wait a minute before asking for a new code.'));
-    }
-
-    /**
-     * The current password, or for clients without one a code sent to their current email.
-     */
-    private function confirmOwner(Request $request, Client $client, EmailCode $codes): void
-    {
-        if ($client->has_password) {
-            $request->validate(['current_password' => ['required', 'current_password:web']]);
-
-            return;
-        }
-
-        $codes->confirm($client, $request->input('email_code'));
     }
 
     /**

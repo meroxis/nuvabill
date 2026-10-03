@@ -24,12 +24,13 @@
                 @if (setting('tax.enabled') || $client->tax_id)
                     <x-input name="tax_id" :label="setting('tax.id_label')" :value="$client->tax_id" :help="__('Shown on your invoices. Optional.')" />
                 @endif
-                {{-- Changing the sign-in email needs proof that this is the account owner. --}}
+                {{-- Changing the sign-in email needs proof that this is the account owner. Each form on this
+                     page has its own field names, so an error shows only in the form it belongs to. --}}
                 @if ($client->has_password)
-                    <x-input name="current_password" id="details-password" type="password" :label="__('Current password')" :help="__('Needed only when you change your email.')" class="span-2" autocomplete="current-password" />
+                    <x-input name="details_current_password" id="details-password" type="password" :label="__('Current password')" :help="__('Needed only when you change your email.')" class="span-2" autocomplete="current-password" />
                 @else
                     <div class="span-2" style="display:grid;gap:.5rem">
-                        <x-input name="email_code" id="details-email-code" :label="__('Code from the email')" :help="__('Needed only when you change your email.')" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
+                        <x-input name="details_email_code" id="details-email-code" :label="__('Code from the email')" :help="__('Needed only when you change your email.')" inputmode="numeric" autocomplete="one-time-code" maxlength="6" />
                         <span><button class="btn btn-sm" type="submit" form="account-email-code">{{ __('Email me a code') }}</button></span>
                     </div>
                 @endif
@@ -88,9 +89,9 @@
                                 @csrf
                                 @method('DELETE')
                                 @if ($client->has_password)
-                                    <x-input name="current_password" type="password" id="two-factor-password" :label="__('Your password')" required autocomplete="current-password" />
+                                    <x-input name="two_factor_current_password" type="password" id="two-factor-password" :label="__('Your password')" required autocomplete="current-password" />
                                 @else
-                                    <x-input name="email_code" id="two-factor-off-code" :label="__('Code from the email')" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
+                                    <x-input name="two_factor_email_code" id="two-factor-off-code" :label="__('Code from the email')" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
                                     <span><button class="btn btn-sm" type="submit" form="account-email-code">{{ __('Email me a code') }}</button></span>
                                 @endif
                                 <div><button class="btn btn-sm btn-danger" type="submit">{{ __('Turn off') }}</button></div>
@@ -209,7 +210,8 @@
             @endif
 
             @if ($socialProviders || $socialAccounts->isNotEmpty())
-                <section class="card" style="display:grid;gap:.8rem">
+                @php $connectable = array_values(array_diff(array_keys($socialProviders), $socialAccounts->keys()->all())); @endphp
+                <section class="card" id="connected-accounts" style="display:grid;gap:.8rem;scroll-margin-top:90px">
                     <div>
                         <h2 style="font-size:1.05rem">{{ __('Connected accounts') }}</h2>
                         <p class="muted" style="margin:.3rem 0 0;font-size:.88rem">{{ __('Sign in with one click using these accounts.') }}</p>
@@ -232,10 +234,23 @@
                                     <button class="btn btn-sm" type="submit">{{ __('Disconnect') }}</button>
                                 </form>
                             @else
-                                <a class="btn btn-sm" href="{{ route('client.social.redirect', $slug) }}">{{ __('Connect') }}</a>
+                                <button class="btn btn-sm" type="submit" form="social-connect" formaction="{{ route('client.account.social.connect', $slug) }}">{{ __('Connect') }}</button>
                             @endif
                         </div>
                     @endforeach
+
+                    @if ($connectable !== [])
+                        {{-- A connected account is a new way to sign in, so connecting one needs the password or an emailed code. --}}
+                        <form method="POST" action="{{ route('client.account.social.connect', $connectable[0]) }}" id="social-connect" style="display:grid;gap:.5rem">
+                            @csrf
+                            @if ($client->has_password)
+                                <x-input name="connect_current_password" id="connect-password" type="password" :label="__('Your password')" :help="__('Needed to connect an account.')" required autocomplete="current-password" />
+                            @else
+                                <x-input name="connect_email_code" id="connect-email-code" :label="__('Code from the email')" :help="__('Needed to connect an account.')" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
+                                <span><button class="btn btn-sm" type="submit" form="account-email-code">{{ __('Email me a code') }}</button></span>
+                            @endif
+                        </form>
+                    @endif
                 </section>
             @endif
 

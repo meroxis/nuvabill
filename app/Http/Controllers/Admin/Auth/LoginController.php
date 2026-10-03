@@ -33,6 +33,15 @@ class LoginController extends Controller
             'password' => ['required', 'string'],
         ]);
 
+        // One check at a time per email address, so guesses sent at the same moment are all counted.
+        return SignInLimiter::onePasswordAtATime('admin', $credentials['email'], fn (): RedirectResponse => $this->attempt($request, $credentials));
+    }
+
+    /**
+     * @param  array{email: string, password: string}  $credentials
+     */
+    private function attempt(Request $request, array $credentials): RedirectResponse
+    {
         // Too many wrong passwords for this email, from any IP address: wait, even with the right one.
         if (SignInLimiter::passwordLocked('admin', $credentials['email'])) {
             return back()->withInput($request->only('email'))->withErrors(['email' => __('Too many tries. Wait 15 minutes, then try again.')]);

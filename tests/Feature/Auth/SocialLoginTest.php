@@ -122,7 +122,7 @@ class SocialLoginTest extends TestCase
         $this->fakeGoogle(['sub' => 'g-1', 'email' => 'raz@example.com', 'email_verified' => true]);
 
         $this->actingAs($client, 'web');
-        $this->completeSignIn('google')->assertRedirect(route('client.account.edit'))->assertSessionHas('status');
+        $this->completeConnect('google')->assertRedirect(route('client.account.edit'))->assertSessionHas('status');
 
         $this->assertNotNull($client->fresh()->email_verified_at);
     }
@@ -134,7 +134,7 @@ class SocialLoginTest extends TestCase
         $this->fakeGoogle(['sub' => 'g-2', 'email' => 'raz@example.com', 'email_verified' => true]);
 
         $this->actingAs($client, 'web');
-        $this->completeSignIn('google')->assertRedirect(route('client.account.edit'))->assertSessionHas('status');
+        $this->completeConnect('google')->assertRedirect(route('client.account.edit'))->assertSessionHas('status');
 
         $this->assertTrue($client->socialAccounts()->where('provider', 'google')->exists());
         $this->assertNull($client->fresh()->email_verified_at);
@@ -183,15 +183,59 @@ class SocialLoginTest extends TestCase
         $this->actingAs($client, 'web');
         $this->get(route('client.account.edit'))->assertSee('Connected accounts')->assertSee('Connect');
 
-        $this->completeSignIn('github')->assertRedirect(route('client.account.edit'))->assertSessionHas('status');
+        $this->completeConnect('github')->assertRedirect(route('client.account.edit'))->assertSessionHas('status');
         $this->assertTrue($client->socialAccounts()->where('provider', 'github')->where('email', 'dev@example.com')->exists());
 
         $this->actingAs($other, 'web');
-        $this->completeSignIn('github')->assertSessionHas('error', 'This GitHub account is already connected to another client account.');
+        $this->completeConnect('github')->assertSessionHas('error', 'This GitHub account is already connected to another client account.');
 
         $this->actingAs($client, 'web');
         $this->delete(route('client.account.social.destroy', 'github'))->assertSessionHas('status');
         $this->assertSame(0, $client->socialAccounts()->count());
+    }
+
+    public function test_connecting_a_provider_needs_the_password(): void
+    {
+        $client = Client::factory()->create(['email' => 'raz@example.com']);
+        $this->enable('google');
+        $this->fakeGoogle(['sub' => 'g-other', 'email' => 'mer.las@example.com', 'email_verified' => true]);
+        $this->actingAs($client, 'web');
+
+        $this->get(route('client.account.edit'))->assertSee('id="connect-password"', false);
+
+        // A stolen session alone cannot add someone else's Google account as a way to sign in.
+        $this->post(route('client.account.social.connect', 'google'))->assertSessionHasErrors('connect_current_password');
+        $this->post(route('client.account.social.connect', 'google'), ['connect_current_password' => 'wrong-password'])
+            ->assertSessionHasErrors('connect_current_password')
+            ->assertSessionMissing('social_login');
+        $this->assertNull(session()->getOldInput('connect_current_password'));
+
+        // The old link is no way around it: it sends signed-in clients to their Account page.
+        $this->get(route('client.social.redirect', 'google'))->assertRedirect(route('client.account.edit').'#connected-accounts');
+        $this->assertNull(session('social_login'));
+        $this->assertSame(0, SocialAccount::query()->count());
+
+        $this->completeConnect('google')->assertRedirect(route('client.account.edit'))->assertSessionHas('status');
+        $this->assertTrue($client->socialAccounts()->where('provider', 'google')->where('provider_user_id', 'g-other')->exists());
+    }
+
+    public function test_clients_without_a_password_connect_a_provider_with_a_code_from_their_email(): void
+    {
+        Mail::fake();
+        $client = Client::factory()->create();
+        $client->forceFill(['has_password' => false])->save();
+        $client->socialAccounts()->create(['provider' => 'google', 'provider_user_id' => 'g-1']);
+        $this->enable('github');
+        $this->fakeGitHub('gh-1');
+        $this->actingAs($client, 'web');
+
+        $this->get(route('client.account.edit'))->assertSee('id="connect-email-code"', false)->assertDontSee('id="connect-password"', false);
+
+        $this->post(route('client.account.social.connect', 'github'), ['connect_email_code' => '000000'])->assertSessionHasErrors('connect_email_code');
+        $this->assertSame(0, $client->socialAccounts()->where('provider', 'github')->count());
+
+        $this->completeConnect('github', ['connect_email_code' => $this->emailedCode()])->assertSessionHas('status');
+        $this->assertTrue($client->socialAccounts()->where('provider', 'github')->exists());
     }
 
     public function test_social_sign_ups_set_a_password_without_an_old_one(): void
@@ -261,14 +305,32 @@ class SocialLoginTest extends TestCase
 
     /**
      * Start the sign-in, then come back from the provider with the state it was given.
-     */
-    /**
+     *
      * @param  array<string, string>  $query
      */
     private function completeSignIn(string $provider, array $query = []): TestResponse
     {
         $location = $this->get(route('client.social.redirect', ['provider' => $provider] + $query))->assertRedirect()->headers->get('Location');
-        parse_str((string) parse_url((string) $location, PHP_URL_QUERY), $query);
+
+        return $this->comeBackFrom($provider, (string) $location);
+    }
+
+    /**
+     * Connect a provider from the Account page (with the factory password unless other proof is
+     * given), then come back from the provider.
+     *
+     * @param  array<string, string>  $proof
+     */
+    private function completeConnect(string $provider, array $proof = ['connect_current_password' => 'password']): TestResponse
+    {
+        $location = $this->post(route('client.account.social.connect', $provider), $proof)->assertRedirect()->headers->get('Location');
+
+        return $this->comeBackFrom($provider, (string) $location);
+    }
+
+    private function comeBackFrom(string $provider, string $location): TestResponse
+    {
+        parse_str((string) parse_url($location, PHP_URL_QUERY), $query);
 
         return $this->get(route('client.social.callback', ['provider' => $provider, 'state' => $query['state'], 'code' => 'auth-code']));
     }

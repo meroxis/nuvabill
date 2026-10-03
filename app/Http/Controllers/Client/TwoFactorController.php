@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Client;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Security\EmailCode;
+use App\Security\OwnerCheck;
 use App\Security\Totp;
 use App\Support\Activity;
 use Illuminate\Http\RedirectResponse;
@@ -85,7 +86,7 @@ class TwoFactorController extends Controller
     /**
      * Turn off two-factor sign-in, or cancel a setup that was not finished.
      */
-    public function destroy(Request $request, EmailCode $codes): RedirectResponse
+    public function destroy(Request $request, OwnerCheck $owner): RedirectResponse
     {
         $client = $request->user('web');
 
@@ -96,11 +97,7 @@ class TwoFactorController extends Controller
 
             // The password, or for clients without one a code sent to their email: a stolen session
             // alone cannot turn it off.
-            if ($client->has_password) {
-                $request->validate(['current_password' => ['required', 'current_password:web']]);
-            } else {
-                $codes->confirm($client, $request->input('email_code'));
-            }
+            $owner->confirm($request, $client, 'two_factor_');
 
             Activity::log('client.two_factor_off', "{$client->name} turned off two-factor sign-in", $client, $client, $client);
         }

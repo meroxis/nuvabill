@@ -9,8 +9,10 @@ use App\Security\Totp;
 use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
 class SecurityOptionsTest extends TestCase
@@ -179,6 +181,42 @@ class SecurityOptionsTest extends TestCase
         $this->assertAuthenticatedAs($client, 'web');
     }
 
+    public function test_a_code_is_not_checked_while_another_code_for_the_account_is_being_checked(): void
+    {
+        Sleep::fake(syncWithCarbon: true);
+        $secret = Totp::generateSecret();
+        $client = $this->clientWithTwoFactor(['two_factor_method' => 'totp', 'two_factor_secret' => $secret]);
+        $this->post(route('client.login'), ['email' => $client->email, 'password' => 'right-password-1'])->assertRedirect(route('client.two-factor.challenge'));
+
+        // Another request (from any IP address) is checking a code for this account. Codes sent at the
+        // same moment wait their turn, so each one is counted before the next is checked.
+        $busy = Cache::lock('client-2fa:'.$client->id.':check', 10);
+        $this->assertTrue($busy->get());
+
+        $this->post(route('client.two-factor.challenge'), ['code' => Totp::codeAt($secret, intdiv(time(), 30))])->assertStatus(429);
+        $this->assertGuest('web');
+
+        $busy->release();
+        $this->post(route('client.two-factor.challenge'), ['code' => Totp::codeAt($secret, intdiv(time(), 30))])->assertRedirect(route('client.dashboard'));
+        $this->assertAuthenticatedAs($client, 'web');
+    }
+
+    public function test_a_password_is_not_checked_while_another_password_for_the_email_is_being_checked(): void
+    {
+        Sleep::fake(syncWithCarbon: true);
+        $client = Client::factory()->create(['email' => 'raz@example.test', 'password' => 'right-password-1']);
+
+        $busy = Cache::lock('client-login:'.sha1('raz@example.test').':check', 10);
+        $this->assertTrue($busy->get());
+
+        $this->post(route('client.login'), ['email' => 'Raz@example.test', 'password' => 'right-password-1'])->assertStatus(429);
+        $this->assertGuest('web');
+
+        $busy->release();
+        $this->post(route('client.login'), ['email' => 'raz@example.test', 'password' => 'right-password-1'])->assertRedirect(route('client.dashboard'));
+        $this->assertAuthenticatedAs($client, 'web');
+    }
+
     public function test_passwords_are_limited_per_account_whichever_ip_they_come_from(): void
     {
         $client = Client::factory()->create(['email' => 'raz@example.test', 'password' => 'right-password-1']);
@@ -236,13 +274,13 @@ class SecurityOptionsTest extends TestCase
         $client->forceFill(['has_password' => false])->save();
         $this->actingAs($client, 'web');
 
-        $this->delete(route('client.account.two-factor.destroy'))->assertSessionHasErrors('email_code');
+        $this->delete(route('client.account.two-factor.destroy'))->assertSessionHasErrors('two_factor_email_code');
         $this->assertTrue($client->fresh()->hasTwoFactorEnabled());
 
         $this->post(route('client.account.email-code'))->assertSessionHas('status');
         preg_match('/\b(\d{6})\b/', Mail::sent(TemplatedMessage::class)->last()->bodyHtml, $match);
 
-        $this->delete(route('client.account.two-factor.destroy'), ['email_code' => $match[1]])->assertSessionHas('status');
+        $this->delete(route('client.account.two-factor.destroy'), ['two_factor_email_code' => $match[1]])->assertSessionHas('status');
         $this->assertFalse($client->fresh()->hasTwoFactorEnabled());
     }
 
@@ -292,7 +330,7 @@ class SecurityOptionsTest extends TestCase
         $client = $this->clientWithTwoFactor(['two_factor_method' => 'email']);
 
         $this->actingAs($client, 'web')
-            ->delete(route('client.account.two-factor.destroy'), ['current_password' => 'right-password-1'])
+            ->delete(route('client.account.two-factor.destroy'), ['two_factor_current_password' => 'right-password-1'])
             ->assertSessionHas('error');
 
         $this->assertTrue($client->fresh()->hasTwoFactorEnabled());

@@ -49,6 +49,15 @@ class LoginController extends Controller
         // Emails are saved in lowercase, so "Raz@Example.com" finds the same account.
         $credentials['email'] = Str::lower(trim($credentials['email']));
 
+        // One check at a time per email address, so guesses sent at the same moment are all counted.
+        return SignInLimiter::onePasswordAtATime('client', $credentials['email'], fn (): RedirectResponse => $this->attempt($request, $credentials));
+    }
+
+    /**
+     * @param  array{email: string, password: string}  $credentials
+     */
+    private function attempt(Request $request, array $credentials): RedirectResponse
+    {
         if (SignInLimiter::passwordLocked('client', $credentials['email'])) {
             return back()->withInput($request->only('email'))->withErrors(['email' => __('Too many tries. Wait 15 minutes, then try again.')]);
         }
