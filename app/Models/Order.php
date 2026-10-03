@@ -14,6 +14,12 @@ class Order extends Model
     /** @use HasFactory<OrderFactory> */
     use HasFactory;
 
+    /**
+     * Cache lock name, followed by the order ID. Held while staff accept or cancel the order and
+     * while the nightly run cancels it unpaid, so only one of them changes the order at a time.
+     */
+    public const LOCK_PREFIX = 'order-';
+
     protected $fillable = ['number', 'client_id', 'invoice_id', 'status', 'needs_review', 'fraud_reasons', 'currency', 'total', 'ip_address', 'notes', 'coupon_id', 'discount'];
 
     /**

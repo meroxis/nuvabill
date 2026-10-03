@@ -76,11 +76,16 @@ class OrderController extends Controller
                 }
             }
 
-            if ($failures === []) {
-                $order->update(['status' => OrderStatus::Active]);
-                Activity::log('order.accepted', "Order #{$order->number} accepted", $order);
+            // Only an order that is still pending becomes active: one cancelled while its services were
+            // set up stays cancelled.
+            if ($failures === [] && Order::query()->whereKey($order->id)->where('status', OrderStatus::Pending)->update(['status' => OrderStatus::Active]) === 1) {
+                Activity::log('order.accepted', "Order #{$order->number} accepted", $order->refresh());
 
                 return back()->with('status', __('Order accepted and services set up.'));
+            }
+
+            if ($failures === []) {
+                return back()->with('error', __('Only pending orders can be accepted or cancelled.'));
             }
 
             return back()->with('error', __('Some services could not be set up: :errors', ['errors' => implode('; ', $failures)]));
@@ -133,7 +138,7 @@ class OrderController extends Controller
      */
     private function whilePending(Order $order, callable $action): RedirectResponse
     {
-        $lock = Cache::lock("order-{$order->id}", 300);
+        $lock = Cache::lock(Order::LOCK_PREFIX.$order->id, 300);
 
         if (! $lock->get()) {
             return back()->with('error', __('Another change to this order is running. Try again in a minute.'));

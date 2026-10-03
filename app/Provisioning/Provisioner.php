@@ -21,6 +21,7 @@ use Closure;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -123,8 +124,20 @@ class Provisioner
             $service->module_data = array_merge((array) $service->module_data, $result->data['module_data']);
         }
 
-        $service->status = ServiceStatus::Active;
-        $service->save();
+        // Active only while it still waits under a row lock: a service cancelled while the server made
+        // the account (for example an unpaid order the nightly run cancelled) is not brought back
+        // without a due date. The account details are kept either way, so staff can find it.
+        $activated = DB::transaction(function () use ($service): bool {
+            $current = Service::query()->lockForUpdate()->whereKey($service->id)->first(['id', 'status'])?->status;
+            $service->status = $current === ServiceStatus::Pending ? ServiceStatus::Active : ($current ?? $service->status);
+            $service->save();
+
+            return $current === ServiceStatus::Pending;
+        });
+
+        if (! $activated) {
+            return [$this->failed($service, 'create', ModuleResult::fail(__('The service was cancelled or changed while it was being set up, but its account was made on the server. Remove that account there if it is not needed.'))), false];
+        }
 
         Activity::log('service.created', "Service #{$service->id} ({$service->label()}) set up: {$result->message}", $service);
 

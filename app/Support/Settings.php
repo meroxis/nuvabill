@@ -107,6 +107,9 @@ class Settings
         // New orders still unpaid this many days after their invoice was due are cancelled, so the
         // stock and server room they hold go back on sale. 0 turns it off.
         'orders.cancel_unpaid_days' => 7,
+        // Orders placed up to this time (ISO 8601) are never cancelled that way. Set by the update
+        // that added it, so a site that updates keeps the older pending orders it may still be paid for.
+        'orders.cancel_unpaid_from' => null,
         'company.privacy_url' => '',
 
         'mail.mailer' => 'log',

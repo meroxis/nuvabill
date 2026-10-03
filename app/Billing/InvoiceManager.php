@@ -11,7 +11,6 @@ use App\Support\Activity;
 use Carbon\CarbonInterface;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
-use RuntimeException;
 
 /**
  * Creates invoices and keeps their totals and numbers correct.
@@ -102,8 +101,8 @@ class InvoiceManager
      * Cancel an unpaid or draft invoice. Money already paid on it (often from the wallet) goes back
      * into the client's wallet, so nothing stays on a cancelled invoice.
      *
-     * @throws RuntimeException When money was paid on it and the client's wallet is in another
-     *                          currency with no exchange rate; the invoice is not cancelled then.
+     * @throws NoExchangeRate When money was paid on it and the client's wallet is in another
+     *                        currency with no exchange rate; the invoice is not cancelled then.
      */
     public function cancel(Invoice $invoice): Invoice
     {
@@ -137,7 +136,7 @@ class InvoiceManager
      * Put what was paid on an invoice that is being cancelled back into the client's wallet. Each
      * payment gets a matching refund line, so the invoice's payments add up to nothing.
      *
-     * @throws RuntimeException When the wallet is in another currency with no exchange rate.
+     * @throws NoExchangeRate When the wallet is in another currency with no exchange rate.
      */
     private function returnPayments(Invoice $invoice): void
     {
@@ -177,7 +176,7 @@ class InvoiceManager
 
         foreach ($parts as [$amount, $payment]) {
             if (! $recorder->returnToWallet($invoice, $amount, $payment, $label, $convertedLabel)) {
-                throw new RuntimeException(__('This invoice has :amount paid on it, and the client\'s wallet is in :currency with no exchange rate to give it back. Add a rate in Settings → Currencies first.', [
+                throw new NoExchangeRate(__('This invoice has :amount paid on it, and the client\'s wallet is in :currency with no exchange rate to give it back. Add a rate in Settings → Currencies first.', [
                     'amount' => money($invoice->amount_paid, $invoice->currency),
                     'currency' => $invoice->client->currency,
                 ]));

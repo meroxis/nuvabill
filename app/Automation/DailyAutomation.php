@@ -85,6 +85,9 @@ class DailyAutomation
         app(PlanChanges::class)->applyScheduled($today);
 
         $invoices = $this->renewals->generate($today);
+        // Upgrades kept open on an earlier night stop once their payment is no longer going through,
+        // before suspensions, so a stale upgrade invoice never suspends a renewed service.
+        app(PlanChanges::class)->settlePassed();
         // Saved cards are charged before reminders and suspensions, so a paid renewal is never suspended.
         $autoPay = $this->autoPay->run($today);
         // New orders nobody paid for give back their stock and server room, after their card had its chance.

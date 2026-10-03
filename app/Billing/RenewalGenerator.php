@@ -63,8 +63,16 @@ class RenewalGenerator
         foreach ($this->dueServices($today) as $service) {
             // An upgrade still waiting for payment was priced for the period that ends now. It stops
             // before the next period is billed, or is applied first when it was just paid.
-            if ($planChanges->settleBeforeRenewal($service)) {
-                $service = $service->fresh(['product', 'client', 'addons', 'coupon']);
+            try {
+                if ($planChanges->settleBeforeRenewal($service)) {
+                    $service = $service->fresh(['product', 'client', 'addons', 'coupon']);
+                }
+            } catch (Throwable $exception) {
+                // One upgrade that cannot be settled never stops the run: it stays waiting, staff see
+                // why, and the service renews on the plan it is on now.
+                report($exception);
+                rescue(fn () => Activity::log('service.plan_change_failed', "Pending plan change for service #{$service->id} could not be settled before the renewal: ".self::reason($exception), $service, $service->client));
+                $service = $service->fresh(['product', 'client', 'addons', 'coupon']) ?? $service;
             }
 
             foreach ($this->serviceItems($service) as $item) {
