@@ -9,6 +9,7 @@ use App\Mail\TemplateMailer;
 use App\Models\ActivityLog;
 use App\Models\Admin;
 use App\Models\Client;
+use App\Models\ImportMapping;
 use App\Models\Invoice;
 use App\Models\PaymentMethod;
 use App\Models\Quote;
@@ -16,6 +17,7 @@ use App\Models\Service;
 use App\Models\Ticket;
 use App\Models\TicketDepartment;
 use App\Support\Activity;
+use App\Support\ClientPrivacy;
 use App\Support\TicketDesk;
 use Database\Seeders\DefaultDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -162,6 +164,26 @@ class PrivacyTest extends TestCase
         $this->assertSame(0, (clone $tiedToClient)->where('description', 'like', '%Mer Las%')->count());
         $this->assertSame(0, (clone $tiedToClient)->where('description', 'like', '%Home address change%')->count());
         $this->assertSame(0, (clone $tiedToClient)->whereNotNull('ip_address')->count());
+    }
+
+    public function test_erasing_marks_the_client_so_an_import_never_brings_it_back(): void
+    {
+        $client = Client::factory()->create(['first_name' => 'Raz']);
+        $other = Client::factory()->create(['first_name' => 'Mer', 'last_name' => 'Las']);
+        // Imported from two systems, and linked by email from a second WHMCS client by an earlier version.
+        foreach ([['whmcs', 'client', 17], ['whmcs', 'client_link', 17], ['whmcs', 'client', 18], ['whmcs', 'client_link', 18], ['blesta', 'client', 4]] as [$source, $entity, $sourceId]) {
+            ImportMapping::query()->create(['source' => $source, 'entity' => $entity, 'source_id' => $sourceId, 'local_id' => $client->id]);
+        }
+        ImportMapping::query()->create(['source' => 'whmcs', 'entity' => 'client', 'source_id' => 19, 'local_id' => $other->id]);
+        ImportMapping::query()->create(['source' => 'whmcs', 'entity' => 'service', 'source_id' => 17, 'local_id' => 5]);
+
+        app(ClientPrivacy::class)->erase($client, Admin::factory()->create());
+
+        $erased = ImportMapping::query()->where('entity', 'client_erased')->orderBy('source')->orderBy('source_id')->get(['source', 'source_id', 'local_id']);
+        $this->assertSame([['blesta', 4, $client->id], ['whmcs', 17, $client->id], ['whmcs', 18, $client->id]], $erased->map(fn (ImportMapping $mapping): array => [$mapping->source, $mapping->source_id, $mapping->local_id])->all());
+        $this->assertFalse(ImportMapping::query()->whereIn('entity', ['client', 'client_link'])->where('local_id', $client->id)->exists());
+        $this->assertTrue(ImportMapping::query()->where(['entity' => 'client', 'source_id' => 19, 'local_id' => $other->id])->exists(), 'Other clients keep their mapping');
+        $this->assertTrue(ImportMapping::query()->where(['entity' => 'service', 'source_id' => 17])->exists());
     }
 
     public function test_erasing_tells_staff_about_a_card_the_gateway_did_not_remove(): void

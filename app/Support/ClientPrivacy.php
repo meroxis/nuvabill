@@ -12,6 +12,7 @@ use App\Extensions\ExtensionManager;
 use App\Models\ActivityLog;
 use App\Models\Admin;
 use App\Models\Client;
+use App\Models\ImportMapping;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\PaymentMethod;
@@ -255,6 +256,8 @@ class ClientPrivacy
             $client->tickets()->delete();
             $client->invoices()->where('status', InvoiceStatus::Draft)->each(fn (Invoice $invoice) => $invoice->delete());
             Order::query()->where('client_id', $client->id)->update(['ip_address' => null, 'notes' => null]);
+            // Another run of an import from the old system would otherwise put the personal data back.
+            ImportMapping::markClientErased($client->id);
 
             // The activity log keeps what happened and when, but not the texts: they hold the
             // client's name, ticket subjects and the like.

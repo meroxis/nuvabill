@@ -31,6 +31,7 @@ use App\Models\TicketDepartment;
 use App\Models\TldPrice;
 use App\Models\Transaction;
 use App\Support\Activity;
+use App\Support\ClientPrivacy;
 use App\Support\Settings;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Schema\Blueprint;
@@ -366,6 +367,68 @@ class WhmcsImportTest extends TestCase
         $this->assertSame(5000, $mer->credit);
         $this->assertFalse(CreditTransaction::query()->where('client_id', $mer->id)->where('description', 'Balance from WHMCS')->exists());
         $this->assertTrue(ImportMapping::query()->where(['source' => 'whmcs', 'entity' => 'client_link', 'source_id' => 2])->exists());
+    }
+
+    public function test_a_client_erased_in_nuvabill_is_not_brought_back_by_a_rerun(): void
+    {
+        $this->seedWhmcs();
+        $whmcs = DB::connection(self::CONNECTION);
+        $whmcs->table('tblclients')->where('id', 2)->update(['firstname' => 'Mer', 'lastname' => 'Las', 'companyname' => 'Blue Cedar Web', 'phonenumber' => '+9647501234567', 'address1' => '12 Cloud Street', 'city' => 'Erbil', 'notes' => 'Prefers phone calls', 'status' => 'Active']);
+        $whmcs->table('tbltickets')->insert(['id' => 9, 'tid' => '482914', 'did' => 1, 'userid' => 2, 'date' => '2026-09-22 08:00:00', 'title' => 'Please close my account', 'message' => 'Remove my data, thanks.', 'status' => 'Closed', 'urgency' => 'Low', 'lastreply' => '2026-09-22 08:00:00', 'service' => '', 'ipaddress' => '198.51.100.8']);
+        $this->runImport();
+
+        $mer = Client::query()->where('email', 'sam@example.com')->firstOrFail();
+        $this->assertSame('Mer', $mer->first_name);
+        $this->assertSame(1, Ticket::query()->where('client_id', $mer->id)->count());
+
+        app(ClientPrivacy::class)->erase($mer, Admin::factory()->create());
+
+        // WHMCS still runs during the switch: a service added there meanwhile does not reach the account either.
+        $whmcs->table('tblhosting')->insert(['id' => 12, 'userid' => 2, 'packageid' => 3, 'server' => 1, 'regdate' => '2026-10-02', 'domain' => 'bluecedar.example', 'firstpaymentamount' => '5.00', 'amount' => '5.00', 'billingcycle' => 'Monthly', 'nextduedate' => '2026-11-02', 'domainstatus' => 'Active', 'username' => 'bluecedar', 'suspendreason' => '']);
+        $errors = $this->runImport();
+        $this->runImport();
+
+        $mer->refresh();
+        $this->assertTrue($mer->isErased());
+        $this->assertSame('Erased', $mer->first_name);
+        $this->assertNull($mer->company_name);
+        $this->assertNull($mer->phone);
+        $this->assertNull($mer->address_1);
+        $this->assertNull($mer->notes);
+        $this->assertSame(ClientStatus::Closed, $mer->status, 'Not opened again by the old system');
+        $this->assertSame(0, Ticket::query()->where('client_id', $mer->id)->count(), 'The erased tickets do not come back');
+        $this->assertFalse(Ticket::query()->where('subject', 'Please close my account')->exists());
+        $this->assertSame(0, Service::query()->where('client_id', $mer->id)->count());
+        $this->assertSame(2, Client::query()->count(), 'Not brought back as a new account either');
+        $this->assertStringContainsString('erased', (string) collect($errors)->where('step', 'clients')->firstWhere('id', 2)['error']);
+
+        // The dry run counts the client as imported before, and says why it is skipped.
+        $preview = (new WhmcsImporter(self::CONNECTION))->preflight()->toArray();
+        $this->assertSame(0, $preview['steps']['clients']['new']);
+        $this->assertContains('Clients erased in Nuvabill on request: :count. They and their services, domains, invoices and tickets are not imported again.', array_column($preview['problems'], 'text'));
+    }
+
+    public function test_a_client_erased_before_this_version_is_not_brought_back_either(): void
+    {
+        $this->seedWhmcs();
+        DB::connection(self::CONNECTION)->table('tblclients')->where('id', 2)->update(['firstname' => 'Mer', 'lastname' => 'Las', 'phonenumber' => '+9647501234567', 'status' => 'Active']);
+        $this->runImport();
+        $mer = Client::query()->where('email', 'sam@example.com')->firstOrFail();
+
+        // How an erase before this version left it: the client mapping stayed.
+        app(ClientPrivacy::class)->erase($mer, Admin::factory()->create());
+        ImportMapping::query()->where('entity', 'client_erased')->update(['entity' => 'client']);
+
+        (require database_path('migrations/2027_07_02_000117_import_mark_erased_clients.php'))->up();
+        $this->runImport();
+
+        $mer->refresh();
+        $this->assertSame('Erased', $mer->first_name);
+        $this->assertNull($mer->phone);
+        $this->assertSame(ClientStatus::Closed, $mer->status);
+        $this->assertFalse(ImportMapping::query()->where(['source' => 'whmcs', 'entity' => 'client', 'source_id' => 2])->exists());
+        $this->assertSame($mer->id, ImportMapping::query()->where(['source' => 'whmcs', 'entity' => 'client_erased', 'source_id' => 2])->value('local_id'));
+        $this->assertTrue(ImportMapping::query()->where(['source' => 'whmcs', 'entity' => 'client', 'source_id' => 1])->exists(), 'Other clients keep their mapping');
     }
 
     public function test_a_department_with_the_same_name_is_linked_and_never_changed(): void

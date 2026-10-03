@@ -567,7 +567,9 @@ abstract class ImportSource
         foreach (static::steps() as $step => $label) {
             $total = $this->hasTable($this->tables()[$step]) ? $this->rows($step)->count() : 0;
             $entity = $this->entities()[$step] ?? null;
-            $existing = $entity !== null ? min($total, $this->importedCount($entity)) : 0;
+            // Clients erased since were imported before too; they are skipped from now on.
+            $imported = $entity === null ? 0 : $this->importedCount($entity) + ($entity === 'client' ? $this->importedCount('client_erased') : 0);
+            $existing = min($total, $imported);
 
             $report->step($step, $label, $total, $total - $existing, $existing);
         }
@@ -603,6 +605,7 @@ abstract class ImportSource
         $report->problem(Preflight::WARNING, $taken->count(), 'Clients whose email is already used by a Nuvabill account: :count. They are skipped until you change the email of that account or delete it.', examples: $taken->all());
         $report->problem(Preflight::WARNING, $this->linkedClients()->count(), 'Clients an earlier import linked by email to a Nuvabill account: :count. They are not changed; check that each account belongs to the same person.', examples: $emailsOf($this->linkedClients()));
         $report->problem(Preflight::WARNING, (clone $unproven)->count(), 'Clients an earlier import linked by email to an account that signed up by itself, without proving the email is theirs: :count. Those accounts get no new services, domains, invoices or tickets; check them and add these by hand.', examples: $emailsOf($unproven));
+        $report->problem(Preflight::INFO, $this->importedCount('client_erased'), 'Clients erased in Nuvabill on request: :count. They and their services, domains, invoices and tickets are not imported again.');
     }
 
     /**
@@ -765,16 +768,26 @@ abstract class ImportSource
     }
 
     /**
-     * The client's email when the row should be imported. Null when it is skipped: no valid email, or the
-     * email belongs to a Nuvabill account this import did not create. Nuvabill does not prove that a client
-     * owns their email, so a source client is never joined to an account someone could sign up with; staff
-     * sort those out by hand. Clients an earlier version linked that way are left as they are.
+     * The client's email when the row should be imported. Null when it is skipped: it was erased in Nuvabill,
+     * it has no valid email, or the email belongs to a Nuvabill account this import did not create. Nuvabill
+     * does not prove that a client owns their email, so a source client is never joined to an account someone
+     * could sign up with; staff sort those out by hand. Clients an earlier version linked that way are left as
+     * they are.
      *
      * @param  string|null  $currency  The client's currency in the source. A linked account in another currency
      *                                 would get the source's amounts unconverted, so its records stop coming across.
      */
     protected function clientEmailToImport(int $sourceId, mixed $email, ?string $currency = null): ?string
     {
+        // Erased on request: never brought back, and its services, invoices and tickets stay out too,
+        // as it has no client mapping any more (see ImportMapping::markClientErased()).
+        if (($erased = $this->localId('client_erased', $sourceId)) !== null) {
+            $this->counts['skipped']++;
+            $this->errors[] = ['id' => $sourceId, 'error' => __('Nuvabill client #:id was erased on request, so this client is not imported again.', ['id' => $erased])];
+
+            return null;
+        }
+
         if ($this->isLinkedClient($sourceId)) {
             $this->counts[$this->holdLink($sourceId, $currency) ? 'skipped' : 'updated']++;
 

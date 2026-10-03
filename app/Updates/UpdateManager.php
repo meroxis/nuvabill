@@ -155,17 +155,14 @@ class UpdateManager
             throw new RuntimeException('Copying the new files failed, so the previous version was restored: '.$exception->getMessage(), previous: $exception);
         }
 
-        $written = file_put_contents($this->pendingPath(), json_encode([
+        // If this fails, installing.json stays and there is no pending.json, so the install counts as
+        // stopped half-way and finish() puts the old files back.
+        $this->writeNote($this->pendingPath(), [
             'from' => $this->currentVersion(),
             'to' => $release->version,
             'backup' => $backup,
             'started_at' => now()->toIso8601String(),
-        ], JSON_PRETTY_PRINT));
-
-        // Without pending.json the install counts as stopped half-way, so finish() puts the old files back.
-        if ($written === false) {
-            throw new RuntimeException('Cannot write to the storage/app/updates folder.');
-        }
+        ]);
 
         @unlink($this->installingPath());
         @unlink($zipPath);
@@ -224,7 +221,10 @@ class UpdateManager
                 throw new RuntimeException($this->restoreFailedMessage());
             }
 
-            if (is_file($this->pendingPath())) {
+            // Read before installing.json goes: a pending.json that cannot be read, like an empty one
+            // a write on a full disk left behind, does not finish the install. The old files go back
+            // as for any install that stopped half-way, instead of failing here every minute.
+            if ($this->pending() !== null) {
                 $this->forgetInstalling();
             } elseif (is_file($this->installingPath())) {
                 $this->rollBackInterruptedInstall();
@@ -254,9 +254,9 @@ class UpdateManager
      */
     private function finishUnlocked(): array
     {
-        $pending = json_decode((string) @file_get_contents($this->pendingPath()), true);
+        $pending = $this->pending();
 
-        if (! is_array($pending)) {
+        if ($pending === null) {
             throw new RuntimeException('There is no update to finish.');
         }
 
@@ -357,6 +357,8 @@ class UpdateManager
             @unlink($download);
         }
 
+        // A pending.json that could not be read: left behind, every later finish would fail on it.
+        @unlink($this->pendingPath());
         @unlink($this->installingPath());
         Artisan::call('up');
         Activity::log('update.failed', "Update to {$to} stopped half-way and version {$from} was restored");
@@ -457,16 +459,50 @@ class UpdateManager
      */
     private function markInstalling(Release $release, ?string $backup): void
     {
-        $written = file_put_contents($this->installingPath(), json_encode([
+        $this->writeNote($this->installingPath(), [
             'from' => $this->currentVersion(),
             'to' => $release->version,
             'backup' => $backup,
             'started_at' => now()->toIso8601String(),
-        ], JSON_PRETTY_PRINT));
+        ]);
+    }
 
-        if ($written === false) {
-            throw new RuntimeException('Cannot write to the storage/app/updates folder.');
+    /**
+     * Write a note in one go: it is complete or not there at all, also when the disk is full or PHP
+     * stops half-way. A failed write throws its own error first (Laravel turns PHP's warning into
+     * one), so the temporary file is removed in every case.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function writeNote(string $path, array $data): void
+    {
+        $temporary = $path.'.tmp';
+        $failure = null;
+
+        try {
+            $written = file_put_contents($temporary, json_encode($data, JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR)) !== false
+                && rename($temporary, $path);
+        } catch (Throwable $failure) {
+            $written = false;
         }
+
+        if (! $written) {
+            @unlink($temporary);
+
+            throw new RuntimeException('Cannot write to the storage/app/updates folder.', previous: $failure);
+        }
+    }
+
+    /**
+     * The copied update that waits for finish(), or null when there is none or its note cannot be read.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function pending(): ?array
+    {
+        $pending = json_decode((string) @file_get_contents($this->pendingPath()), true);
+
+        return is_array($pending) ? $pending : null;
     }
 
     private function pendingPath(): string

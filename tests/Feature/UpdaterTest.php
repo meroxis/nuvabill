@@ -39,6 +39,9 @@ class UpdaterTest extends TestCase
         @unlink(storage_path('app/updates/installing.json'));
         @unlink(storage_path('app/updates/restore-failed.json'));
         @unlink(storage_path('app/updates/nuvabill-0.2.0.zip'));
+        @unlink(storage_path('app/updates/pending.json.tmp'));
+        @unlink(storage_path('app/updates/installing.json.tmp'));
+        @rmdir(storage_path('app/updates/pending.json.tmp'));
 
         if ($this->app->isDownForMaintenance()) {
             Artisan::call('up');
@@ -241,6 +244,59 @@ class UpdaterTest extends TestCase
         $this->assertFalse(app(UpdateManager::class)->hasPendingFinish());
         $this->assertFileDoesNotExist(storage_path('app/updates/installing.json'));
         $this->assertDatabaseHas('activity_logs', ['action' => 'update.failed']);
+    }
+
+    public function test_the_scheduler_rolls_back_an_install_whose_pending_note_was_left_empty(): void
+    {
+        $backup = $this->fakeBackup();
+        file_put_contents($this->workDir.'/before.zip', 'backup');
+        // The files were copied, then writing pending.json failed on a full disk and left it empty.
+        $this->writeUpdateFile('installing.json', ['from' => '0.1.0', 'to' => '0.2.0', 'backup' => $this->workDir.'/before.zip', 'started_at' => now()->toIso8601String()]);
+        file_put_contents(storage_path('app/updates/pending.json'), '');
+        Artisan::call('down');
+
+        $this->artisan('nuvabill:update', ['--finish-pending' => true])->assertFailed();
+
+        $this->assertSame([[$this->workDir.'/before.zip', false]], $backup->restored, 'Only the files go back: the database was not migrated yet.');
+        $this->assertFalse($this->app->isDownForMaintenance());
+        $this->assertFalse(app(UpdateManager::class)->hasPendingFinish());
+        $this->assertFileDoesNotExist(storage_path('app/updates/pending.json'));
+        $this->assertFileDoesNotExist(storage_path('app/updates/installing.json'));
+        $this->assertDatabaseHas('activity_logs', ['action' => 'update.failed']);
+        $this->assertDatabaseMissing('activity_logs', ['action' => 'update.installed']);
+
+        // The next scheduler run has nothing left to do.
+        $this->artisan('nuvabill:update', ['--finish-pending' => true])->assertSuccessful();
+    }
+
+    public function test_a_pending_note_that_cannot_be_written_is_never_left_half_written(): void
+    {
+        $this->fakeBackup();
+        [$updates, $release] = $this->signedRelease('0.2.0');
+        // The note is written to a temporary file first; here that file cannot be written, like on a full disk.
+        mkdir(storage_path('app/updates/pending.json.tmp'), 0755, true);
+
+        try {
+            $updates->install($release);
+            $this->fail('The install must stop when its pending.json cannot be written.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('Cannot write to the storage/app/updates folder', $exception->getMessage());
+        }
+
+        $this->assertFileDoesNotExist(storage_path('app/updates/pending.json'));
+        $this->assertSame('before-0.2.0.zip', json_decode((string) file_get_contents(storage_path('app/updates/installing.json')), true)['backup']);
+        $this->assertTrue($updates->hasPendingFinish());
+
+        try {
+            $updates->finish();
+            $this->fail('An install that stopped half-way is rolled back, not finished.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('stopped half-way', $exception->getMessage());
+        }
+
+        $this->assertFalse($this->app->isDownForMaintenance());
+        $this->assertFalse($updates->hasPendingFinish());
+        $this->assertDatabaseMissing('activity_logs', ['action' => 'update.installed']);
     }
 
     public function test_the_scheduler_leaves_an_install_that_is_still_running_alone(): void
