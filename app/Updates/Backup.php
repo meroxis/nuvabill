@@ -2,12 +2,14 @@
 
 namespace App\Updates;
 
+use App\Support\MysqlDump;
 use Illuminate\Support\Facades\DB;
 use PDO;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use RuntimeException;
 use SplFileInfo;
+use Throwable;
 use ZipArchive;
 
 /**
@@ -39,6 +41,9 @@ class Backup
             throw new RuntimeException("Cannot create the backup folder {$this->backupPath}.");
         }
 
+        // A backup that PHP stopped half-way can leave a zip and a database dump behind.
+        $this->prune();
+
         $file = $this->backupPath.DIRECTORY_SEPARATOR.preg_replace('/[^A-Za-z0-9._-]/', '-', $label).'-'.date('Ymd-His').'.zip';
         $zip = new ZipArchive;
 
@@ -46,33 +51,54 @@ class Backup
             throw new RuntimeException("Cannot write the backup file {$file}.");
         }
 
-        $sqlitePath = $this->sqlitePath();
+        $dump = null;
 
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($this->basePath, RecursiveDirectoryIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::SELF_FIRST,
-        );
+        try {
+            $sqlitePath = $this->sqlitePath();
 
-        /** @var SplFileInfo $item */
-        foreach ($iterator as $item) {
-            $relative = $this->relative($item->getPathname());
+            $iterator = new RecursiveIteratorIterator(
+                new RecursiveDirectoryIterator($this->basePath, RecursiveDirectoryIterator::SKIP_DOTS),
+                RecursiveIteratorIterator::SELF_FIRST,
+            );
 
-            if ($this->isExcluded($relative) || ($sqlitePath !== null && realpath($item->getPathname()) === $sqlitePath)) {
-                continue;
+            /** @var SplFileInfo $item */
+            foreach ($iterator as $item) {
+                $relative = $this->relative($item->getPathname());
+
+                if ($this->isExcluded($relative) || ($sqlitePath !== null && realpath($item->getPathname()) === $sqlitePath)) {
+                    continue;
+                }
+
+                if ($item->isFile()) {
+                    $zip->addFile($item->getPathname(), $relative);
+                }
             }
 
-            if ($item->isFile()) {
-                $zip->addFile($item->getPathname(), $relative);
+            if ($sqlitePath !== null) {
+                $zip->addFile($sqlitePath, self::SQLITE_ENTRY);
+            } elseif (DB::getDriverName() === 'mysql' || DB::getDriverName() === 'mariadb') {
+                // Written to a file, not memory, so a large database fits too. The zip reads it when it closes.
+                $dump = $this->backupPath.DIRECTORY_SEPARATOR.'.dump-'.bin2hex(random_bytes(6)).'.sql';
+                register_shutdown_function(static fn () => @unlink($dump));
+                MysqlDump::toFile($dump);
+                $zip->addFile($dump, self::SQL_ENTRY);
+            }
+
+            if (! $zip->close()) {
+                throw new RuntimeException('The backup zip could not be finished: '.$zip->getStatusString());
+            }
+        } catch (Throwable $exception) {
+            // Never leave a backup without its database behind: a restore would trust it.
+            self::discard($zip);
+            @unlink($file);
+
+            throw $exception;
+        } finally {
+            if ($dump !== null) {
+                @unlink($dump);
             }
         }
 
-        if ($sqlitePath !== null) {
-            $zip->addFile($sqlitePath, self::SQLITE_ENTRY);
-        } elseif (DB::getDriverName() === 'mysql' || DB::getDriverName() === 'mariadb') {
-            $zip->addFromString(self::SQL_ENTRY, $this->dumpMysql());
-        }
-
-        $zip->close();
         $this->prune();
 
         return $file;
@@ -99,11 +125,12 @@ class Backup
         if ($includeDatabase) {
             $sqlitePath = $this->sqlitePath();
 
-            if ($sqlitePath !== null && ($contents = $zip->getFromName(self::SQLITE_ENTRY)) !== false) {
+            // Read as streams, so a large database never has to fit in memory.
+            if ($sqlitePath !== null && $zip->locateName(self::SQLITE_ENTRY) !== false) {
                 DB::disconnect();
-                file_put_contents($sqlitePath, $contents);
-            } elseif (($sql = $zip->getFromName(self::SQL_ENTRY)) !== false) {
-                $this->restoreMysql($sql);
+                $this->restoreSqlite($this->entryStream($zip, self::SQLITE_ENTRY), $sqlitePath);
+            } elseif ($zip->locateName(self::SQL_ENTRY) !== false) {
+                $this->restoreMysql($this->entryStream($zip, self::SQL_ENTRY));
             }
         }
 
@@ -151,6 +178,19 @@ class Backup
         return $written !== false;
     }
 
+    /**
+     * Close a zip without writing it. It may already be closed after a failed close().
+     */
+    private static function discard(ZipArchive $zip): void
+    {
+        try {
+            $zip->unchangeAll();
+            $zip->close();
+        } catch (Throwable) {
+            // Already closed.
+        }
+    }
+
     private function relative(string $path): string
     {
         return ltrim(str_replace('\\', '/', substr($path, strlen($this->basePath))), '/');
@@ -179,45 +219,65 @@ class Backup
     }
 
     /**
-     * One SQL statement per line, so restoring can run them one by one.
+     * @return resource
      */
-    private function dumpMysql(): string
+    private function entryStream(ZipArchive $zip, string $name)
     {
-        $pdo = DB::connection()->getPdo();
-        $lines = ['SET FOREIGN_KEY_CHECKS=0;'];
+        $stream = $zip->getStream($name);
 
-        foreach (DB::select('SHOW TABLES') as $row) {
-            $table = (string) array_values((array) $row)[0];
-            $create = (array) DB::selectOne("SHOW CREATE TABLE `{$table}`");
-            $lines[] = "DROP TABLE IF EXISTS `{$table}`;";
-            $lines[] = preg_replace('/\s*\R\s*/', ' ', (string) $create['Create Table']).';';
-
-            foreach (DB::table($table)->cursor() as $record) {
-                $values = array_map(
-                    fn (mixed $value): string => $value === null ? 'NULL' : $pdo->quote((string) $value),
-                    (array) $record,
-                );
-                $lines[] = "INSERT INTO `{$table}` VALUES (".implode(',', $values).');';
-            }
+        if ($stream === false) {
+            throw new RuntimeException("The backup's database could not be read: {$zip->getStatusString()}");
         }
 
-        $lines[] = 'SET FOREIGN_KEY_CHECKS=1;';
-
-        return implode("\n", $lines)."\n";
+        return $stream;
     }
 
-    private function restoreMysql(string $sql): void
+    /**
+     * @param  resource  $stream
+     */
+    private function restoreSqlite($stream, string $sqlitePath): void
+    {
+        $target = fopen($sqlitePath, 'wb');
+
+        try {
+            if ($target === false || stream_copy_to_stream($stream, $target) === false) {
+                throw new RuntimeException("The database {$sqlitePath} could not be written.");
+            }
+        } finally {
+            if ($target !== false) {
+                fclose($target);
+            }
+
+            fclose($stream);
+        }
+    }
+
+    /**
+     * The dump has one SQL statement per line, so the lines run one by one.
+     *
+     * @param  resource  $stream
+     */
+    private function restoreMysql($stream): void
     {
         $pdo = DB::connection()->getPdo();
         $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-        foreach (preg_split('/\n/', $sql) ?: [] as $statement) {
-            if (trim($statement) !== '') {
-                $pdo->exec($statement);
+        try {
+            while (($line = fgets($stream)) !== false) {
+                $statement = rtrim($line, "\r\n");
+
+                if (trim($statement) !== '') {
+                    $pdo->exec($statement);
+                }
             }
+        } finally {
+            fclose($stream);
         }
     }
 
+    /**
+     * Keep the newest backups, and remove database dumps left by a backup that PHP stopped half-way.
+     */
     private function prune(): void
     {
         $files = glob($this->backupPath.DIRECTORY_SEPARATOR.'*.zip') ?: [];
@@ -225,6 +285,12 @@ class Backup
 
         foreach (array_slice($files, self::KEEP) as $old) {
             @unlink($old);
+        }
+
+        foreach (glob($this->backupPath.DIRECTORY_SEPARATOR.'.dump-*') ?: [] as $dump) {
+            if (filemtime($dump) < time() - 3600) {
+                @unlink($dump);
+            }
         }
     }
 }

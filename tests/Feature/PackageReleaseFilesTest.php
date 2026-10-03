@@ -40,6 +40,13 @@ class PackageReleaseFilesTest extends TestCase
             'tests' => ['tests/Feature/ExampleTest.php', true],
             'installed paid theme' => ['themes/aurora/theme.json', true],
             'installed add-on' => ['extensions/addons/free-trial/extension.json', true],
+            'installed marketplace server module' => ['extensions/servers/mikrotik-vpn/extension.json', true],
+            'license stamp of a server module' => ['extensions/servers/mikrotik-vpn/.nuvabill-license', true],
+            'installed marketplace gateway' => ['extensions/gateways/nowpayments/src/NowPaymentsGateway.php', true],
+            'installed marketplace registrar' => ['extensions/registrars/some-registrar/extension.json', true],
+            'built-in server module' => ['extensions/servers/cpanel/src/CpanelModule.php', false],
+            'built-in gateway' => ['extensions/gateways/stripe/extension.json', false],
+            'built-in registrar' => ['extensions/registrars/enom/extension.json', false],
             'local database' => ['database/database.sqlite', true],
             'storage file' => ['storage/logs/laravel.log', true],
             'composer login' => ['auth.json', true],
@@ -71,6 +78,10 @@ class PackageReleaseFilesTest extends TestCase
             'keys/release.key' => $keys['secret'],
             'notes/signing.txt' => 'Key: '.$keys['secret'],
             'certs/server.pem' => "-----BEGIN PRIVATE KEY-----\n".str_repeat('QUJDRA==', 20)."\n-----END PRIVATE KEY-----\n",
+            'extensions/servers/cpanel/extension.json' => '{"type":"server"}',
+            'extensions/servers/mikrotik-vpn/extension.json' => '{"type":"server","paid":true}',
+            'extensions/servers/mikrotik-vpn/src/MikrotikModule.php' => '<?php // a paid marketplace module',
+            'extensions/servers/mikrotik-vpn/.nuvabill-license' => '{"license":"fixture"}',
         ];
 
         foreach ($files as $path => $content) {
@@ -101,8 +112,13 @@ class PackageReleaseFilesTest extends TestCase
             sort($names);
 
             $this->assertSame([
-                'app/Billing/OrderPlacer.php', 'public/build/manifest.json', 'release-files.json', 'release-files.json.sig', 'vendor/composer/ca-bundle/res/cacert.pem',
+                'app/Billing/OrderPlacer.php', 'extensions/servers/cpanel/extension.json', 'public/build/manifest.json', 'release-files.json', 'release-files.json.sig', 'vendor/composer/ca-bundle/res/cacert.pem',
             ], $names);
+
+            // A marketplace module is neither packed nor fingerprinted as core code.
+            $zip->open($zipPath);
+            $this->assertStringNotContainsString('mikrotik-vpn', (string) $zip->getFromName('release-files.json'));
+            $zip->close();
             $this->assertTrue(Signature::verify($version, $zipPath, (string) file_get_contents($zipPath.'.sig'), $keys['public']));
             $this->assertStringStartsWith(hash_file('sha256', $zipPath), (string) file_get_contents($zipPath.'.sha256'));
         } finally {

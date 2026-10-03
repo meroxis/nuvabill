@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Extensions\ExtensionOverview;
 use App\Health\CoreFiles;
 use App\Updates\Signature as ReleaseSignature;
 use Illuminate\Console\Attributes\Description;
@@ -76,11 +77,16 @@ class PackageRelease extends Command
 
         $files = 0;
         $fingerprints = [];
+        $leftOut = [];
         $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(base_path(), RecursiveDirectoryIterator::SKIP_DOTS));
 
         /** @var SplFileInfo $file */
         foreach ($iterator as $file) {
             $relative = ltrim(str_replace('\\', '/', substr($file->getPathname(), strlen(base_path()))), '/');
+
+            if (($extension = self::marketplaceExtension($relative)) !== null) {
+                $leftOut[$extension] = true;
+            }
 
             if (! $file->isFile() || self::isExcluded($relative) || in_array($relative, [CoreFiles::LIST_FILE, CoreFiles::SIGNATURE_FILE], true)) {
                 continue;
@@ -99,6 +105,11 @@ class PackageRelease extends Command
             if (CoreFiles::isCode($relative)) {
                 $fingerprints[$relative] = (string) hash_file('sha256', $file->getPathname());
             }
+        }
+
+        // A new built-in extension must be added to ExtensionOverview::BUILT_IN, or it does not ship.
+        foreach (array_keys($leftOut) as $extension) {
+            $this->components->warn("Left out {$extension}: it is not a built-in extension.");
         }
 
         // Site health compares the site's own code with this list to spot changed or planted files.
@@ -148,6 +159,11 @@ class PackageRelease extends Command
             return true;
         }
 
+        // Gateways, server modules and registrars from the marketplace, and any marketplace license stamp.
+        if (self::marketplaceExtension($relative) !== null || basename($relative) === '.nuvabill-license') {
+            return true;
+        }
+
         // Hidden folders at the top (.git, .github, editor and tool settings) never ship.
         if (preg_match('#^\.[^/]+/#', $relative)) {
             return true;
@@ -172,6 +188,19 @@ class PackageRelease extends Command
         }
 
         return false;
+    }
+
+    /**
+     * The folder of a gateway, server module or registrar that does not come with Nuvabill, such as
+     * "extensions/servers/some-module", or null for any other path. Paid ones must never ship.
+     */
+    public static function marketplaceExtension(string $relative): ?string
+    {
+        if (! preg_match('#^extensions/(gateway|server|registrar)s/([^/]+)/#', $relative, $match)) {
+            return null;
+        }
+
+        return in_array($match[2], ExtensionOverview::BUILT_IN[$match[1]] ?? [], true) ? null : "extensions/{$match[1]}s/{$match[2]}";
     }
 
     /**

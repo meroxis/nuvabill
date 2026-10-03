@@ -27,9 +27,27 @@ Thumbs.db
 /release-files.json
 /release-files.json.sig
 
-# Themes, order forms and add-ons installed from the marketplace (paid ones must never be committed).
+# Themes, order forms and extensions installed from the marketplace (paid ones must never be committed).
 /themes/*
 !/themes/nova
 /orderforms/*
 !/orderforms/.gitkeep
 /extensions/addons
+/extensions/gateways/*
+!/extensions/gateways/banktransfer
+!/extensions/gateways/fastpay
+!/extensions/gateways/fib
+!/extensions/gateways/paypal
+!/extensions/gateways/stripe
+!/extensions/gateways/wayl
+/extensions/servers/*
+!/extensions/servers/cpanel
+!/extensions/servers/directadmin
+!/extensions/servers/plesk
+!/extensions/servers/proxmox
+!/extensions/servers/virtualizor
+/extensions/registrars/*
+!/extensions/registrars/enom
+!/extensions/registrars/namecheap
+!/extensions/registrars/opensrs
+!/extensions/registrars/resellerclub

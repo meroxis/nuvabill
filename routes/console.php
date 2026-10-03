@@ -21,17 +21,20 @@ if (Installation::isInstalled()) {
     // crashed never holds up the next night.
     Schedule::command('nuvabill:cron')->dailyAt('00:15')->withoutOverlapping(120);
 
-    Schedule::command('queue:work --stop-when-empty --max-time=50 --tries=1')->everyMinute()->withoutOverlapping();
+    // The lock outlasts one run (50 seconds plus one long job), but not a day if a crash leaves it behind.
+    Schedule::command('queue:work --stop-when-empty --max-time=50 --tries=1')->everyMinute()->withoutOverlapping(10);
 
     // Automations: runs whose wait is over, and the timed triggers once a day.
     Schedule::command('nuvabill:automations')->everyFiveMinutes()->withoutOverlapping(30);
 
     if (Demo::isEnabled()) {
         // Every hour, and within a minute on a new demo site with an empty database.
-        Schedule::command('nuvabill:demo-reset')->everyMinute()->withoutOverlapping()
+        Schedule::command('nuvabill:demo-reset')->everyMinute()->withoutOverlapping(30)
             ->when(fn (): bool => now()->minute === 0 || ! Demo::hasData());
     } else {
-        Schedule::command('nuvabill:update --finish-pending')->everyMinute()->withoutOverlapping();
+        // An update keeps the site in maintenance mode until it is finished, so this one runs then too.
+        // The updater takes its own lock, so it never runs alongside a finish from the browser.
+        Schedule::command('nuvabill:update --finish-pending')->everyMinute()->evenInMaintenanceMode()->withoutOverlapping(30);
 
         Schedule::command('nuvabill:update --auto')->dailyAt('03:00')->withoutOverlapping();
 

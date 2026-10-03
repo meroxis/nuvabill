@@ -4,10 +4,15 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Support\SiteBackup;
+use App\Updates\Backup;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use PDO;
+use PHPUnit\Framework\Attributes\Group;
 use Tests\TestCase;
 use ZipArchive;
 
@@ -99,6 +104,76 @@ class SiteBackupTest extends TestCase
             basename($newest),
             SiteBackup::prefix('site').'2020-01-01-000000.zip',
         ], array_map('basename', glob($this->folder.DIRECTORY_SEPARATOR.'*.zip')));
+    }
+
+    public function test_database_copies_left_by_a_stopped_backup_are_removed(): void
+    {
+        mkdir($this->folder, 0755, true);
+        touch($old = $this->folder.DIRECTORY_SEPARATOR.'.database-0a1b2c3d4e5f', time() - 7200);
+        touch($fresh = $this->folder.DIRECTORY_SEPARATOR.'.database-6a7b8c9d0e1f');
+
+        $path = app(SiteBackup::class)->create(SiteBackup::TYPE_DATABASE);
+
+        $this->assertFileExists($path);
+        $this->assertFileDoesNotExist($old, 'A plain-text copy of the database must not stay behind.');
+        $this->assertFileExists($fresh, 'A backup running right now may still be writing its copy.');
+    }
+
+    /**
+     * Runs only against MySQL or MariaDB: rows go to the file one by one, so a database
+     * much larger than the memory limit still backs up and restores.
+     */
+    #[Group('mysql')]
+    public function test_a_large_mysql_database_is_written_row_by_row(): void
+    {
+        if (! in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            $this->markTestSkipped('Needs a MySQL or MariaDB test database.');
+        }
+
+        $rows = 100_000;
+        $body = str_repeat('x', 1000);
+        Schema::create('backup_probe', function (Blueprint $table): void {
+            $table->unsignedInteger('id')->primary();
+            $table->text('body');
+        });
+
+        try {
+            foreach (array_chunk(range(1, $rows), 1000) as $chunk) {
+                DB::table('backup_probe')->insert(array_map(fn (int $id): array => ['id' => $id, 'body' => $body], $chunk));
+            }
+
+            $site = $this->folder.DIRECTORY_SEPARATOR.'site';
+            $updates = $this->folder.DIRECTORY_SEPARATOR.'updates';
+            File::ensureDirectoryExists($site);
+            $limit = (string) ini_get('memory_limit');
+            ini_set('memory_limit', (string) (memory_get_usage(true) + 48 * 1024 * 1024));
+
+            try {
+                $path = app(SiteBackup::class)->create(SiteBackup::TYPE_DATABASE);
+                $before = (new Backup($site, $updates))->create('before-test');
+            } finally {
+                ini_set('memory_limit', $limit);
+            }
+
+            $zip = $this->open($path);
+            $stream = $zip->getStream('database.sql');
+            $inserts = 0;
+
+            while (($line = fgets($stream)) !== false) {
+                $inserts += str_starts_with($line, 'INSERT INTO `backup_probe`') ? 1 : 0;
+            }
+
+            fclose($stream);
+            $this->assertSame($rows, $inserts);
+
+            DB::table('backup_probe')->delete();
+            (new Backup($site, $updates))->restore($before);
+
+            $this->assertSame($rows, DB::table('backup_probe')->count());
+            $this->assertSame([], glob($updates.DIRECTORY_SEPARATOR.'.dump-*') ?: []);
+        } finally {
+            Schema::dropIfExists('backup_probe');
+        }
     }
 
     public function test_the_backup_command_makes_either_type(): void

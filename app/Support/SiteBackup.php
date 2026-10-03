@@ -30,6 +30,11 @@ class SiteBackup
     private const KEEP_LOCAL = 2;
 
     /**
+     * The start of the name of the plain-text database copy made while a backup is zipped.
+     */
+    private const DUMP_PREFIX = '.database-';
+
+    /**
      * Never copied into a whole-site backup: caches, logs, sessions and other backups.
      *
      * @var list<string>
@@ -86,13 +91,18 @@ class SiteBackup
             throw new RuntimeException("Cannot create the backup folder {$folder}.");
         }
 
+        $this->removeStaleDumps($folder);
+
         $path = $folder.DIRECTORY_SEPARATOR.self::prefix($type).now()->format('Y-m-d-His').'.zip';
-        $database = $folder.DIRECTORY_SEPARATOR.'.database-'.Str::random(12);
+        $database = $folder.DIRECTORY_SEPARATOR.self::DUMP_PREFIX.Str::random(12);
         $zip = new ZipArchive;
 
         if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
             throw new RuntimeException("Cannot write the backup file {$path}.");
         }
+
+        // The plain-text copy of the database goes even when PHP stops with a fatal error.
+        register_shutdown_function(static fn () => @unlink($database));
 
         try {
             $zip->addFile($database, $this->exportDatabase($database));
@@ -114,7 +124,11 @@ class SiteBackup
                 throw new RuntimeException('The backup zip could not be finished: '.$zip->getStatusString());
             }
         } catch (Throwable $exception) {
-            @$zip->close();
+            // Closed without writing; after a failed close() it is already closed.
+            rescue(function () use ($zip): void {
+                $zip->unchangeAll();
+                $zip->close();
+            }, report: false);
             @unlink($path);
 
             throw $exception;
@@ -176,25 +190,23 @@ class SiteBackup
             throw new RuntimeException("Backups support MySQL, MariaDB and SQLite, not {$driver}.");
         }
 
-        $handle = fopen($file, 'wb');
-        $pdo = DB::connection()->getPdo();
-        fwrite($handle, "SET NAMES utf8mb4;\nSET FOREIGN_KEY_CHECKS=0;\n");
-
-        foreach (DB::select('SHOW TABLES') as $row) {
-            $table = (string) array_values((array) $row)[0];
-            $create = (array) DB::selectOne("SHOW CREATE TABLE `{$table}`");
-            fwrite($handle, "DROP TABLE IF EXISTS `{$table}`;\n".preg_replace('/\s*\R\s*/', ' ', (string) $create['Create Table']).";\n");
-
-            foreach (DB::table($table)->cursor() as $record) {
-                $values = array_map(fn (mixed $value): string => $value === null ? 'NULL' : $pdo->quote((string) $value), (array) $record);
-                fwrite($handle, "INSERT INTO `{$table}` VALUES (".implode(',', $values).");\n");
-            }
-        }
-
-        fwrite($handle, "SET FOREIGN_KEY_CHECKS=1;\n");
-        fclose($handle);
+        // Row by row into the file, so a large table never has to fit in PHP's memory.
+        MysqlDump::toFile($file);
 
         return 'database.sql';
+    }
+
+    /**
+     * Remove database copies left by a backup that PHP stopped half-way, for example out of memory.
+     * Only old ones: a backup running right now may be writing a new one.
+     */
+    private function removeStaleDumps(string $folder): void
+    {
+        foreach (glob($folder.DIRECTORY_SEPARATOR.self::DUMP_PREFIX.'*') ?: [] as $stale) {
+            if (is_file($stale) && filemtime($stale) < time() - 3600) {
+                @unlink($stale);
+            }
+        }
     }
 
     /**

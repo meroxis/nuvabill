@@ -16,9 +16,10 @@ use ZipArchive;
  * Checks for, downloads, verifies and installs Nuvabill updates.
  *
  * Installing happens in two steps so the new code runs its own database migrations:
- *  1. install(): download, verify the signature, back up, maintenance mode, copy files.
+ *  1. install(): download, verify the signature, maintenance mode, back up, copy files.
  *  2. finish(): in a fresh request or process, migrate, clear caches and go live.
- * If anything fails, the backup is restored.
+ * If anything fails, the backup is restored. If PHP is stopped half-way through install(),
+ * finish() (also run by the scheduler every minute) puts the old files back.
  */
 class UpdateManager
 {
@@ -69,31 +70,27 @@ class UpdateManager
 
     public function install(Release $release): void
     {
-        $directory = storage_path('app/updates');
-
-        if (! is_dir($directory)) {
-            mkdir($directory, 0755, true);
-        }
+        // Downloading and backing up can take minutes: keep going when the browser stops waiting.
+        @set_time_limit(0);
+        ignore_user_abort(true);
 
         // One update at a time: a second click or the nightly run must not download and unpack over a running one.
-        // The operating system releases this lock by itself if PHP is stopped half-way.
-        $lock = fopen($directory.DIRECTORY_SEPARATOR.'install.lock', 'c');
+        $lock = $this->lock();
 
-        if ($lock === false || ! flock($lock, LOCK_EX | LOCK_NB)) {
+        if ($lock === null) {
             throw new RuntimeException('Another update is being installed right now. Wait a few minutes, then reload this page.');
         }
 
         try {
-            $this->installUnlocked($release, $directory);
+            $this->installUnlocked($release, storage_path('app/updates'));
         } finally {
-            flock($lock, LOCK_UN);
-            fclose($lock);
+            $this->unlock($lock);
         }
     }
 
     private function installUnlocked(Release $release, string $directory): void
     {
-        if ($this->hasPendingFinish()) {
+        if (is_file($this->pendingPath()) || is_file($this->installingPath())) {
             throw new RuntimeException('An update is already half-way done. Finish it first.');
         }
 
@@ -125,40 +122,111 @@ class UpdateManager
             throw new RuntimeException('The update failed the security check and was not installed.');
         }
 
-        $backup = $this->backup()->create('before-'.$release->version);
-
+        // Written before the site goes down: if PHP is stopped from here on, finish() puts the old version back.
+        $this->markInstalling($release, null);
         Artisan::call('down', ['--retry' => 60]);
+
+        try {
+            // Taken in maintenance mode, so no payment or order made meanwhile is lost if the backup is put back.
+            $backup = $this->backup()->create('before-'.$release->version);
+        } catch (Throwable $exception) {
+            @unlink($this->installingPath());
+            @unlink($zipPath);
+            Artisan::call('up');
+
+            throw new RuntimeException('The backup before the update failed, so nothing was changed: '.$exception->getMessage(), previous: $exception);
+        }
+
+        $this->markInstalling($release, $backup);
 
         try {
             $this->extract($zipPath);
         } catch (Throwable $exception) {
             $this->backup()->restore($backup, includeDatabase: false);
+            @unlink($this->installingPath());
+            @unlink($zipPath);
             Artisan::call('up');
 
             throw new RuntimeException('Copying the new files failed, so the previous version was restored: '.$exception->getMessage(), previous: $exception);
         }
 
-        file_put_contents($this->pendingPath(), json_encode([
+        $written = file_put_contents($this->pendingPath(), json_encode([
             'from' => $this->currentVersion(),
             'to' => $release->version,
             'backup' => $backup,
             'started_at' => now()->toIso8601String(),
         ], JSON_PRETTY_PRINT));
 
+        // Without pending.json the install counts as stopped half-way, so finish() puts the old files back.
+        if ($written === false) {
+            throw new RuntimeException('Cannot write to the storage/app/updates folder.');
+        }
+
+        @unlink($this->installingPath());
         @unlink($zipPath);
     }
 
+    /**
+     * Whether an update waits for finish(): its files are copied, or it stopped half-way and its
+     * old files have to be put back. An install that is still running does not count.
+     */
     public function hasPendingFinish(): bool
     {
-        return is_file($this->pendingPath());
+        if (is_file($this->pendingPath())) {
+            return true;
+        }
+
+        if (! is_file($this->installingPath())) {
+            return false;
+        }
+
+        // A running install holds the lock; one that PHP stopped half-way does not.
+        $lock = $this->lock();
+
+        if ($lock === null) {
+            return false;
+        }
+
+        $this->unlock($lock);
+
+        return true;
     }
 
     /**
      * Second step, running on the new code: migrate the database and go live again.
+     * One finish at a time, so migrations never run twice and a restore never runs
+     * under a migration that is still going.
      *
      * @return array{from: string, to: string}
      */
     public function finish(): array
+    {
+        // Migrations can take minutes: keep going when the browser stops waiting.
+        @set_time_limit(0);
+        ignore_user_abort(true);
+
+        $lock = $this->lock();
+
+        if ($lock === null) {
+            throw new RuntimeException('The update is still running. Wait a few minutes, then reload this page.');
+        }
+
+        try {
+            // Read only now: a finish that ran meanwhile has already removed these files.
+            if (! is_file($this->pendingPath()) && is_file($this->installingPath())) {
+                $this->rollBackInterruptedInstall();
+            }
+
+            return $this->finishUnlocked();
+        } finally {
+            $this->unlock($lock);
+        }
+    }
+
+    /**
+     * @return array{from: string, to: string}
+     */
+    private function finishUnlocked(): array
     {
         $pending = json_decode((string) @file_get_contents($this->pendingPath()), true);
 
@@ -191,6 +259,35 @@ class UpdateManager
         Activity::log('update.installed', "Updated Nuvabill from {$pending['from']} to {$pending['to']}");
 
         return ['from' => (string) $pending['from'], 'to' => (string) $pending['to']];
+    }
+
+    /**
+     * An install that PHP stopped half-way (killed, or out of memory or time while backing up or
+     * copying files) left the site in maintenance mode. The database is not changed yet, so the
+     * old files go back and the site goes live again.
+     */
+    private function rollBackInterruptedInstall(): never
+    {
+        $installing = json_decode((string) @file_get_contents($this->installingPath()), true);
+        $installing = is_array($installing) ? $installing : [];
+        $from = (string) ($installing['from'] ?? $this->currentVersion());
+        $to = (string) ($installing['to'] ?? '?');
+        $backup = (string) ($installing['backup'] ?? '');
+
+        if ($backup !== '' && is_file($backup)) {
+            $this->backup()->restore($backup, includeDatabase: false);
+        }
+
+        // The downloaded release; no install is running while the lock is held.
+        foreach (glob(storage_path('app/updates').DIRECTORY_SEPARATOR.'nuvabill-*.zip') ?: [] as $download) {
+            @unlink($download);
+        }
+
+        @unlink($this->installingPath());
+        Artisan::call('up');
+        Activity::log('update.failed', "Update to {$to} stopped half-way and version {$from} was restored");
+
+        throw new RuntimeException("The update to {$to} stopped half-way, so version {$from} was restored.");
     }
 
     private function extract(string $zipPath): void
@@ -240,11 +337,71 @@ class UpdateManager
 
     private function backup(): Backup
     {
-        return new Backup(base_path(), storage_path('app/backups'));
+        return app(Backup::class, ['basePath' => base_path(), 'backupPath' => storage_path('app/backups')]);
+    }
+
+    /**
+     * Take the update lock, so only one install or finish runs at a time. The operating system
+     * releases it by itself if PHP is stopped half-way.
+     *
+     * @return resource|null Null when another process holds it.
+     */
+    private function lock()
+    {
+        $directory = storage_path('app/updates');
+
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
+        $lock = fopen($directory.DIRECTORY_SEPARATOR.'install.lock', 'c');
+
+        if ($lock === false) {
+            return null;
+        }
+
+        if (! flock($lock, LOCK_EX | LOCK_NB)) {
+            fclose($lock);
+
+            return null;
+        }
+
+        return $lock;
+    }
+
+    /**
+     * @param  resource  $lock
+     */
+    private function unlock($lock): void
+    {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+
+    /**
+     * Note what is being installed, and its backup once there is one, while the site is down.
+     */
+    private function markInstalling(Release $release, ?string $backup): void
+    {
+        $written = file_put_contents($this->installingPath(), json_encode([
+            'from' => $this->currentVersion(),
+            'to' => $release->version,
+            'backup' => $backup,
+            'started_at' => now()->toIso8601String(),
+        ], JSON_PRETTY_PRINT));
+
+        if ($written === false) {
+            throw new RuntimeException('Cannot write to the storage/app/updates folder.');
+        }
     }
 
     private function pendingPath(): string
     {
         return storage_path('app/updates/pending.json');
+    }
+
+    private function installingPath(): string
+    {
+        return storage_path('app/updates/installing.json');
     }
 }
