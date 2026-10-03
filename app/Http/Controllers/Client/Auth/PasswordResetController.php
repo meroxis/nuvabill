@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Client\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\Client;
+use App\Security\SignInLimiter;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -42,10 +43,11 @@ class PasswordResetController extends Controller
         ]);
 
         // The link went to the account's inbox, so the email is now confirmed. A new password hash
-        // also ends every other signed-in session (the auth.session middleware).
+        // also ends every other signed-in session (the auth.session middleware), and wrong passwords
+        // others typed no longer keep the owner out.
         $status = Password::broker('clients')->reset(
             ['email' => Str::lower(trim((string) $request->input('email')))] + $request->only('password', 'password_confirmation', 'token'),
-            function (Client $client, string $password): void {
+            function (Client $client, string $password) use ($request): void {
                 $client->forceFill([
                     'password' => $password,
                     'legacy_password' => null,
@@ -53,6 +55,7 @@ class PasswordResetController extends Controller
                     'remember_token' => Str::random(60),
                     'email_verified_at' => $client->email_verified_at ?? now(),
                 ])->save();
+                SignInLimiter::passwordReset($request, 'client', $client->email);
                 event(new PasswordReset($client));
             },
         );

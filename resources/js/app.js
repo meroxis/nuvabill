@@ -142,7 +142,12 @@ async function runPasskeyForm(form) {
     button?.setAttribute('disabled', '');
 
     try {
-        const password = form.querySelector('input[name="current_password"]');
+        // The current password, or for clients without one the code we emailed them, sent under the
+        // form's own field names ("current_password", "passkey_email_code").
+        const proof = {};
+        form.querySelectorAll('input[name$="current_password"], input[name$="email_code"]').forEach((input) => {
+            proof[input.name] = input.value;
+        });
         const response = await fetch(form.dataset.options, {
             method: 'POST',
             headers: {
@@ -150,7 +155,7 @@ async function runPasskeyForm(form) {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': form.querySelector('input[name="_token"]')?.value ?? '',
             },
-            body: JSON.stringify({ current_password: password ? password.value : null }),
+            body: JSON.stringify(proof),
         });
         const options = await response.json().catch(() => ({}));
 

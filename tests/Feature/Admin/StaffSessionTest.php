@@ -111,6 +111,25 @@ class StaffSessionTest extends TestCase
         $this->assertTrue($admin->fresh()->hasTwoFactorEnabled());
     }
 
+    public function test_every_password_check_on_the_profile_shares_one_limit(): void
+    {
+        $admin = Admin::factory()->create(['password' => 'old-password-123']);
+        $admin->forceFill(['two_factor_secret' => Totp::generateSecret(), 'two_factor_confirmed_at' => now()])->save();
+        $this->signInAdmin($admin);
+
+        // A stolen session gets six guesses a minute in all, not six on each form.
+        foreach (range(1, 3) as $try) {
+            $this->put(route('admin.profile.password'), ['current_password' => 'wrong-password-'.$try, 'password' => 'a-new-password-1', 'password_confirmation' => 'a-new-password-1'])
+                ->assertSessionHasErrors('current_password');
+            $this->delete(route('admin.profile.two-factor.disable'), ['current_password' => 'wrong-password-'.$try])
+                ->assertSessionHasErrors('current_password');
+        }
+
+        $this->delete(route('admin.profile.two-factor.disable'), ['current_password' => 'old-password-123'])->assertStatus(429);
+        $this->postJson(route('admin.profile.passkeys.options'), ['current_password' => 'old-password-123'])->assertStatus(429);
+        $this->assertTrue($admin->fresh()->hasTwoFactorEnabled());
+    }
+
     /**
      * Sign in with the password as another browser would, and keep that browser's session.
      *

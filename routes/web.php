@@ -184,17 +184,17 @@ Route::middleware(['auth:web', 'auth.session', 'client.active', 'client.two-fact
 
     Route::get('account', [AccountController::class, 'edit'])->name('account.edit');
     // Routes that check the current password (or an emailed code) share one limit per client, so a stolen session cannot guess it.
-    Route::put('account', [AccountController::class, 'update'])->middleware('throttle:6,1,client-reauth')->name('account.update');
+    Route::put('account', [AccountController::class, 'update'])->middleware('throttle:client-reauth')->name('account.update');
     Route::post('account/email-code', [AccountController::class, 'sendCode'])->middleware('throttle:3,1,client-code')->name('account.email-code');
-    Route::put('account/password', [AccountController::class, 'password'])->middleware('throttle:6,1,client-reauth')->name('account.password');
+    Route::put('account/password', [AccountController::class, 'password'])->middleware('throttle:client-reauth')->name('account.password');
     Route::post('account/two-factor/app', [TwoFactorController::class, 'startApp'])->name('account.two-factor.app');
     Route::post('account/two-factor/app/confirm', [TwoFactorController::class, 'confirmApp'])->middleware('throttle:6,1')->name('account.two-factor.app.confirm');
     Route::post('account/two-factor/email', [TwoFactorController::class, 'startEmail'])->middleware('throttle:3,1')->name('account.two-factor.email');
     Route::post('account/two-factor/email/confirm', [TwoFactorController::class, 'confirmEmail'])->middleware('throttle:6,1')->name('account.two-factor.email.confirm');
-    Route::delete('account/two-factor', [TwoFactorController::class, 'destroy'])->middleware('throttle:6,1,client-reauth')->name('account.two-factor.destroy');
+    Route::delete('account/two-factor', [TwoFactorController::class, 'destroy'])->middleware('throttle:client-reauth')->name('account.two-factor.destroy');
     Route::get('account/data', [PrivacyController::class, 'export'])->middleware('throttle:3,10')->name('account.data');
     Route::post('account/erase-request', [PrivacyController::class, 'requestErasure'])->middleware('throttle:3,60')->name('account.erase-request');
-    Route::post('account/passkeys/options', [PasskeyController::class, 'options'])->middleware('throttle:6,1')->name('account.passkeys.options');
+    Route::post('account/passkeys/options', [PasskeyController::class, 'options'])->middleware('throttle:client-reauth')->name('account.passkeys.options');
     Route::post('account/passkeys', [PasskeyController::class, 'store'])->middleware('throttle:10,1')->name('account.passkeys.store');
     Route::delete('account/passkeys/{passkey}', [PasskeyController::class, 'destroy'])->name('account.passkeys.destroy');
     Route::delete('account/chat/{chatLink}', [AccountController::class, 'disconnectChat'])->name('account.chat.destroy');
@@ -204,6 +204,6 @@ Route::middleware(['auth:web', 'auth.session', 'client.active', 'client.two-fact
     Route::delete('account/payment-methods/{paymentMethod}', [PaymentMethodController::class, 'destroy'])->whereNumber('paymentMethod')->name('account.payment-methods.destroy');
     Route::post('account/payment-methods/add/{gateway}', [PaymentMethodController::class, 'store'])->where('gateway', '[a-z0-9_-]+')->middleware('throttle:10,1')->name('account.payment-methods.store');
     Route::get('account/payment-methods/add/{gateway}/return', [PaymentMethodController::class, 'finish'])->where('gateway', '[a-z0-9_-]+')->name('account.payment-methods.return');
-    Route::post('account/social/{provider}', [SocialLoginController::class, 'connect'])->whereIn('provider', array_keys(SocialLogin::PROVIDERS))->middleware('throttle:6,1,client-reauth')->name('account.social.connect');
+    Route::post('account/social/{provider}', [SocialLoginController::class, 'connect'])->whereIn('provider', array_keys(SocialLogin::PROVIDERS))->middleware('throttle:client-reauth')->name('account.social.connect');
     Route::delete('account/social/{provider}', [SocialLoginController::class, 'destroy'])->whereIn('provider', array_keys(SocialLogin::PROVIDERS))->name('account.social.destroy');
 });

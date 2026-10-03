@@ -109,6 +109,31 @@ class PasswordChangeEndsOtherSessionsTest extends TestCase
         $this->assertTrue($client->fresh()->hasTwoFactorEnabled());
     }
 
+    public function test_every_password_check_on_the_account_page_shares_one_limit(): void
+    {
+        $client = Client::factory()->create(['password' => 'old-password-1']);
+        $client->forceFill(['two_factor_method' => 'totp', 'two_factor_secret' => Totp::generateSecret(), 'two_factor_confirmed_at' => now()])->save();
+        $this->actingAs($client, 'web');
+
+        // A stolen session gets six guesses a minute in all, not six on each form.
+        foreach (range(1, 3) as $try) {
+            $this->put(route('client.account.password'), ['current_password' => 'wrong-password-'.$try, 'password' => 'new-password-1', 'password_confirmation' => 'new-password-1'])
+                ->assertSessionHasErrors('current_password');
+            $this->delete(route('client.account.two-factor.destroy'), ['two_factor_current_password' => 'wrong-password-'.$try])
+                ->assertSessionHasErrors('two_factor_current_password');
+        }
+
+        $this->delete(route('client.account.two-factor.destroy'), ['two_factor_current_password' => 'old-password-1'])->assertStatus(429);
+        $this->postJson(route('client.account.passkeys.options'), ['passkey_current_password' => 'old-password-1'])->assertStatus(429);
+        $this->assertTrue($client->fresh()->hasTwoFactorEnabled());
+
+        // Another client, in their own browser, has a limit of their own.
+        $this->flushSession();
+        $this->actingAs(Client::factory()->create(['password' => 'old-password-1']), 'web')
+            ->postJson(route('client.account.passkeys.options'), ['passkey_current_password' => 'old-password-1'])
+            ->assertOk();
+    }
+
     /**
      * Sign in with the password as another browser would, and keep that browser's session.
      *

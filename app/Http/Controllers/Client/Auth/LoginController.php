@@ -47,19 +47,20 @@ class LoginController extends Controller
         ]);
 
         // Emails are saved in lowercase, so "Raz@Example.com" finds the same account.
-        $credentials['email'] = Str::lower(trim($credentials['email']));
+        $typed = trim($credentials['email']);
+        $credentials['email'] = Str::lower($typed);
 
         // One check at a time per email address, so guesses sent at the same moment are all counted.
-        return SignInLimiter::onePasswordAtATime('client', $credentials['email'], fn (): RedirectResponse => $this->attempt($request, $credentials));
+        return SignInLimiter::onePasswordAtATime('client', $credentials['email'], fn (): RedirectResponse => $this->attempt($request, $credentials, $typed));
     }
 
     /**
      * @param  array{email: string, password: string}  $credentials
      */
-    private function attempt(Request $request, array $credentials): RedirectResponse
+    private function attempt(Request $request, array $credentials, string $typed): RedirectResponse
     {
-        if (SignInLimiter::passwordLocked('client', $credentials['email'])) {
-            return back()->withInput($request->only('email'))->withErrors(['email' => __('Too many tries. Wait 15 minutes, then try again.')]);
+        if (($refused = SignInLimiter::passwordRefused($request, 'client', $credentials['email'])) !== null) {
+            return back()->withInput($request->only('email'))->withErrors(['email' => $refused]);
         }
 
         $guard = Auth::guard('web');
@@ -67,13 +68,13 @@ class LoginController extends Controller
         if ($guard->validate($credentials)) {
             /** @var Client $client */
             $client = $guard->getLastAttempted();
-        } elseif (($client = $this->legacyClient($credentials['email'], $credentials['password'])) === null) {
-            SignInLimiter::passwordFailed('client', $credentials['email']);
+        } elseif (($client = $this->legacyClient($credentials['email'], $credentials['password']) ?? $this->caseTwin($typed, $credentials)) === null) {
+            SignInLimiter::passwordFailed($request, 'client', $credentials['email']);
 
             return back()->withInput($request->only('email'))->withErrors(['email' => __('The email or password is wrong.')]);
         }
 
-        SignInLimiter::passwordPassed('client', $credentials['email']);
+        SignInLimiter::passwordPassed($request, 'client', $credentials['email']);
 
         if ($client->status === ClientStatus::Closed) {
             return back()->withErrors(['email' => __('This account is closed. Contact support if you need help.')]);
@@ -102,6 +103,30 @@ class LoginController extends Controller
         Activity::log('client.password_upgraded', 'Imported password replaced by a Nuvabill password at first sign-in', $client, actor: $client);
 
         return $client;
+    }
+
+    /**
+     * Before emails were saved in lowercase, a site on SQLite (which compares letter case) could get
+     * two clients for one mailbox, such as "Raz@Example.com" and "raz@example.com"; site health lists
+     * them. Until staff merge them, the one with capitals still signs in when its own spelling is
+     * typed, with its own password. Both spellings share one count of wrong passwords.
+     *
+     * @param  array{email: string, password: string}  $credentials
+     */
+    private function caseTwin(string $typed, array $credentials): ?Client
+    {
+        if ($typed === $credentials['email']) {
+            return null;
+        }
+
+        $guard = Auth::guard('web');
+
+        if (! $guard->validate(['email' => $typed, 'password' => $credentials['password']])) {
+            return null;
+        }
+
+        /** @var Client */
+        return $guard->getLastAttempted();
     }
 
     public function destroy(Request $request): RedirectResponse

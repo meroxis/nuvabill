@@ -168,8 +168,12 @@
                     <input type="hidden" name="credential">
                     <div style="display:grid;gap:.8rem">
                         <x-input name="name" id="passkey-name" :label="__('Passkey name')" maxlength="100" :placeholder="__('For example My phone')" />
+                        {{-- A passkey is a new way to sign in, so adding one needs the password or an emailed code. --}}
                         @if ($client->has_password)
-                            <x-input name="current_password" id="passkey-password" type="password" :label="__('Your password')" required autocomplete="current-password" />
+                            <x-input name="passkey_current_password" id="passkey-password" type="password" :label="__('Your password')" required autocomplete="current-password" />
+                        @else
+                            <x-input name="passkey_email_code" id="passkey-email-code" :label="__('Code from the email')" :help="__('Needed to add a passkey.')" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
+                            <span><button class="btn btn-sm" type="submit" form="account-email-code">{{ __('Email me a code') }}</button></span>
                         @endif
                         <span><button class="btn btn-primary" type="submit"><x-icon name="key" />{{ __('Add a passkey') }}</button></span>
                     </div>

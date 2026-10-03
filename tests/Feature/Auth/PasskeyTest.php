@@ -3,12 +3,14 @@
 namespace Tests\Feature\Auth;
 
 use App\Enums\ClientStatus;
+use App\Mail\TemplatedMessage;
 use App\Models\Admin;
 use App\Models\Client;
 use App\Models\Passkey;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 use OpenSSLAsymmetricKey;
 use Tests\TestCase;
 
@@ -79,12 +81,14 @@ class PasskeyTest extends TestCase
 
     public function test_clients_sign_in_with_an_rsa_passkey_and_only_manage_their_own(): void
     {
+        Mail::fake();
         $client = Client::factory()->create(['has_password' => false]);
         $other = Client::factory()->create();
         $otherPasskey = $this->addPasskey($other, 'cred-other', $this->ecKey());
         $key = $this->rsaKey();
 
-        $options = $this->actingAs($client, 'web')->postJson(route('client.account.passkeys.options'))->assertOk()->json();
+        $this->actingAs($client, 'web');
+        $options = $this->postJson(route('client.account.passkeys.options'), ['passkey_email_code' => $this->emailedCode()])->assertOk()->json();
         $this->post(route('client.account.passkeys.store'), ['name' => '', 'credential' => $this->registration($options, 'cred-client', $key)])
             ->assertSessionHas('status');
         $this->assertSame(-257, $client->passkeys()->sole()->algorithm);
@@ -109,10 +113,51 @@ class PasskeyTest extends TestCase
         $this->assertGuest('admin');
     }
 
+    public function test_clients_without_a_password_need_an_emailed_code_to_add_a_passkey(): void
+    {
+        Mail::fake();
+        $client = Client::factory()->create(['has_password' => false]);
+        $this->actingAs($client, 'web');
+
+        // A stolen session alone cannot add a lasting way back in.
+        $this->get(route('client.account.edit'))->assertOk()->assertSee('name="passkey_email_code"', false)->assertDontSee('name="passkey_current_password"', false);
+        $this->postJson(route('client.account.passkeys.options'))
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'That code is not right, or it is too old. Ask for a new code.');
+        $this->postJson(route('client.account.passkeys.options'), ['passkey_email_code' => '000000'])->assertUnprocessable();
+        $this->assertNull(session('passkeys.create'));
+
+        // The code works once.
+        $code = $this->emailedCode();
+        $this->postJson(route('client.account.passkeys.options'), ['passkey_email_code' => $code])->assertOk()->assertJsonPath('rp.id', $this->host());
+        $this->postJson(route('client.account.passkeys.options'), ['passkey_email_code' => $code])->assertUnprocessable();
+    }
+
+    public function test_clients_with_a_password_confirm_it_to_add_a_passkey(): void
+    {
+        $client = Client::factory()->create(['password' => 'right-password-1']);
+        $this->actingAs($client, 'web');
+
+        $this->get(route('client.account.edit'))->assertOk()->assertSee('name="passkey_current_password"', false)->assertDontSee('name="passkey_email_code"', false);
+        $this->postJson(route('client.account.passkeys.options'), ['passkey_current_password' => 'wrong-password'])->assertUnprocessable()->assertJsonValidationErrors('passkey_current_password');
+        $this->postJson(route('client.account.passkeys.options'), ['passkey_current_password' => 'right-password-1'])->assertOk()->assertJsonPath('rp.id', $this->host());
+    }
+
     public function test_the_sign_in_pages_offer_passkeys(): void
     {
         $this->get(route('admin.login'))->assertOk()->assertSee('Sign in with a passkey');
         $this->get(route('client.login'))->assertOk()->assertSee('Sign in with a passkey');
+    }
+
+    /**
+     * Ask for the code that confirms an account change, and read it from the email.
+     */
+    private function emailedCode(): string
+    {
+        $this->post(route('client.account.email-code'))->assertSessionHas('status');
+        preg_match('/\b(\d{6})\b/', Mail::sent(TemplatedMessage::class)->last()->bodyHtml, $match);
+
+        return $match[1];
     }
 
     private function addPasskey(Admin|Client $owner, string $credentialId, OpenSSLAsymmetricKey $key, int $signCount = 0): Passkey

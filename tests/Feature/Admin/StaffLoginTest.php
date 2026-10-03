@@ -5,13 +5,16 @@ namespace Tests\Feature\Admin;
 use App\Models\ActivityLog;
 use App\Models\Admin;
 use App\Models\Client;
+use App\Security\SignInLimiter;
 use App\Security\Totp;
+use App\Support\Demo;
 use Carbon\CarbonInterval;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
@@ -122,20 +125,90 @@ class StaffLoginTest extends TestCase
         $this->assertAuthenticatedAs($admin, 'admin');
     }
 
-    public function test_passwords_are_limited_per_account_whichever_ip_they_come_from(): void
+    public function test_passwords_are_limited_per_ip_address_and_per_account_whichever_ip_they_come_from(): void
     {
-        Admin::factory()->create(['email' => 'owner@example.test']);
+        $admin = Admin::factory()->create(['email' => 'owner@example.test']);
 
+        // Ten wrong passwords from one address stop that address, even with the right password.
         foreach (range(1, 10) as $try) {
-            $this->withServerVariables(['REMOTE_ADDR' => '2001:db8::'.$try])
+            if ($try % 5 === 0) {
+                $this->travel(61)->seconds(); // past the route's own limit per minute
+            }
+
+            $this->withServerVariables(['REMOTE_ADDR' => '2001:db8::1'])
                 ->post(route('admin.login'), ['email' => 'owner@example.test', 'password' => 'wrong-password-'.$try])
                 ->assertSessionHasErrors('email');
         }
 
-        $this->withServerVariables(['REMOTE_ADDR' => '2001:db8::99'])
-            ->post(route('admin.login'), ['email' => 'owner@example.test', 'password' => 'password'])
+        $this->withServerVariables(['REMOTE_ADDR' => '2001:db8::1'])
+            ->post(route('admin.login'), ['email' => 'Owner@Example.test', 'password' => 'password'])
             ->assertSessionHasErrors(['email' => 'Too many tries. Wait 15 minutes, then try again.']);
         $this->assertGuest('admin');
+
+        // The owner at another address still gets in: one guesser cannot keep them out.
+        $this->withServerVariables(['REMOTE_ADDR' => '2001:db8::2'])
+            ->post(route('admin.login'), ['email' => 'owner@example.test', 'password' => 'password'])
+            ->assertRedirect(route('admin.dashboard'));
+        $this->assertAuthenticatedAs($admin, 'admin');
+        $this->post(route('admin.logout'));
+
+        // Guesses spread over many addresses stop the email address everywhere.
+        $this->guessFromManyAddresses('owner@example.test', '2001:db8:1::');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '2001:db8::99'])
+            ->post(route('admin.login'), ['email' => 'owner@example.test', 'password' => 'password'])
+            ->assertSessionHasErrors(['email' => 'Too many wrong passwords for this email. Reset your password to sign in now, or wait an hour.']);
+        $this->assertGuest('admin');
+    }
+
+    public function test_a_password_reset_lets_the_owner_in_while_others_keep_guessing(): void
+    {
+        $admin = Admin::factory()->create(['email' => 'owner@example.test']);
+
+        $this->guessFromManyAddresses('owner@example.test', '2001:db8:1::');
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.7'])
+            ->post(route('admin.login'), ['email' => 'owner@example.test', 'password' => 'password'])
+            ->assertSessionHasErrors('email');
+        $this->assertGuest('admin');
+
+        // The owner resets the password with the emailed link.
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.7'])->post(route('admin.password.update'), [
+            'token' => Password::broker('admins')->createToken($admin),
+            'email' => 'owner@example.test',
+            'password' => 'new-password-12',
+            'password_confirmation' => 'new-password-12',
+        ])->assertRedirect(route('admin.login'));
+        $ownersBrowser = session()->all();
+
+        // Someone else keeps guessing in another browser, which stays stopped.
+        session()->flush();
+        $this->guessFromManyAddresses('owner@example.test', '2001:db8:2::');
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])
+            ->post(route('admin.login'), ['email' => 'owner@example.test', 'password' => 'new-password-12'])
+            ->assertSessionHasErrors(['email' => 'Too many wrong passwords for this email. Reset your password to sign in now, or wait an hour.']);
+        $this->assertGuest('admin');
+
+        // The browser that reset the password still gets in.
+        session()->flush();
+        session()->put($ownersBrowser);
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.7'])
+            ->post(route('admin.login'), ['email' => 'owner@example.test', 'password' => 'new-password-12'])
+            ->assertRedirect(route('admin.dashboard'));
+        $this->assertAuthenticatedAs($admin, 'admin');
+        $this->assertNull(session('admin.reset_unlock'));
+    }
+
+    public function test_the_shared_demo_sign_in_cannot_be_locked_for_other_visitors(): void
+    {
+        config(['nuvabill.demo' => true]);
+        $admin = Admin::factory()->create(['email' => Demo::ADMIN_EMAIL, 'password' => Demo::PASSWORD]);
+
+        $this->guessFromManyAddresses(Demo::ADMIN_EMAIL, '2001:db8:1::');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.7'])
+            ->post(route('admin.login'), ['email' => Demo::ADMIN_EMAIL, 'password' => Demo::PASSWORD])
+            ->assertRedirect(route('admin.dashboard'));
+        $this->assertAuthenticatedAs($admin, 'admin');
     }
 
     public function test_a_code_is_not_checked_while_another_code_for_the_account_is_being_checked(): void
@@ -253,5 +326,17 @@ class StaffLoginTest extends TestCase
         }
 
         return '555555';
+    }
+
+    /**
+     * Wrong passwords for $email, each from another address, until the count for the email is full.
+     */
+    private function guessFromManyAddresses(string $email, string $prefix): void
+    {
+        foreach (range(1, SignInLimiter::ACCOUNT_PASSWORDS) as $try) {
+            $this->withServerVariables(['REMOTE_ADDR' => $prefix.dechex($try)])
+                ->post(route('admin.login'), ['email' => $email, 'password' => 'wrong-password-'.$try])
+                ->assertSessionHasErrors('email');
+        }
     }
 }

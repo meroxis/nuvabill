@@ -42,9 +42,9 @@ class LoginController extends Controller
      */
     private function attempt(Request $request, array $credentials): RedirectResponse
     {
-        // Too many wrong passwords for this email, from any IP address: wait, even with the right one.
-        if (SignInLimiter::passwordLocked('admin', $credentials['email'])) {
-            return back()->withInput($request->only('email'))->withErrors(['email' => __('Too many tries. Wait 15 minutes, then try again.')]);
+        // Too many wrong passwords for this email: wait, even with the right one.
+        if (($refused = SignInLimiter::passwordRefused($request, 'admin', $credentials['email'])) !== null) {
+            return back()->withInput($request->only('email'))->withErrors(['email' => $refused]);
         }
 
         $admin = Admin::query()->where('email', $credentials['email'])->first();
@@ -52,7 +52,7 @@ class LoginController extends Controller
         $passwordMatches = Hash::check($credentials['password'], $hash) && $hash !== self::DUMMY_HASH;
 
         if ($admin === null || ! $passwordMatches) {
-            SignInLimiter::passwordFailed('admin', $credentials['email']);
+            SignInLimiter::passwordFailed($request, 'admin', $credentials['email']);
 
             // What was typed is not logged: people sometimes type their password into the email box.
             Activity::log('admin.login_failed', $admin ? "Failed sign-in for {$admin->name}" : 'Failed staff sign-in for an unknown email address', $admin);
@@ -60,7 +60,7 @@ class LoginController extends Controller
             return back()->withInput($request->only('email'))->withErrors(['email' => __('The email or password is wrong.')]);
         }
 
-        SignInLimiter::passwordPassed('admin', $credentials['email']);
+        SignInLimiter::passwordPassed($request, 'admin', $credentials['email']);
 
         if (! $admin->is_active) {
             return back()->withInput($request->only('email'))->withErrors(['email' => __('Your staff account is turned off.')]);

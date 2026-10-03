@@ -4,27 +4,31 @@ namespace App\Http\Controllers\Client;
 
 use App\Http\Controllers\Controller;
 use App\Models\Passkey;
+use App\Security\OwnerCheck;
 use App\Security\WebAuthn\Passkeys;
 use App\Security\WebAuthn\WebAuthnException;
 use App\Support\Activity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 
 /**
- * Account → Passkeys. Clients with a password confirm it before adding a passkey.
+ * Account → Passkeys. A passkey is a lasting way to sign in, so adding one needs the current
+ * password, or for clients without one a code sent to their email (OwnerCheck): a stolen session
+ * alone cannot add a way back in.
  */
 class PasskeyController extends Controller
 {
-    public function options(Request $request, Passkeys $passkeys): JsonResponse
+    /**
+     * @throws ValidationException when the password or code is wrong (a 422 answer the page shows)
+     */
+    public function options(Request $request, Passkeys $passkeys, OwnerCheck $owner): JsonResponse
     {
         $client = $request->user('web');
 
-        if ($client->has_password && ! Hash::check((string) $request->input('current_password'), $client->password)) {
-            return response()->json(['message' => __('Your password is not right.')], 422);
-        }
+        $owner->confirm($request, $client, 'passkey_');
 
         return response()->json($passkeys->creationOptions($request, $client));
     }

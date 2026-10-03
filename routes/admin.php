@@ -94,14 +94,14 @@ Route::middleware(['auth:admin', 'auth.session', 'admin.can', 'admin.two-factor'
 
     Route::get('profile', [ProfileController::class, 'edit'])->name('profile.edit');
     // Routes that check the current password share one limit per staff member, so a stolen session cannot guess it.
-    Route::put('profile/password', [ProfileController::class, 'password'])->middleware('throttle:6,1,staff-reauth')->name('profile.password');
+    Route::put('profile/password', [ProfileController::class, 'password'])->middleware('throttle:staff-reauth')->name('profile.password');
     Route::post('profile/two-factor', [ProfileController::class, 'startTwoFactor'])->name('profile.two-factor.start');
     Route::post('profile/two-factor/confirm', [ProfileController::class, 'confirmTwoFactor'])->name('profile.two-factor.confirm');
-    Route::delete('profile/two-factor', [ProfileController::class, 'disableTwoFactor'])->middleware('throttle:6,1,staff-reauth')->name('profile.two-factor.disable');
+    Route::delete('profile/two-factor', [ProfileController::class, 'disableTwoFactor'])->middleware('throttle:staff-reauth')->name('profile.two-factor.disable');
     Route::post('profile/api-keys', [ApiKeyController::class, 'store'])->middleware('throttle:10,1')->name('profile.api-keys.store');
     Route::delete('profile/api-keys/{apiToken}', [ApiKeyController::class, 'destroy'])->name('profile.api-keys.destroy');
     Route::post('language', [LanguageController::class, 'admin'])->name('language');
-    Route::post('profile/passkeys/options', [PasskeyController::class, 'options'])->middleware('throttle:6,1')->name('profile.passkeys.options');
+    Route::post('profile/passkeys/options', [PasskeyController::class, 'options'])->middleware('throttle:staff-reauth')->name('profile.passkeys.options');
     Route::post('profile/passkeys', [PasskeyController::class, 'store'])->middleware('throttle:10,1')->name('profile.passkeys.store');
     Route::delete('profile/passkeys/{passkey}', [PasskeyController::class, 'destroy'])->name('profile.passkeys.destroy');
     Route::post('profile/push', [PhoneAppController::class, 'subscribe'])->middleware('throttle:20,1')->name('profile.push.store');

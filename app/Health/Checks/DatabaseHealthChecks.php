@@ -6,11 +6,13 @@ use App\Health\CheckGroup;
 use App\Health\CheckResult;
 use App\Health\DatabaseInspector;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Number;
+use Illuminate\Support\Str;
 
 /**
- * How healthy and tidy the database is: table types, character sets, keys, old records and
- * space that can be freed.
+ * How healthy and tidy the database is: table types, character sets, keys, old records, space
+ * that can be freed, and clients that share one email address.
  */
 class DatabaseHealthChecks extends CheckGroup
 {
@@ -56,6 +58,7 @@ class DatabaseHealthChecks extends CheckGroup
             $this->primaryKeys(),
             $this->oldRecords(),
             $this->freeSpace(),
+            $this->clientEmails(),
         ];
     }
 
@@ -148,6 +151,48 @@ class DatabaseHealthChecks extends CheckGroup
             advice: 'Old logs and sessions make backups bigger and some pages slower. Clean them up now, or let it happen every night.',
             items: collect($old)->filter(fn (array $kind): bool => $kind['count'] > 0)->map(fn (array $kind): array => ['label' => __($kind['label']), 'value' => number_format($kind['count'])])->values()->all(),
             fix: $this->fix('db.cleanup', 'Clean up now', confirm: 'Old logs, ended sessions and history are removed. Clients, invoices, payments, services and tickets are never touched.'),
+        );
+    }
+
+    /**
+     * Before emails were saved in lowercase, a site on SQLite (which compares letter case) could get
+     * two clients for one mailbox, such as "Raz@Example.com" and "raz@example.com". Only ids are
+     * listed, so the saved results hold no email addresses.
+     */
+    private function clientEmails(): CheckResult
+    {
+        $check = $this->check('db.client_emails', 'No two clients share one email address', weight: 1);
+
+        if (! Schema::hasTable('clients')) {
+            return $check->skipped('There are no clients yet.');
+        }
+
+        $shared = DB::table('clients')->selectRaw('lower(email) as address')->groupByRaw('lower(email)')->havingRaw('count(*) > 1')->limit(50)->pluck('address');
+
+        if ($shared->isEmpty()) {
+            return $check->passed();
+        }
+
+        $clients = DB::table('clients')->select(['id', 'email'])->whereIn(DB::raw('lower(email)'), $shared->all())->orderBy('id')->get()
+            ->groupBy(fn (object $client): string => Str::lower((string) $client->email));
+        $items = [];
+
+        foreach ($clients as $twins) {
+            foreach ($twins as $client) {
+                $items[] = [
+                    'label' => '#'.$client->id,
+                    'value' => $twins->where('id', '!=', $client->id)->map(fn (object $other): string => '#'.$other->id)->implode(', '),
+                    'route' => 'admin.clients.show',
+                    'parameters' => ['client' => $client->id],
+                    'mono' => true,
+                    'status' => 'warning',
+                ];
+            }
+        }
+
+        return $check->warning(':count clients use the same email as another client', ['count' => count($items)],
+            advice: 'Each one is listed with the client that has its email in other letter case. They can each sign in with their own spelling, but a password reset reaches only the one in lowercase. Decide which account the person keeps, and give the other one a different email address.',
+            items: $items,
         );
     }
 

@@ -125,6 +125,10 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('api-v1', fn (Request $request): Limit => Limit::perMinute(120)->by($request->bearerToken() ? hash('sha256', $request->bearerToken()) : (string) $request->ip()));
         // Payment notifications: each one can make the gateway call its provider, so one sender cannot flood them.
         RateLimiter::for('gateway-webhooks', fn (Request $request): Limit => Limit::perMinute(240)->by($request->route('gateway').'|'.$request->ip()));
+        // Every route that checks the current password (or an emailed code) shares one count per
+        // client or staff member, so a stolen session gets 6 guesses a minute in all, not 6 per route.
+        RateLimiter::for('client-reauth', fn (Request $request): Limit => Limit::perMinute(6)->by('client:'.($request->user('web')?->getAuthIdentifier() ?? 'guest:'.$request->ip())));
+        RateLimiter::for('staff-reauth', fn (Request $request): Limit => Limit::perMinute(6)->by('admin:'.($request->user('admin')?->getAuthIdentifier() ?? 'guest:'.$request->ip())));
 
         if (Installation::isInstalled()) {
             $this->applySettingsToConfig();

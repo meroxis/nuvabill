@@ -5,6 +5,7 @@ namespace Tests\Feature\Auth;
 use App\Mail\TemplatedMessage;
 use App\Models\ActivityLog;
 use App\Models\Client;
+use App\Security\SignInLimiter;
 use App\Security\Totp;
 use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -12,6 +13,7 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Sleep;
 use Tests\TestCase;
 
@@ -217,20 +219,76 @@ class SecurityOptionsTest extends TestCase
         $this->assertAuthenticatedAs($client, 'web');
     }
 
-    public function test_passwords_are_limited_per_account_whichever_ip_they_come_from(): void
+    public function test_passwords_are_limited_per_ip_address_and_per_account_whichever_ip_they_come_from(): void
     {
+        Sleep::fake();
         $client = Client::factory()->create(['email' => 'raz@example.test', 'password' => 'right-password-1']);
 
+        // Ten wrong passwords from one address stop that address, even with the right password.
         foreach (range(1, 10) as $try) {
-            $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.'.$try])
+            $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.1'])
                 ->post(route('client.login'), ['email' => 'raz@example.test', 'password' => 'wrong-password-'.$try])
                 ->assertSessionHasErrors('email');
         }
 
-        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.99'])
+        $this->travel(61)->seconds(); // past the route's own limit per minute
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.1'])
             ->post(route('client.login'), ['email' => 'RAZ@example.test', 'password' => 'right-password-1'])
             ->assertSessionHasErrors(['email' => 'Too many tries. Wait 15 minutes, then try again.']);
         $this->assertGuest('web');
+
+        // The owner at another address still gets in: one guesser cannot keep them out.
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.2'])
+            ->post(route('client.login'), ['email' => 'raz@example.test', 'password' => 'right-password-1'])
+            ->assertRedirect(route('client.dashboard'));
+        $this->assertAuthenticatedAs($client, 'web');
+        $this->post(route('client.logout'));
+
+        // Guesses spread over many addresses stop the email address everywhere.
+        $this->guessFromManyAddresses('raz@example.test', '203.0.113.');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.99'])
+            ->post(route('client.login'), ['email' => 'RAZ@example.test', 'password' => 'right-password-1'])
+            ->assertSessionHasErrors(['email' => 'Too many wrong passwords for this email. Reset your password to sign in now, or wait an hour.']);
+        $this->assertGuest('web');
+    }
+
+    public function test_a_password_reset_lets_the_owner_in_while_others_keep_guessing(): void
+    {
+        Sleep::fake();
+        $client = Client::factory()->create(['email' => 'raz@example.test', 'password' => 'old-password-1']);
+
+        $this->guessFromManyAddresses('raz@example.test', '203.0.113.');
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.7'])
+            ->post(route('client.login'), ['email' => 'raz@example.test', 'password' => 'old-password-1'])
+            ->assertSessionHasErrors('email');
+        $this->assertGuest('web');
+
+        // The owner resets the password with the emailed link.
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.7'])->post(route('client.password.update'), [
+            'token' => Password::broker('clients')->createToken($client),
+            'email' => 'Raz@Example.test',
+            'password' => 'new-password-1',
+            'password_confirmation' => 'new-password-1',
+        ])->assertRedirect(route('client.login'));
+        $ownersBrowser = session()->all();
+
+        // Someone else keeps guessing in another browser, which stays stopped.
+        session()->flush();
+        $this->guessFromManyAddresses('raz@example.test', '192.0.2.');
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.8'])
+            ->post(route('client.login'), ['email' => 'raz@example.test', 'password' => 'new-password-1'])
+            ->assertSessionHasErrors(['email' => 'Too many wrong passwords for this email. Reset your password to sign in now, or wait an hour.']);
+        $this->assertGuest('web');
+
+        // The browser that reset the password still gets in.
+        session()->flush();
+        session()->put($ownersBrowser);
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.7'])
+            ->post(route('client.login'), ['email' => 'raz@example.test', 'password' => 'new-password-1'])
+            ->assertRedirect(route('client.dashboard'));
+        $this->assertAuthenticatedAs($client, 'web');
+        $this->assertNull(session('client.reset_unlock'));
     }
 
     public function test_a_used_app_code_is_refused_even_with_spaces_inside(): void
@@ -393,5 +451,17 @@ class SecurityOptionsTest extends TestCase
         $client->forceFill($twoFactor + ['two_factor_confirmed_at' => now()])->save();
 
         return $client;
+    }
+
+    /**
+     * Wrong passwords for $email, each from another address, until the count for the email is full.
+     */
+    private function guessFromManyAddresses(string $email, string $prefix): void
+    {
+        foreach (range(1, SignInLimiter::ACCOUNT_PASSWORDS) as $try) {
+            $this->withServerVariables(['REMOTE_ADDR' => $prefix.$try])
+                ->post(route('client.login'), ['email' => $email, 'password' => 'wrong-password-'.$try])
+                ->assertSessionHasErrors('email');
+        }
     }
 }

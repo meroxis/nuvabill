@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
+use App\Security\SignInLimiter;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -60,10 +61,12 @@ class PasswordResetController extends Controller
         ]);
 
         // A new password hash also ends every other signed-in session (the auth.session middleware).
+        // The link proved this is the owner, so wrong passwords others typed no longer keep them out.
         $status = Password::broker('admins')->reset(
             $request->only('email', 'password', 'password_confirmation', 'token'),
-            function (Admin $admin, string $password): void {
+            function (Admin $admin, string $password) use ($request): void {
                 $admin->forceFill(['password' => $password, 'remember_token' => Str::random(60)])->save();
+                SignInLimiter::passwordReset($request, 'admin', $admin->email);
                 event(new PasswordReset($admin));
             },
         );

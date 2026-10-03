@@ -2,10 +2,12 @@
 
 namespace App\Security;
 
+use App\Support\Demo;
 use Closure;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
@@ -13,6 +15,10 @@ use Illuminate\Support\Str;
 /**
  * Counts wrong passwords and wrong two-factor codes per account. The routes also limit each IP
  * address, but guesses spread over many addresses only stop with a limit on the account itself.
+ *
+ * Wrong passwords are counted twice: for the email address from one IP address, and for the email
+ * address from all IP addresses together. The first stops one guesser quickly. The second is much
+ * higher, so strangers cannot easily keep the owner out, and a password reset lets the owner past it.
  *
  * Each check runs inside onePasswordAtATime() or oneCodeAtATime(), so the limit check, the
  * password or code check and the count happen as one step per account. Without that, guesses sent
@@ -22,14 +28,20 @@ use Illuminate\Support\Str;
  */
 final class SignInLimiter
 {
-    /** Wrong passwords for one email address before it has to wait. */
+    /** Wrong passwords for one email address from one IP address before that address has to wait. */
     public const PASSWORDS = 10;
+
+    /** Wrong passwords for one email address from all IP addresses together before it has to wait. */
+    public const ACCOUNT_PASSWORDS = 50;
 
     /** Wrong two-factor codes for one account before it has to wait. */
     public const CODES = 5;
 
     /** How long the wait lasts, in seconds. */
     public const WAIT = 900;
+
+    /** How long the count for one email address from all IP addresses lasts, in seconds. */
+    public const ACCOUNT_WAIT = 3600;
 
     /** How long one check may hold an account at most, in seconds. */
     private const LOCK_SECONDS = 10;
@@ -49,7 +61,7 @@ final class SignInLimiter
      */
     public static function onePasswordAtATime(string $area, string $email, Closure $check): mixed
     {
-        return self::oneAtATime(self::passwordKey($area, $email), $check);
+        return self::oneAtATime(self::accountKey($area, $email), $check);
     }
 
     /**
@@ -67,19 +79,57 @@ final class SignInLimiter
         return self::oneAtATime(self::codeKey($area, $id), $check);
     }
 
-    public static function passwordLocked(string $area, string $email): bool
+    /**
+     * Why a password for this email address is not checked now, or null when it is.
+     *
+     * Too many wrong passwords from this IP address stop that address, even with the right password.
+     * Too many from all addresses together stop every address, except the browser that just reset
+     * the password with the emailed link: the link proved that browser belongs to the owner.
+     */
+    public static function passwordRefused(Request $request, string $area, string $email): ?string
     {
-        return RateLimiter::tooManyAttempts(self::passwordKey($area, $email), self::PASSWORDS);
+        if (RateLimiter::tooManyAttempts(self::passwordKey($area, $email, $request), self::PASSWORDS)) {
+            return __('Too many tries. Wait 15 minutes, then try again.');
+        }
+
+        if (RateLimiter::tooManyAttempts(self::accountKey($area, $email), self::ACCOUNT_PASSWORDS)
+            && ! self::resetInThisBrowser($request, $area, $email)
+            && ! self::isDemoSignIn($email)) {
+            return __('Too many wrong passwords for this email. Reset your password to sign in now, or wait an hour.');
+        }
+
+        return null;
     }
 
-    public static function passwordFailed(string $area, string $email): void
+    public static function passwordFailed(Request $request, string $area, string $email): void
     {
-        RateLimiter::hit(self::passwordKey($area, $email), self::WAIT);
+        RateLimiter::hit(self::passwordKey($area, $email, $request), self::WAIT);
+        RateLimiter::hit(self::accountKey($area, $email), self::ACCOUNT_WAIT);
     }
 
-    public static function passwordPassed(string $area, string $email): void
+    public static function passwordPassed(Request $request, string $area, string $email): void
     {
-        RateLimiter::clear(self::passwordKey($area, $email));
+        RateLimiter::clear(self::passwordKey($area, $email, $request));
+        RateLimiter::clear(self::accountKey($area, $email));
+
+        if ($request->hasSession()) {
+            $request->session()->forget(self::resetSessionKey($area));
+        }
+    }
+
+    /**
+     * The password was reset with the emailed link. The counts are cleared, and this browser gets past
+     * the count from all IP addresses until it signs in, so strangers who keep guessing cannot keep the
+     * owner out. Wrong passwords from this browser are still counted, and its IP address keeps its limit.
+     */
+    public static function passwordReset(Request $request, string $area, string $email): void
+    {
+        RateLimiter::clear(self::passwordKey($area, $email, $request));
+        RateLimiter::clear(self::accountKey($area, $email));
+
+        if ($request->hasSession()) {
+            $request->session()->put(self::resetSessionKey($area), self::emailHash($email));
+        }
     }
 
     public static function codesLocked(string $area, int $id): bool
@@ -119,13 +169,44 @@ final class SignInLimiter
         }
     }
 
+    private static function resetInThisBrowser(Request $request, string $area, string $email): bool
+    {
+        $reset = $request->hasSession() ? $request->session()->get(self::resetSessionKey($area)) : null;
+
+        return is_string($reset) && hash_equals($reset, self::emailHash($email));
+    }
+
+    /**
+     * The shared sign-ins of the public demo. Their password is shown on the sign-in page, so counting
+     * guesses protects nothing, and one visitor could keep every other visitor out.
+     */
+    private static function isDemoSignIn(string $email): bool
+    {
+        return Demo::isEnabled() && in_array(Str::lower(trim($email)), [Demo::ADMIN_EMAIL, Demo::CLIENT_EMAIL], true);
+    }
+
+    private static function resetSessionKey(string $area): string
+    {
+        return $area.'.reset_unlock';
+    }
+
     /**
      * Keyed by the email typed, whether or not an account uses it, so the answer never shows which
-     * addresses have an account.
+     * addresses have an account. The one-at-a-time lock uses this key too.
      */
-    private static function passwordKey(string $area, string $email): string
+    private static function accountKey(string $area, string $email): string
     {
-        return $area.'-login:'.sha1(Str::lower(trim($email)));
+        return $area.'-login:'.self::emailHash($email);
+    }
+
+    private static function passwordKey(string $area, string $email, Request $request): string
+    {
+        return $area.'-login-ip:'.sha1(self::emailHash($email).'|'.$request->ip());
+    }
+
+    private static function emailHash(string $email): string
+    {
+        return sha1(Str::lower(trim($email)));
     }
 
     private static function codeKey(string $area, int $id): string
