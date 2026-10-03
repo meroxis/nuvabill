@@ -54,7 +54,7 @@ class ProductGroupController extends Controller
     {
         $request->merge(['slug' => Str::slug((string) ($request->input('slug') ?: $request->input('name')))]);
 
-        return $request->validate([
+        $data = $request->validate([
             'name' => ['required', 'string', 'max:120'],
             'slug' => ['required', 'string', 'max:120', Rule::unique('product_groups', 'slug')->ignore($group?->id)],
             'description' => ['nullable', 'string', 'max:2000'],
@@ -63,6 +63,11 @@ class ProductGroupController extends Controller
             'seo_title' => ['nullable', 'string', 'max:120'],
             'seo_description' => ['nullable', 'string', 'max:320'],
             'seo_hidden' => ['boolean'],
-        ]) + ['sort_order' => 0];
+        ]);
+
+        // An empty field arrives as null, and the column needs a number.
+        $data['sort_order'] = (int) ($data['sort_order'] ?? 0);
+
+        return $data;
     }
 }

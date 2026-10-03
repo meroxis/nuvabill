@@ -63,20 +63,25 @@ class ClientController extends Controller
         return redirect()->route('admin.clients.show', $client)->with('status', __('Client created.'));
     }
 
-    public function show(Client $client): View
+    public function show(Request $request, Client $client): View
     {
+        // Invoices, payments and the wallet are billing data: only staff who may see billing get them.
+        $canBilling = (bool) $request->user('admin')?->hasPermission('billing.view');
+
         $client->load([
             'services' => fn ($query) => $query->with('product')->latest('id'),
-            'invoices' => fn ($query) => $query->latest('id')->limit(10),
             'tickets' => fn ($query) => $query->with('department')->latest('updated_at')->limit(5),
-            'transactions' => fn ($query) => $query->latest('paid_at')->limit(10),
+            ...($canBilling ? [
+                'invoices' => fn ($query) => $query->latest('id')->limit(10),
+                'transactions' => fn ($query) => $query->latest('paid_at')->limit(10),
+            ] : []),
         ]);
 
         return view('admin.clients.show', [
             'client' => $client,
-            'unpaid' => $client->unpaidInvoicesTotal(),
+            'unpaid' => $canBilling ? $client->unpaidInvoicesTotal() : null,
             'activity' => ActivityLog::query()->where('client_id', $client->id)->with('actor')->latest('id')->limit(10)->get(),
-            'walletEntries' => $client->creditTransactions()->with('admin')->latest('id')->limit(6)->get(),
+            'walletEntries' => $canBilling ? $client->creditTransactions()->with('admin')->latest('id')->limit(6)->get() : collect(),
             'privacyBlockers' => app(ClientPrivacy::class)->blockers($client),
         ]);
     }

@@ -70,7 +70,7 @@ class InvoicePaidHandler
 
         if ($periodStart !== null && $service->next_due_date !== null && $periodStart->isSameDay($service->next_due_date)) {
             $service->next_due_date = $service->billing_cycle->isRecurring()
-                ? $service->billing_cycle->advance($periodStart)
+                ? $service->billing_cycle->advance($periodStart, $service->registration_date?->day)
                 : null;
             $service->save();
         }

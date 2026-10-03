@@ -35,7 +35,7 @@
                             <option value="percent">{{ __('Percent') }}</option>
                             <option value="fixed">{{ __('Fixed amount (:currency)', ['currency' => $currency]) }}</option>
                         </select>
-                        <input class="input num" type="number" step="0.01" min="0" name="value" value="{{ $value }}" required aria-label="{{ __('Discount value') }}" style="max-width:130px" @error('value') aria-invalid="true" @enderror>
+                        <input class="input num" type="number" step="0.01" min="0" x-bind:step="type === 'percent' ? 1 : 0.01" x-bind:min="type === 'percent' ? 1 : 0.01" x-bind:max="type === 'percent' ? 100 : null" name="value" value="{{ $value }}" required aria-label="{{ __('Discount value') }}" style="max-width:130px" @error('value') aria-invalid="true" @enderror>
                         <span class="muted" x-text="type === 'percent' ? '%' : @js($currency)"></span>
                     </div>
                     @error('value')<p class="error">{{ $message }}</p>@enderror

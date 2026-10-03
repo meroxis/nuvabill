@@ -33,7 +33,8 @@ class ClientResource extends JsonResource
             'status' => $this->status->value,
             'tax_id' => $this->tax_id,
             'tax_exempt' => (bool) $this->tax_exempt,
-            'wallet_balance' => $this->credit,
+            // Billing data, as in the admin area: only for keys whose staff member may see billing.
+            'wallet_balance' => $this->when((bool) $request->user('admin')?->hasPermission('billing.view'), fn (): int => (int) $this->credit),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

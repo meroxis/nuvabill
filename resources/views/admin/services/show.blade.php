@@ -30,7 +30,7 @@
             @if ($status === \App\Enums\ServiceStatus::Active)
                 <form method="POST" action="{{ route('admin.services.module', [$service, 'suspend']) }}" style="display:flex;gap:6px" data-confirm="{{ __('Suspend this service? The client loses access until it is unsuspended.') }}">
                     @csrf
-                    <input class="input" name="reason" placeholder="{{ __('Reason (optional)') }}" aria-label="{{ __('Suspension reason') }}" style="width:200px">
+                    <input class="input" name="reason" maxlength="190" placeholder="{{ __('Reason (optional)') }}" aria-label="{{ __('Suspension reason') }}" style="width:200px" @error('reason') aria-invalid="true" @enderror>
                     <button class="btn" type="submit">{{ __('Suspend') }}</button>
                 </form>
                 @if ($hasModule)

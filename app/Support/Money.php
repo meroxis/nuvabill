@@ -10,9 +10,13 @@ use InvalidArgumentException;
  */
 class Money
 {
+    /**
+     * Some currencies, such as IQD, show whole units by default. An amount with cents is still
+     * shown with them, so the shown amount is always the amount stored and owed.
+     */
     public static function format(int $minor, string $currency): string
     {
-        return Number::currency($minor / 100, in: $currency, locale: Locales::numberLocale());
+        return Number::currency($minor / 100, in: $currency, locale: Locales::numberLocale(), precision: $minor % 100 === 0 ? null : 2);
     }
 
     /**

@@ -26,6 +26,23 @@ class BillingCycleTest extends TestCase
         $this->assertSame('2029-09-26', BillingCycle::Triennially->advance($start)->toDateString());
     }
 
+    public function test_a_clamped_date_goes_back_to_the_day_the_service_started(): void
+    {
+        $this->assertSame('2027-03-31', BillingCycle::Monthly->advance(CarbonImmutable::parse('2027-02-28'), 31)->toDateString());
+        $this->assertSame('2027-04-30', BillingCycle::Monthly->advance(CarbonImmutable::parse('2027-03-31'), 31)->toDateString());
+        $this->assertSame('2027-05-31', BillingCycle::Monthly->advance(CarbonImmutable::parse('2027-04-30'), 31)->toDateString());
+        $this->assertSame('2027-03-30', BillingCycle::Monthly->advance(CarbonImmutable::parse('2027-02-28'), 30)->toDateString());
+        $this->assertSame('2032-02-29', BillingCycle::Annually->advance(CarbonImmutable::parse('2031-02-28'), 29)->toDateString());
+        $this->assertSame('2027-05-31', BillingCycle::Quarterly->advance(CarbonImmutable::parse('2027-02-28'), 31)->toDateString());
+    }
+
+    public function test_a_date_moved_by_hand_is_not_snapped_to_the_start_day(): void
+    {
+        $this->assertSame('2027-04-15', BillingCycle::Monthly->advance(CarbonImmutable::parse('2027-03-15'), 31)->toDateString());
+        $this->assertSame('2027-03-10', BillingCycle::Monthly->advance(CarbonImmutable::parse('2027-02-10'), 31)->toDateString());
+        $this->assertSame('2027-02-28', BillingCycle::Monthly->advance(CarbonImmutable::parse('2027-01-31'), 31)->toDateString());
+    }
+
     public function test_one_time_and_free_do_not_renew(): void
     {
         $start = CarbonImmutable::parse('2026-09-26');

@@ -53,7 +53,8 @@ class InvoiceManager
             foreach ($items as $item) {
                 $invoice->items()->create([
                     'type' => $item['type'] ?? 'manual',
-                    'description' => $item['description'],
+                    // Cut to the column, so one long product name or domain cannot stop invoicing on MySQL.
+                    'description' => mb_substr((string) $item['description'], 0, LineItems::DESCRIPTION_MAX),
                     'amount' => $item['amount'],
                     'taxed' => $rule !== null && $this->taxes->isTaxable($item),
                     'service_id' => $item['service_id'] ?? null,

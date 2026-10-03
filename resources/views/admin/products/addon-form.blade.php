@@ -47,7 +47,7 @@
                             <input type="hidden" name="prices[{{ $cycle->value }}][enabled]" value="0">
                             <label class="check"><input type="checkbox" name="prices[{{ $cycle->value }}][enabled]" value="1" x-model="on"> {{ $cycle->label() }}</label>
                         </td>
-                        <td><input class="input num" style="max-width:140px" type="number" step="0.01" min="0" name="prices[{{ $cycle->value }}][price]" value="{{ old("prices.{$cycle->value}.price", $existing ? \App\Support\Money::toDecimal($existing->price) : '') }}" :disabled="! on" aria-label="{{ __('Price for :cycle', ['cycle' => $cycle->label()]) }}"></td>
+                        <td><input class="input num" style="max-width:140px" type="number" step="0.01" min="0" name="prices[{{ $cycle->value }}][price]" value="{{ old("prices.{$cycle->value}.price", $existing ? \App\Support\Money::toDecimal($existing->price) : '') }}" :disabled="! on" :required="on" aria-label="{{ __('Price for :cycle', ['cycle' => $cycle->label()]) }}" @error("prices.{$cycle->value}.price") aria-invalid="true" @enderror></td>
                         <td><input class="input num" style="max-width:140px" type="number" step="0.01" min="0" name="prices[{{ $cycle->value }}][setup_fee]" value="{{ old("prices.{$cycle->value}.setup_fee", $existing ? \App\Support\Money::toDecimal($existing->setup_fee) : '0.00') }}" :disabled="! on" aria-label="{{ __('Setup fee for :cycle', ['cycle' => $cycle->label()]) }}"></td>
                     </tr>
                 @endforeach

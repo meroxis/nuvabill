@@ -126,6 +126,9 @@ class ServiceController extends Controller
 
     public function module(Request $request, Service $service, string $action, Provisioner $provisioner): RedirectResponse
     {
+        // Checked before the server is called: the reason is saved after the account is suspended there.
+        $request->validate(['reason' => ['nullable', 'string', 'max:190']]);
+
         $result = match ($action) {
             'create' => $provisioner->create($service),
             'suspend' => $provisioner->suspend($service, (string) ($request->input('reason') ?: __('Suspended by staff'))),

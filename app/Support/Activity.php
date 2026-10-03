@@ -11,6 +11,11 @@ use Illuminate\Database\Eloquent\Model;
  */
 class Activity
 {
+    /**
+     * Longest description the log keeps (the column holds 255 characters).
+     */
+    public const DESCRIPTION_MAX = 255;
+
     public static function log(string $action, string $description, ?Model $subject = null, ?Client $client = null, ?Model $actor = null): ActivityLog
     {
         $actor ??= auth('admin')->user() ?? auth('web')->user();
@@ -31,8 +36,19 @@ class Activity
             'subject_id' => $subject?->getKey(),
             'client_id' => $client?->getKey(),
             'action' => $action,
-            'description' => $description,
+            'description' => self::fit($description),
             'ip_address' => app()->runningInConsole() ? null : request()->ip(),
         ]);
+    }
+
+    /**
+     * Cut a long description, for example one with a server's full error, so it fits the column.
+     * A too long value would stop the request, or the nightly run, on MySQL.
+     */
+    private static function fit(string $description): string
+    {
+        return mb_strlen($description) > self::DESCRIPTION_MAX
+            ? mb_substr($description, 0, self::DESCRIPTION_MAX - 1).'…'
+            : $description;
     }
 }

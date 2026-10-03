@@ -20,7 +20,8 @@ use Throwable;
 class SettingsController extends Controller
 {
     /**
-     * Currencies offered in v0.1. All use two decimal places, which is how amounts are stored.
+     * Currencies offered in v0.1. Amounts are stored with two decimal places in every currency;
+     * IQD shows whole units unless an amount has a fraction (see Money::format).
      *
      * @var list<string>
      */

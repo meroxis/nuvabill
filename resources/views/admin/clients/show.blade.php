@@ -1,5 +1,9 @@
 <x-layouts.admin :title="$client->name">
-    @php $admin = auth('admin')->user(); @endphp
+    @php
+        $admin = auth('admin')->user();
+        // Invoices, payments and the wallet are shown only to staff who may see billing.
+        $canBilling = $admin->hasPermission('billing.view');
+    @endphp
     <div class="page-head">
         <div>
             <p class="eyebrow">{{ __('Client') }} #{{ $client->id }}</p>
@@ -28,7 +32,9 @@
 
     <div class="kpis">
         <div class="kpi"><small>{{ __('Active services') }}</small><b>{{ $client->services->where('status', \App\Enums\ServiceStatus::Active)->count() }}</b><span>{{ trans_choice(':count in total|:count in total', $client->services->count(), ['count' => $client->services->count()]) }}</span></div>
-        <div class="kpi"><small>{{ __('Unpaid') }}</small><b>{{ money($unpaid, $client->currency) }}</b><span>{{ __('Credit: :amount', ['amount' => money($client->credit, $client->currency)]) }}</span></div>
+        @if ($canBilling)
+            <div class="kpi"><small>{{ __('Unpaid') }}</small><b>{{ money($unpaid, $client->currency) }}</b><span>{{ __('Credit: :amount', ['amount' => money($client->credit, $client->currency)]) }}</span></div>
+        @endif
         <div class="kpi"><small>{{ __('Client since') }}</small><b style="font-size:1.2rem">{{ $client->created_at->translatedFormat('d M Y') }}</b><span>{{ $client->last_login_at ? __('Last sign in :time', ['time' => $client->last_login_at->diffForHumans()]) : __('Never signed in') }}</span></div>
         <div class="kpi"><small>{{ __('Open tickets') }}</small><b>{{ $client->openTicketsCount() }}</b><span>{{ $client->phone ?: __('No phone number') }}</span></div>
     </div>
@@ -63,31 +69,33 @@
                 @endif
             </section>
 
-            <section class="card card-flush">
-                <div class="card-header"><h2>{{ __('Invoices') }}</h2></div>
-                @include('admin.invoices.partials.table', ['invoices' => $client->invoices, 'showClient' => false])
-            </section>
+            @if ($canBilling)
+                <section class="card card-flush">
+                    <div class="card-header"><h2>{{ __('Invoices') }}</h2></div>
+                    @include('admin.invoices.partials.table', ['invoices' => $client->invoices, 'showClient' => false])
+                </section>
 
-            <section class="card card-flush">
-                <div class="card-header"><h2>{{ __('Payments') }}</h2></div>
-                @if ($client->transactions->isEmpty())
-                    <div class="empty">{{ __('No payments yet.') }}</div>
-                @else
-                    <div class="table-wrap"><table class="table">
-                        <thead><tr><th>{{ __('Date') }}</th><th>{{ __('Method') }}</th><th>{{ __('Reference') }}</th><th class="end">{{ __('Amount') }}</th></tr></thead>
-                        <tbody>
-                        @foreach ($client->transactions as $transaction)
-                            <tr>
-                                <td style="white-space:nowrap">{{ $transaction->paid_at->translatedFormat('d M Y') }}</td>
-                                <td>{{ $transaction->gatewayLabel() }}</td>
-                                <td class="mono faint">{{ \Illuminate\Support\Str::limit($transaction->reference ?? '—', 24) }}</td>
-                                <td class="end num">{{ money($transaction->amount, $transaction->currency) }}</td>
-                            </tr>
-                        @endforeach
-                        </tbody>
-                    </table></div>
-                @endif
-            </section>
+                <section class="card card-flush">
+                    <div class="card-header"><h2>{{ __('Payments') }}</h2></div>
+                    @if ($client->transactions->isEmpty())
+                        <div class="empty">{{ __('No payments yet.') }}</div>
+                    @else
+                        <div class="table-wrap"><table class="table">
+                            <thead><tr><th>{{ __('Date') }}</th><th>{{ __('Method') }}</th><th>{{ __('Reference') }}</th><th class="end">{{ __('Amount') }}</th></tr></thead>
+                            <tbody>
+                            @foreach ($client->transactions as $transaction)
+                                <tr>
+                                    <td style="white-space:nowrap">{{ $transaction->paid_at->translatedFormat('d M Y') }}</td>
+                                    <td>{{ $transaction->gatewayLabel() }}</td>
+                                    <td class="mono faint">{{ \Illuminate\Support\Str::limit($transaction->reference ?? '—', 24) }}</td>
+                                    <td class="end num">{{ money($transaction->amount, $transaction->currency) }}</td>
+                                </tr>
+                            @endforeach
+                            </tbody>
+                        </table></div>
+                    @endif
+                </section>
+            @endif
         </div>
 
         <div style="display:grid;gap:14px;align-content:start;min-width:0">
@@ -110,7 +118,7 @@
                 @endif
             </section>
 
-            @if ($admin->hasPermission('billing.view'))
+            @if ($canBilling)
                 <section class="card" style="display:grid;gap:.8rem">
                     <div class="card-header" style="margin:0"><h2>{{ __('Wallet') }}</h2><b class="num">{{ money($client->credit, $client->currency) }}</b></div>
                     @if ($walletEntries->isNotEmpty())

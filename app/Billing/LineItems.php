@@ -14,22 +14,22 @@ use Carbon\CarbonImmutable;
 class LineItems
 {
     /**
+     * Longest description an invoice line holds (the column holds 255 characters).
+     */
+    public const DESCRIPTION_MAX = 255;
+
+    /**
      * @return array{type: string, description: string, amount: int, service_id: int, period_start: CarbonImmutable, period_end: CarbonImmutable|null}
      */
     public static function servicePeriod(Service $service, CarbonImmutable $start, int $amount): array
     {
         $cycle = $service->billing_cycle;
-        $end = $cycle->isRecurring() ? $cycle->advance($start)->subDay() : null;
-
-        $description = $service->product->name.($service->domain ? ' - '.$service->domain : '');
-
-        if ($end !== null) {
-            $description .= ' ('.$start->format('d M Y').' - '.$end->format('d M Y').')';
-        }
+        // The day the service started keeps renewals on it after a short month (see BillingCycle::advance).
+        $end = $cycle->isRecurring() ? $cycle->advance($start, $service->registration_date?->day)->subDay() : null;
 
         return [
             'type' => InvoiceItem::TYPE_SERVICE,
-            'description' => $description,
+            'description' => self::describe($service->product->name, $service->domain, $end !== null ? ' ('.$start->format('d M Y').' - '.$end->format('d M Y').')' : ''),
             'amount' => $amount,
             'service_id' => $service->id,
             'period_start' => $start,
@@ -57,7 +57,7 @@ class LineItems
 
         return [
             'type' => $type,
-            'description' => $label.' - '.$domain->name.' ('.$period.($type === InvoiceItem::TYPE_DOMAIN_RENEW ? ', '.$start->format('d M Y').' - '.$end->format('d M Y') : '').')',
+            'description' => self::describe($label, $domain->name, ' ('.$period.($type === InvoiceItem::TYPE_DOMAIN_RENEW ? ', '.$start->format('d M Y').' - '.$end->format('d M Y') : '').')'),
             'amount' => $amount,
             'domain_id' => $domain->id,
             'period_start' => $start,
@@ -72,7 +72,7 @@ class LineItems
     {
         return [
             'type' => InvoiceItem::TYPE_SETUP,
-            'description' => __('Setup fee').' - '.$service->product->name,
+            'description' => self::describe(__('Setup fee'), $service->product->name),
             'amount' => $amount,
             'service_id' => $service->id,
         ];
@@ -90,7 +90,7 @@ class LineItems
 
         return [
             'type' => InvoiceItem::TYPE_ADDON,
-            'description' => $name.($service->domain ? ' - '.$service->domain : '').($end !== null ? ' ('.$start->format('d M Y').' - '.$end->format('d M Y').')' : ''),
+            'description' => self::describe($name, $service->domain, $end !== null ? ' ('.$start->format('d M Y').' - '.$end->format('d M Y').')' : ''),
             'amount' => $amount,
             'service_id' => $service->id,
             'period_start' => $start,
@@ -107,10 +107,32 @@ class LineItems
     {
         return [
             'type' => InvoiceItem::TYPE_DISCOUNT,
-            'description' => __('Coupon :code (:discount)', ['code' => $coupon->code, 'discount' => $coupon->describe()]),
+            'description' => self::fit(__('Coupon :code (:discount)', ['code' => $coupon->code, 'discount' => $coupon->describe()]), self::DESCRIPTION_MAX),
             'amount' => -abs($amount),
             'service_id' => $service?->id,
             'domain_id' => $domain?->id,
         ];
+    }
+
+    /**
+     * "Name - detail (period)" that always fits an invoice line: the period stays whole, a long
+     * detail (such as a domain) is shortened first, then the name.
+     */
+    private static function describe(string $name, ?string $detail, string $period = ''): string
+    {
+        $room = max(1, self::DESCRIPTION_MAX - mb_strlen($period));
+        $name = self::fit($name, $room);
+        $detailRoom = $room - mb_strlen($name) - 3;
+
+        if (filled($detail) && $detailRoom > 0) {
+            $name .= ' - '.self::fit((string) $detail, $detailRoom);
+        }
+
+        return self::fit($name.$period, self::DESCRIPTION_MAX);
+    }
+
+    private static function fit(string $text, int $max): string
+    {
+        return mb_strlen($text) > $max ? mb_substr($text, 0, max(0, $max - 1)).'…' : $text;
     }
 }

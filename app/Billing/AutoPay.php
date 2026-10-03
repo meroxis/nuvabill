@@ -97,7 +97,16 @@ class AutoPay
             $summary['notices'] = $this->sendNotices($today);
 
             foreach ($this->dueInvoices($today) as $invoice) {
-                $result = $this->charge($invoice);
+                // One invoice that breaks is reported and counted, and the others are still charged.
+                try {
+                    $result = $this->charge($invoice);
+                } catch (Throwable $exception) {
+                    report($exception);
+                    $summary['failed']++;
+
+                    continue;
+                }
+
                 $summary[$result->isPaid() ? 'charged' : ($result->isPending() ? 'pending' : 'failed')]++;
             }
 
@@ -194,12 +203,13 @@ class AutoPay
 
         if ($result->isPending()) {
             // Checked again by the next nightly run; no failure email, as nothing failed yet.
+            $message = Str::limit($result->message, 240);
             $invoice->forceFill([
                 'autopay_pending' => array_filter(['reference' => $result->reference ?? $attempt['reference'] ?? null] + $attempt),
-                'autopay_error' => Str::limit($result->message, 240),
+                'autopay_error' => $message,
                 'autopay_retry_at' => Carbon::tomorrow(),
             ])->save();
-            Activity::log('invoice.autopay_pending', "Payment with {$label} for invoice {$invoice->displayNumber()} is not finished: {$result->message}", $invoice, $invoice->client);
+            Activity::log('invoice.autopay_pending', "Payment with {$label} for invoice {$invoice->displayNumber()} is not finished: {$message}", $invoice, $invoice->client);
 
             return $result;
         }
@@ -305,10 +315,13 @@ class AutoPay
     private function failed(Invoice $invoice, string $label, ChargeResult $result, ?string $by): void
     {
         $message = Str::limit($result->message, 240);
-        Activity::log('invoice.autopay_failed', ($by ? "{$by} could not charge" : 'Could not charge')." {$label} for invoice {$invoice->displayNumber()}: {$message}", $invoice, $invoice->client);
+        $description = ($by ? "{$by} could not charge" : 'Could not charge')." {$label} for invoice {$invoice->displayNumber()}: {$message}";
 
+        // Each branch saves the try on the invoice before the log entry, so the next run never
+        // repeats a try whose result was not saved.
         if ($by !== null) {
             $invoice->forceFill(['autopay_error' => $message])->save();
+            Activity::log('invoice.autopay_failed', $description, $invoice, $invoice->client);
 
             return;
         }
@@ -328,6 +341,7 @@ class AutoPay
             'autopay_retry_at' => $retryAt,
             'autopay_error' => $message,
         ])->save();
+        Activity::log('invoice.autopay_failed', $description, $invoice, $invoice->client);
 
         $this->mailer->send('invoice.autopay_failed', $invoice->client, TemplateMailer::invoiceContext($invoice) + [
             'payment_method' => ['name' => $label],

@@ -11,6 +11,7 @@ use App\Support\Money;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
@@ -87,7 +88,7 @@ class ProductAddonController extends Controller
      */
     private function attributes(Request $request): array
     {
-        $data = $request->validate([
+        $validator = Validator::make($request->all(), [
             'name' => ['required', 'string', 'max:120'],
             'description' => ['nullable', 'string', 'max:500'],
             'product_ids' => ['nullable', 'array'],
@@ -101,6 +102,19 @@ class ProductAddonController extends Controller
             'prices.*.setup_fee' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
             'icon' => ['nullable', Rule::in(['shield', 'server', 'globe', 'lock', 'mail', 'zap', 'star', 'download', 'refresh'])],
         ]);
+
+        $validator->after(function () use ($validator, $request): void {
+            // A cycle turned on without a price would be saved as free. A typed 0 is a free add-on.
+            foreach ((array) $request->input('prices', []) as $cycle => $price) {
+                $cycle = BillingCycle::tryFrom((string) $cycle);
+
+                if ($cycle !== null && $cycle !== BillingCycle::Free && is_array($price) && ! empty($price['enabled']) && ! is_numeric($price['price'] ?? null)) {
+                    $validator->errors()->add("prices.{$cycle->value}.price", __('Enter a price for :cycle.', ['cycle' => $cycle->label()]));
+                }
+            }
+        });
+
+        $data = $validator->validate();
 
         return [
             'name' => $data['name'],

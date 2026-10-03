@@ -8,12 +8,16 @@
 
     @php
         $oldItems = collect(old('items', [['description' => '', 'amount' => '', 'taxed' => true]]))->map(fn ($item) => ['description' => $item['description'] ?? '', 'amount' => $item['amount'] ?? '', 'taxed' => (bool) ($item['taxed'] ?? true)])->all();
+        // The invoice is made in the client's currency. The form sends the currency it shows, so an
+        // invoice for a client billed in another currency is refused instead of sent.
+        $currency = $client?->currency ?? setting('billing.currency');
     @endphp
     <form method="POST" action="{{ route('admin.invoices.store') }}" class="card" style="display:grid;gap:1.25rem"
           x-data="{ items: @js(array_values($oldItems)), total() { return this.items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0).toFixed(2) } }">
         @csrf
+        <input type="hidden" name="currency" value="{{ $currency }}">
         <div class="form-grid">
-            <x-input name="client" :label="__('Client ID or email')" :value="$client?->id" :help="$client ? __('Invoice for :name', ['name' => $client->name]) : null" required />
+            <x-input name="client" :label="__('Client ID or email')" :value="$client?->id" :help="$client ? __('Invoice for :name (billed in :currency)', ['name' => $client->name, 'currency' => $currency]) : null" required />
             <x-input name="due_at" type="date" :label="__('Due date')" :value="today()->addDays((int) setting('billing.payment_terms_days'))->toDateString()" required />
         </div>
 
@@ -35,7 +39,7 @@
             @error('items.*.amount')<p class="error" style="color:var(--nb-crit);font-size:.8rem;margin:0">{{ $message }}</p>@enderror
             <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
                 <button type="button" class="btn btn-sm" @click="items.push({ description: '', amount: '', taxed: true })"><x-icon name="plus" />{{ __('Add line') }}</button>
-                <span>{{ __('Total') }}: <b class="num" x-text="total()"></b> {{ setting('billing.currency') }}</span>
+                <span>{{ __('Total') }}: <b class="num" x-text="total()"></b> {{ $currency }}</span>
             </div>
         </div>
 

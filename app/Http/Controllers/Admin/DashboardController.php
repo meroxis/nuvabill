@@ -7,6 +7,7 @@ use App\Enums\ServiceStatus;
 use App\Enums\TicketStatus;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Models\Admin;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\Service;
@@ -20,13 +21,49 @@ class DashboardController extends Controller
 {
     public function __invoke(): View
     {
+        /** @var Admin $admin */
+        $admin = auth('admin')->user();
         $currency = (string) setting('billing.currency');
         $monthStart = CarbonImmutable::now()->startOfMonth();
 
+        // Every staff member lands here, so each part is loaded only for staff who may see it,
+        // with the same permission as the page it comes from.
+        $billing = $admin->hasPermission('billing.view') ? $this->billing($currency, $monthStart) : [];
+
+        return view('admin.dashboard', $billing + [
+            'currency' => $currency,
+            'canBilling' => $billing !== [],
+            'activeServices' => Service::query()->where('status', ServiceStatus::Active)->count(),
+            'newServicesThisMonth' => Service::query()->where('created_at', '>=', $monthStart)->count(),
+            'openTickets' => Ticket::query()->whereIn('status', [TicketStatus::Open, TicketStatus::CustomerReply])->count(),
+            'attention' => AttentionList::items(),
+            'activity' => $admin->hasPermission('settings.manage')
+                ? ActivityLog::query()->with('actor')->latest('id')->limit(8)->get()
+                : collect(),
+            'recentOrders' => $admin->hasPermission('orders.manage')
+                ? Order::query()->with('client')->latest('id')->limit(5)->get()
+                : collect(),
+            'recentTickets' => $admin->hasPermission('support.manage')
+                ? Ticket::query()
+                    ->with(['client', 'department'])
+                    ->where('status', '!=', TicketStatus::Closed)
+                    ->latest('last_reply_at')
+                    ->limit(5)
+                    ->get()
+                : collect(),
+        ]);
+    }
+
+    /**
+     * Revenue and unpaid invoices in the default currency.
+     *
+     * @return array{revenueThisMonth: int, revenueLastMonth: int, unpaidTotal: int, unpaidCount: int, overdueCount: int, chart: array{bars: list<array{label: string, value: int, height: float}>, max: int}}
+     */
+    private function billing(string $currency, CarbonImmutable $monthStart): array
+    {
         $unpaid = Invoice::query()->where('status', InvoiceStatus::Unpaid)->where('currency', $currency);
 
-        return view('admin.dashboard', [
-            'currency' => $currency,
+        return [
             'revenueThisMonth' => (int) Transaction::query()
                 ->revenue()
                 ->where('currency', $currency)
@@ -37,23 +74,11 @@ class DashboardController extends Controller
                 ->where('currency', $currency)
                 ->whereBetween('paid_at', [$monthStart->subMonth(), $monthStart])
                 ->sum('amount'),
-            'activeServices' => Service::query()->where('status', ServiceStatus::Active)->count(),
-            'newServicesThisMonth' => Service::query()->where('created_at', '>=', $monthStart)->count(),
             'unpaidTotal' => (int) (clone $unpaid)->selectRaw('coalesce(sum(total - amount_paid), 0) as balance')->value('balance'),
             'unpaidCount' => (clone $unpaid)->count(),
             'overdueCount' => (clone $unpaid)->whereDate('due_at', '<', today())->count(),
-            'openTickets' => Ticket::query()->whereIn('status', [TicketStatus::Open, TicketStatus::CustomerReply])->count(),
             'chart' => $this->revenueChart($currency),
-            'attention' => AttentionList::items(),
-            'activity' => ActivityLog::query()->with('actor')->latest('id')->limit(8)->get(),
-            'recentOrders' => Order::query()->with('client')->latest('id')->limit(5)->get(),
-            'recentTickets' => Ticket::query()
-                ->with(['client', 'department'])
-                ->where('status', '!=', TicketStatus::Closed)
-                ->latest('last_reply_at')
-                ->limit(5)
-                ->get(),
-        ]);
+        ];
     }
 
     /**
@@ -65,13 +90,17 @@ class DashboardController extends Controller
     {
         $start = CarbonImmutable::now()->startOfMonth()->subMonths(11);
 
+        // The database adds up each month ("2026-10" from "2026-10-03 12:00:00" in SQLite and MySQL),
+        // so the dashboard does not load every payment of the year.
+        $monthKey = 'substr(paid_at, 1, 7)';
         $totals = Transaction::query()
             ->revenue()
             ->where('currency', $currency)
             ->where('paid_at', '>=', $start)
-            ->get(['amount', 'paid_at'])
-            ->groupBy(fn (Transaction $transaction): string => $transaction->paid_at->format('Y-m'))
-            ->map(fn ($group): int => (int) $group->sum('amount'));
+            ->selectRaw("{$monthKey} as month, sum(amount) as total")
+            ->groupByRaw($monthKey)
+            ->pluck('total', 'month')
+            ->map(fn (mixed $total): int => (int) $total);
 
         $max = $this->niceCeiling((int) $totals->max());
 

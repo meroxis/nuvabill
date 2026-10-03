@@ -39,12 +39,26 @@ enum BillingCycle: string
 
     /**
      * Move a date forward by one period. Month ends are clamped, so 31 Jan + 1 month is 28/29 Feb.
+     *
+     * $anchorDay is the day of the month the service started on. A date that was clamped to a short
+     * month's last day goes back to that day when the month allows it, so 31 Jan, 28 Feb, 31 Mar
+     * and not 28 Mar. A date moved to another day, for example by staff, is left as it is.
      */
-    public function advance(CarbonInterface $date): CarbonImmutable
+    public function advance(CarbonInterface $date, ?int $anchorDay = null): CarbonImmutable
     {
         $date = CarbonImmutable::instance($date);
 
-        return $this->isRecurring() ? $date->addMonthsNoOverflow($this->months()) : $date;
+        if (! $this->isRecurring()) {
+            return $date;
+        }
+
+        $next = $date->addMonthsNoOverflow($this->months());
+
+        if ($anchorDay !== null && $date->isLastOfMonth() && $anchorDay > $date->day && $anchorDay > $next->day) {
+            $next = $next->setDay(min($anchorDay, $next->daysInMonth));
+        }
+
+        return $next;
     }
 
     public function label(): string

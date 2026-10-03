@@ -101,6 +101,7 @@ class InvoiceController extends Controller
             'items.*.taxed' => ['sometimes', 'boolean'],
             'draft' => ['sometimes', 'boolean'],
             'send_email' => ['sometimes', 'boolean'],
+            'currency' => ['sometimes', 'nullable', 'string', 'size:3'],
         ]);
 
         $client = ctype_digit($data['client'])
@@ -109,6 +110,13 @@ class InvoiceController extends Controller
 
         if ($client === null) {
             throw ValidationException::withMessages(['client' => __('No client has that ID or email.')]);
+        }
+
+        // The amounts were typed next to the currency the form showed; the invoice uses the client's.
+        if (filled($data['currency'] ?? null) && strtoupper($data['currency']) !== $client->currency) {
+            return redirect()->route('admin.invoices.create', ['client' => $client->id])->withInput()->withErrors([
+                'client' => __('This client is billed in :currency. Check the amounts and submit again.', ['currency' => $client->currency]),
+            ]);
         }
 
         // Lines below zero are discounts; the invoice as a whole cannot be. Such an invoice is rolled back.

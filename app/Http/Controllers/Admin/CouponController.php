@@ -98,7 +98,10 @@ class CouponController extends Controller
         $data = $request->validate([
             'code' => ['required', 'string', 'max:40', 'regex:/^[A-Z0-9_-]+$/', Rule::unique('coupons', 'code')->ignore($coupon)],
             'type' => ['required', Rule::in([Coupon::TYPE_PERCENT, Coupon::TYPE_FIXED])],
-            'value' => ['required', 'numeric', 'gt:0', $request->input('type') === Coupon::TYPE_PERCENT ? 'max:100' : 'max:1000000'],
+            // Percent discounts are stored as whole numbers, so 12.5 is refused instead of saved as 13.
+            'value' => $request->input('type') === Coupon::TYPE_PERCENT
+                ? ['required', 'integer', 'between:1,100']
+                : ['required', 'numeric', 'gt:0', 'max:1000000'],
             'product_ids' => ['nullable', 'array'],
             'product_ids.*' => ['integer', 'exists:products,id'],
             'billing_cycles' => ['nullable', 'array'],
@@ -113,13 +116,17 @@ class CouponController extends Controller
             'new_clients_only' => ['boolean'],
             'is_active' => ['boolean'],
             'notes' => ['nullable', 'string', 'max:500'],
-        ], ['code.regex' => __('Use only letters, numbers, dashes and underscores.')]);
+        ], [
+            'code.regex' => __('Use only letters, numbers, dashes and underscores.'),
+            'value.integer' => __('Use a whole number from 1 to 100 for a percent discount.'),
+            'value.between' => __('Use a whole number from 1 to 100 for a percent discount.'),
+        ]);
 
         $fixed = $data['type'] === Coupon::TYPE_FIXED;
 
         return [
             ...$data,
-            'value' => $fixed ? Money::toMinor($data['value']) : (int) round((float) $data['value']),
+            'value' => $fixed ? Money::toMinor($data['value']) : (int) $data['value'],
             'currency' => $fixed ? setting('billing.currency') : null,
             'product_ids' => array_values(array_map('intval', $data['product_ids'] ?? [])) ?: null,
             'billing_cycles' => array_values($data['billing_cycles'] ?? []) ?: null,

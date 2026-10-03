@@ -18,6 +18,8 @@ use App\Models\Service;
 use App\Support\Activity;
 use App\Support\Locales;
 use Closure;
+use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Support\Facades\Cache;
 use Throwable;
 
 /**
@@ -26,23 +28,66 @@ use Throwable;
  */
 class Provisioner
 {
+    /**
+     * Cache lock name, followed by the service ID.
+     */
+    public const LOCK_PREFIX = 'nuvabill:provision:service:';
+
     public function __construct(
         private ExtensionManager $extensions,
         private TemplateMailer $mailer,
     ) {}
 
+    /**
+     * Set the service up on its server. One setup runs per service at a time: the queued job, an
+     * order accept and a double click on "Create account" would otherwise each make an account.
+     */
     public function create(Service $service): ModuleResult
+    {
+        $lock = $this->lock($service);
+
+        if (! $lock->get()) {
+            return ModuleResult::fail(__('This service is being set up right now. Check again in a few minutes.'));
+        }
+
+        try {
+            // Read again inside the lock: the copy given may be older than a setup that just finished.
+            $service->refresh();
+
+            [$result, $created] = $this->runCreate($service);
+        } finally {
+            $lock->release();
+        }
+
+        // After the lock is free, so an automation started by the event can act on the service.
+        if ($created) {
+            $this->mailer->send('service.welcome', $service->client, TemplateMailer::serviceContext($service));
+            ServiceActivated::dispatch($service);
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array{0: ModuleResult, 1: bool} The result, and whether the account was created now.
+     */
+    private function runCreate(Service $service): array
     {
         $service->loadMissing('product', 'client', 'server');
 
         if ($service->status === ServiceStatus::Active) {
-            return ModuleResult::ok(__('The service is already active.'));
+            return [ModuleResult::ok(__('The service is already active.')), false];
+        }
+
+        // A service cancelled or terminated while it waited is not set up anymore.
+        if ($service->status !== ServiceStatus::Pending) {
+            return [ModuleResult::fail(__('Only a service that waits to be set up can be created.')), false];
         }
 
         $module = $this->moduleFor($service);
 
         if ($module instanceof ModuleResult) {
-            return $this->failed($service, 'create', $module);
+            return [$this->failed($service, 'create', $module), false];
         }
 
         // A new account goes only to a server that is on and has room: the one picked at order time,
@@ -51,7 +96,7 @@ class Provisioner
             $server = $this->pickServer($service);
 
             if ($server === null) {
-                return $this->failed($service, 'create', ModuleResult::fail(__('No active :module server has free space.', ['module' => $module->name()])));
+                return [$this->failed($service, 'create', ModuleResult::fail(__('No active :module server has free space.', ['module' => $module->name()]))), false];
             }
 
             $service->server()->associate($server);
@@ -61,7 +106,7 @@ class Provisioner
         $result = $module === null ? ModuleResult::ok(__('Activated.')) : $this->attempt(fn (): ModuleResult => $module->create($service));
 
         if (! $result->success) {
-            return $this->failed($service, 'create', $result);
+            return [$this->failed($service, 'create', $result), false];
         }
 
         $service->fill(array_intersect_key($result->data, array_flip(['username', 'password'])));
@@ -74,11 +119,8 @@ class Provisioner
         $service->save();
 
         Activity::log('service.created', "Service #{$service->id} ({$service->label()}) set up: {$result->message}", $service);
-        $this->mailer->send('service.welcome', $service->client, TemplateMailer::serviceContext($service));
 
-        ServiceActivated::dispatch($service);
-
-        return $result;
+        return [$result, true];
     }
 
     public function suspend(Service $service, string $reason): ModuleResult
@@ -87,6 +129,12 @@ class Provisioner
 
         if ($service->status === ServiceStatus::Suspended) {
             return ModuleResult::ok(__('The service is already suspended.'));
+        }
+
+        // A pending, cancelled or terminated service has nothing to suspend, and once suspended it
+        // could be unsuspended to Active without being set up or paid.
+        if ($service->status !== ServiceStatus::Active) {
+            return ModuleResult::fail(__('Only an active service can be suspended.'));
         }
 
         $result = $this->runModule($service, fn (ServerModule $module): ModuleResult => $module->suspend($service, $reason));
@@ -136,10 +184,38 @@ class Provisioner
 
     public function terminate(Service $service): ModuleResult
     {
+        // Not while the account is being created: the setup would finish and make it active again.
+        $lock = $this->lock($service);
+
+        if (! $lock->get()) {
+            return ModuleResult::fail(__('This service is being set up right now. Check again in a few minutes.'));
+        }
+
+        try {
+            // Read again inside the lock: a setup that just finished left an account to remove.
+            $service->refresh();
+
+            [$result, $terminated] = $this->runTerminate($service);
+        } finally {
+            $lock->release();
+        }
+
+        if ($terminated) {
+            ServiceTerminated::dispatch($service);
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array{0: ModuleResult, 1: bool} The result, and whether the service was terminated now.
+     */
+    private function runTerminate(Service $service): array
+    {
         $service->loadMissing('product', 'client', 'server');
 
         if ($service->status === ServiceStatus::Terminated) {
-            return ModuleResult::ok(__('The service is already terminated.'));
+            return [ModuleResult::ok(__('The service is already terminated.')), false];
         }
 
         $wasProvisioned = in_array($service->status, [ServiceStatus::Active, ServiceStatus::Suspended], true);
@@ -149,7 +225,7 @@ class Provisioner
             : ModuleResult::ok(__('Nothing to remove on the server.'));
 
         if (! $result->success) {
-            return $this->failed($service, 'terminate', $result);
+            return [$this->failed($service, 'terminate', $result), false];
         }
 
         $service->update([
@@ -159,9 +235,8 @@ class Provisioner
         ]);
 
         Activity::log('service.terminated', "Service #{$service->id} ({$service->label()}) terminated", $service);
-        ServiceTerminated::dispatch($service);
 
-        return $result;
+        return [$result, true];
     }
 
     public function changePackage(Service $service): ModuleResult
@@ -340,6 +415,15 @@ class Provisioner
 
             return ModuleResult::fail($exception->getMessage());
         }
+    }
+
+    /**
+     * The lock held while a service is set up or removed on its server. It outlasts the slowest
+     * module call, and is freed as soon as the work ends.
+     */
+    private function lock(Service $service): Lock
+    {
+        return Cache::lock(self::LOCK_PREFIX.$service->id, 900);
     }
 
     private function failed(Service $service, string $action, ModuleResult $result): ModuleResult

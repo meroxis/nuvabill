@@ -20,8 +20,10 @@ use App\Provisioning\Provisioner;
 use App\Support\Activity;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Cache;
+use Throwable;
 
 /**
  * The daily billing run: renewal invoices, overdue reminders, suspensions, terminations and domain upkeep.
@@ -107,7 +109,7 @@ class DailyAutomation
 
         if ($suspendDays > 0) {
             foreach ($this->servicesOverdueSince($today->subDays($suspendDays), ServiceStatus::Active) as $service) {
-                $this->provisioner->suspend($service, InvoicePaidHandler::OVERDUE_REASON)->success
+                $this->safely(fn (): bool => $this->provisioner->suspend($service, InvoicePaidHandler::OVERDUE_REASON)->success)
                     ? $summary['suspended']++
                     : $summary['failed']++;
             }
@@ -117,13 +119,30 @@ class DailyAutomation
 
         if ($terminateDays > 0) {
             foreach ($this->servicesOverdueSince($today->subDays($terminateDays), ServiceStatus::Suspended) as $service) {
-                $this->provisioner->terminate($service)->success
+                $this->safely(fn (): bool => $this->provisioner->terminate($service)->success)
                     ? $summary['terminated']++
                     : $summary['failed']++;
             }
         }
 
         return $summary;
+    }
+
+    /**
+     * Run one service's step. An error is reported and counted as failed, so one service or
+     * server that breaks does not stop the suspensions and terminations of all the others.
+     *
+     * @param  Closure(): bool  $step
+     */
+    private function safely(Closure $step): bool
+    {
+        try {
+            return $step();
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return false;
+        }
     }
 
     /**

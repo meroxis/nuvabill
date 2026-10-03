@@ -20,6 +20,7 @@ use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Creates renewal invoices for services and domains that are due soon. Safe to run many times a day,
@@ -92,6 +93,11 @@ class RenewalGenerator
             } catch (UniqueConstraintViolationException) {
                 // Another run invoiced one of these periods a moment ago; its invoice stands.
                 Log::info("Renewal invoice for client {$group['client']->id} skipped: a period on it is already invoiced.");
+
+                continue;
+            } catch (Throwable $exception) {
+                // One invoice that cannot be saved is reported, and the other clients still get theirs.
+                report($exception);
 
                 continue;
             }
