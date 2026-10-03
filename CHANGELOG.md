@@ -9,7 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
-| [0.6.12](https://github.com/meroxis/nuvabill/releases/tag/v0.6.12) | 2 Oct 2026 | Fixes from a full code review: Stripe automatic payments, wallet, renewals, stock and security |
+| [0.6.12](https://github.com/meroxis/nuvabill/releases/tag/v0.6.12) | 2 Oct 2026 | Fixes from a full line-by-line review: sign-in security, payments, wallet, renewals, imports and site health |
 | [0.6.11](https://github.com/meroxis/nuvabill/releases/tag/v0.6.11) | 30 Sep 2026 | Sign in from an order and come back to it; themes and order forms bring their own translations |
 | [0.6.10](https://github.com/meroxis/nuvabill/releases/tag/v0.6.10) | 30 Sep 2026 | Webhooks for add-ons |
 | [0.6.9](https://github.com/meroxis/nuvabill/releases/tag/v0.6.9) | 30 Sep 2026 | Choose the order clients see payment methods in |
@@ -80,6 +80,96 @@ Fixes from a full review of billing, payments and security.
 - The dashboard counts money when it comes in: funds added to a wallet count once, not again when they pay an invoice.
 - **For developers:** release zips leave out login files (`auth.json`, `.npmrc`) and private keys, the signing key
   too. Gateways can say what became of an unclear automatic payment with the new `ChecksSavedCharges` contract.
+
+Then a line-by-line review of all the code found more problems, and they are fixed too:
+
+**Sign-in and accounts**
+
+- **Security:** password reset links and every other link in emails always use your site's own address. Before, a
+  faked address in a request could make a reset link point to another site.
+- **Security:** wrong passwords and two-factor codes are now counted per account, not only per IP address: 10 wrong
+  passwords from one address in 15 minutes, 50 from anywhere in an hour, or 5 wrong codes make that account wait. A
+  password reset lets the owner straight back in, so nobody can keep an account locked. A used two-factor code cannot
+  be used again.
+- **Security:** a new or reset password signs out every other device. You stay signed in on the device you used.
+- **Security:** changing the email address or adding a passkey needs the current password. Clients who only sign in
+  with Google or GitHub get a code at their current address instead. The old address gets a notice.
+- **Security:** Google and GitHub sign-in only joins an existing account when that account's email was confirmed.
+  Email addresses are saved in small letters, so one address cannot be used twice with different capitals. Site
+  health lists older clients that share an address in different capitals, so you can decide which account stays.
+- **Security:** clients who turned on two-factor sign-in are always asked for the code, also when you switch client
+  two-factor off. Off now only stops new set-ups.
+- Only owners can give the Owner role or change an owner. The last owner can no longer be switched off.
+- The installer stays closed when the database already has staff, also when its lock file is gone.
+
+**Payments and billing**
+
+- Cancelling an invoice or an order that already has money on it puts that money back in the client's wallet. A
+  payment that reaches a cancelled invoice goes to the wallet too.
+- Coupon use limits hold when many clients check out at the same moment.
+- A domain without a renewal price is no longer renewed for free. The client is asked to open a ticket.
+- An upgrade that was not paid stops before the service renews, so the client is not billed twice for the same days.
+  Moving to a sold-out plan is refused.
+- **New setting:** *Cancel unpaid new orders after (days)* in Settings → General. It is 7 by default: a pending order
+  whose invoice is still unpaid 7 days after its due date is cancelled at night, and its stock and server room are
+  freed. On sites that update, only orders placed after the update are cancelled; older pending orders stay as they
+  are. Set it to 0 to turn it off.
+- A credit note can only send back money that came in as a payment, and it says when a gateway sent back only part.
+- Affiliate totals are kept per currency. A commission on a refunded invoice is cancelled or made smaller.
+- PayPal automatic payments are never charged twice: an unclear charge is checked before the next try. PayPal and
+  Stripe are only offered in currencies they really take.
+- Stripe only accepts payments this site started. Wayl refuses links made in Test mode once it is live, and a
+  payment held for that reason is shown to billing staff until the invoice is paid.
+- Amounts with fils or cents show them, for example IQD 12,962.25.
+- Staff without billing access no longer see invoices, payments or revenue on client pages and the dashboard.
+
+**Servers and domains**
+
+- One setup runs per service at a time, so a double click cannot make two accounts.
+- Plesk only changes the exact subscription of the service. Proxmox suspensions also turn off start on boot, a failed
+  VPS build is removed again, and one fixed IP cannot go to two VPSs. cPanel passwords are no longer sent in the
+  address of a request.
+- Phone numbers keep the right digits in every country, and domain orders only take names that can be registered.
+
+**Imports**
+
+- **Security:** an import no longer joins a client from another system to a Nuvabill account only because the email
+  is the same. The dry run lists these clients.
+- Imports from a database on another server use an encrypted connection with certificate checks. New settings let
+  you add a CA file, or turn encryption off for a server without it.
+- Running an import again keeps what you changed in Nuvabill: paid invoices, statuses and wallet money. A client you
+  erased on request is not brought back.
+
+**Site health, updates and backups**
+
+- Site health finds more: settings files that make the server run code, a proxy list without Cloudflare's addresses,
+  and a CAPTCHA that is chosen but not on yet. Old results no longer keep the database password hash.
+- *Mark as mine* only accepts files that did not change after the check.
+- MySQL and MariaDB backups are written straight to a file, so big databases no longer run out of memory.
+- An update that stopped halfway finishes by itself, and a finished update is never rolled back.
+
+**Marketplace**
+
+- A credit note takes back the developer's share, and a full refund ends the license.
+- Renamed items keep their old short name. Changes to a live listing wait for a reviewer.
+- Download counts can no longer be pushed up, and package checks find PHP code hidden in other file types.
+
+**Automations, chat apps and AI**
+
+- Timed automations run again for a renewed domain or a moved due date. A run stops when its steps were changed.
+- Webhook steps cannot reach private network addresses, and their secret addresses stay out of the log.
+- Each chat can send 10 messages a minute. A closed account's chat can no longer read invoices or tickets.
+- Automatic AI translation has a limit per client and per month.
+
+**Emails, privacy and pages**
+
+- **Security:** names, ticket text and other client input in emails show as plain text, so they cannot add links.
+- Erasing a client also removes their IP addresses from the activity log. The client's own export leaves out staff
+  notes and drafts.
+- The public status page no longer names servers you keep off it.
+- Search texts keep Arabic, Russian and Chinese letters whole.
+- **For developers:** gateways can say they do not convert currencies with `convertsCurrency()`, add-ons save
+  settings safely with `ExtensionManager::mergeSettings()`, and release zips only hold the built-in extensions.
 - In 10 languages.
 
 ## 0.6.11
