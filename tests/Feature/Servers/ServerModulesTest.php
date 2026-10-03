@@ -181,7 +181,7 @@ class ServerModulesTest extends TestCase
         $result = app(Provisioner::class)->create($service);
 
         $this->assertTrue($result->success, $result->message);
-        $this->assertSame(['vmid' => 105, 'node' => 'pve1'], $service->fresh()->module_data);
+        $this->assertSame(['vmid' => 105, 'node' => 'pve1', 'ip_config' => 'ip=203.0.113.20/24,gw=203.0.113.1', 'ip' => '203.0.113.20'], $service->fresh()->module_data);
         Sleep::assertSleptTimes(1);
         Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/qemu/9000/clone') && $request['newid'] === 105 && $request['name'] === 'vps.example.com'
             && $request->hasHeader('Authorization', 'PVEAPIToken=root@pam!nuvabill=TESTTOKEN123'));
@@ -361,6 +361,47 @@ class ServerModulesTest extends TestCase
         $this->assertSame([], $node->log);
     }
 
+    public function test_the_nightly_recheck_leaves_a_vps_that_was_unsuspended_while_it_waited(): void
+    {
+        Sleep::fake();
+        $flagged = ['node' => 'pve1', Provisioner::RECHECK_SUSPENSION => 7];
+        $first = $this->service('proxmox', 'pve.example.test', ['node' => 'pve1'], ['status' => ServiceStatus::Suspended, 'module_data' => ['vmid' => 105] + $flagged, 'updated_at' => now()->subDay()], ['port' => 8006]);
+        $paid = Service::factory()->create(['product_id' => $first->product_id, 'server_id' => $first->server_id, 'status' => ServiceStatus::Suspended, 'module_data' => ['vmid' => 106] + $flagged]);
+        $running = [105 => true, 106 => false];
+        $log = [];
+
+        Http::fake(function (Request $request) use (&$running, &$log, $paid) {
+            $path = (string) preg_replace('#^/api2/json/nodes/pve1/#', '', (string) parse_url($request->url(), PHP_URL_PATH));
+            $log[] = $request->method().' '.$path.(isset($request['onboot']) ? ' onboot='.$request['onboot'] : '');
+
+            // While the first node is slow to answer, the client of the second VPS pays and it is unsuspended.
+            if ($log === ['PUT qemu/105/config onboot=0']) {
+                app(Provisioner::class)->unsuspend($paid->fresh());
+            }
+
+            if (preg_match('#^qemu/(\d+)/status/(start|stop)$#', $path, $match)) {
+                $running[(int) $match[1]] = $match[2] === 'start';
+            }
+
+            return match (true) {
+                str_starts_with($path, 'tasks/') => Http::response(['data' => ['status' => 'stopped', 'exitstatus' => 'OK']]),
+                (bool) preg_match('#^qemu/(\d+)/status/current$#', $path, $match) => Http::response(['data' => ['status' => $running[(int) $match[1]] ? 'running' : 'stopped']]),
+                str_contains($path, '/status/') => Http::response(['data' => 'UPID:pve1:0002:power']),
+                default => Http::response(['data' => null]),
+            };
+        });
+
+        $this->assertSame(1, app(Provisioner::class)->recheckSuspensions());
+
+        $this->assertSame(ServiceStatus::Active, $paid->fresh()->status);
+        $this->assertTrue($running[106], 'The VPS that was paid for keeps running.');
+        $this->assertFalse($running[105]);
+        $this->assertNotContains('PUT qemu/106/config onboot=0', $log);
+        $this->assertNotContains('POST qemu/106/status/stop', $log);
+        $this->assertSame(['vmid' => 106, 'node' => 'pve1'], $paid->fresh()->module_data, 'An unsuspended VPS is not checked again.');
+        $this->assertSame(ServiceStatus::Suspended, $first->fresh()->status);
+    }
+
     public function test_a_stopped_setup_job_is_logged_for_staff(): void
     {
         $service = Service::factory()->pending()->create();
@@ -382,7 +423,7 @@ class ServerModulesTest extends TestCase
 
         $this->assertTrue($result->success, $result->message);
         $this->assertSame(ServiceStatus::Active, $service->fresh()->status);
-        $this->assertSame(['vmid' => 105, 'node' => 'pve1'], $service->fresh()->module_data);
+        $this->assertSame(['vmid' => 105, 'node' => 'pve1', 'ip_config' => 'ip=dhcp'], $service->fresh()->module_data);
 
         // A task that really failed still fails.
         $node->exitStatus = 'unable to remove disk';
@@ -434,6 +475,7 @@ class ServerModulesTest extends TestCase
         Http::fake();
         $config = ['node' => 'pve1', 'template' => '9000', 'cores' => '1', 'memory' => '1024', 'ip_config' => 'ip=203.0.113.20/24,gw=203.0.113.1'];
 
+        // Made before a VPS remembered its network, so its product's setting counts.
         $first = $this->service('proxmox', 'pve.example.test', $config, ['module_data' => ['vmid' => 104, 'node' => 'pve1']], ['port' => 8006]);
         $second = Service::factory()->pending()->create(['product_id' => $first->product_id, 'server_id' => $first->server_id]);
 
@@ -443,6 +485,41 @@ class ServerModulesTest extends TestCase
         $this->assertSame('This product has a fixed IP that another service already uses. Give each VPS its own IP.', $result->message);
         $this->assertSame(ServiceStatus::Pending, $second->fresh()->status);
         Http::assertNothingSent();
+    }
+
+    public function test_proxmox_checks_the_ip_each_vps_got_not_its_products_current_setting(): void
+    {
+        Sleep::fake();
+        $this->fakeProxmox(running: false, exitStatus: 'OK');
+        $config = ['node' => 'pve1', 'template' => '9000', 'cores' => '1', 'memory' => '1024', 'ip_config' => 'ip=203.0.113.10/24,gw=203.0.113.1'];
+        $first = $this->service('proxmox', 'pve.example.test', $config, ['status' => ServiceStatus::Pending], ['port' => 8006]);
+
+        $this->assertTrue(app(Provisioner::class)->create($first)->success);
+        $this->assertSame('203.0.113.10', $first->fresh()->module_data['ip'] ?? null);
+
+        // Staff give the product the next free IP for its next sale: the first VPS keeps its own.
+        $first->product->update(['module_config' => ['ip_config' => 'ip=203.0.113.11/24,gw=203.0.113.1'] + $config]);
+        $second = Service::factory()->pending()->create(['product_id' => $first->product_id, 'server_id' => $first->server_id]);
+
+        $result = app(Provisioner::class)->create($second);
+
+        $this->assertTrue($result->success, $result->message);
+        $this->assertSame('203.0.113.11', $second->fresh()->module_data['ip'] ?? null);
+
+        // Another product set to the first VPS's IP would knock it offline.
+        $other = Product::factory()->create(['server_module' => 'proxmox', 'server_id' => $first->server_id, 'module_config' => $config]);
+        $third = Service::factory()->pending()->create(['product_id' => $other->id, 'server_id' => $first->server_id]);
+
+        $result = app(Provisioner::class)->create($third);
+
+        $this->assertFalse($result->success);
+        $this->assertSame('This product has a fixed IP that another service already uses. Give each VPS its own IP.', $result->message);
+        $this->assertSame(ServiceStatus::Pending, $third->fresh()->status);
+
+        // Once the first VPS is gone, its IP is free again.
+        $first->update(['status' => ServiceStatus::Terminated]);
+
+        $this->assertTrue(app(Provisioner::class)->create($third->fresh())->success);
     }
 
     public function test_cpanel_sends_the_account_password_in_the_body_not_the_url(): void

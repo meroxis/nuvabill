@@ -224,11 +224,14 @@ class UnpaidOrdersTest extends TestCase
 
         // The order is cancelled while the server makes the account, by a path that did not wait for
         // the locks (for example after the cache was cleared).
-        Http::fake(['*/json-api/createacct*' => function () use ($order) {
-            app(OrderCanceller::class)->cancel($order->fresh());
+        Http::fake([
+            '*/json-api/createacct*' => function () use ($order) {
+                app(OrderCanceller::class)->cancel($order->fresh());
 
-            return Http::response(['metadata' => ['result' => 1, 'reason' => 'Account Creation Ok']]);
-        }]);
+                return Http::response(['metadata' => ['result' => 1, 'reason' => 'Account Creation Ok']]);
+            },
+            '*/json-api/removeacct*' => Http::response(['metadata' => ['result' => 1, 'reason' => 'Account removed']]),
+        ]);
 
         $this->signInAdmin();
         $this->post(route('admin.orders.accept', $order))->assertSessionHas('error');
@@ -236,7 +239,8 @@ class UnpaidOrdersTest extends TestCase
         $service = $order->services()->sole();
         $this->assertSame(ServiceStatus::Cancelled, $service->status, 'Not brought back as a free service that never renews.');
         $this->assertSame(OrderStatus::Cancelled, $order->fresh()->status);
-        $this->assertStringContainsString('its account was made on the server', ActivityLog::query()->where('action', 'service.module_failed')->sole()->description);
+        $this->assertStringContainsString('so it was not activated', ActivityLog::query()->where('action', 'service.module_failed')->sole()->description);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'service.account_removed')->count(), 'The account made for the cancelled order is removed again.');
     }
 
     public function test_orders_placed_before_the_update_are_never_cancelled_unpaid(): void

@@ -23,9 +23,10 @@ if (Installation::isInstalled()) {
     Schedule::command('nuvabill:cron')->dailyAt('00:15')->withoutOverlapping(120);
 
     // The default queue first: AI translations wait until services and domains are set up. The lock outlasts
-    // one run (50 seconds plus one long job), but not a day if a crash leaves it behind.
+    // one run (50 seconds of other jobs plus one VPS setup of up to 15 minutes), but not a day if a crash
+    // leaves it behind.
     $queues = (config('queue.connections.'.config('queue.default').'.queue') ?: 'default').','.TranslateTicketReply::QUEUE;
-    Schedule::command("queue:work --queue={$queues} --stop-when-empty --max-time=50 --tries=1")->everyMinute()->withoutOverlapping(10);
+    Schedule::command("queue:work --queue={$queues} --stop-when-empty --max-time=50 --tries=1")->everyMinute()->withoutOverlapping(20);
 
     // Automations: runs whose wait is over, and the timed triggers once a day.
     Schedule::command('nuvabill:automations')->everyFiveMinutes()->withoutOverlapping(30);

@@ -49,14 +49,29 @@ class InterruptedJobsTest extends TestCase
         config(['queue.default' => 'database']);
         $run = $this->automationRun(AutomationRun::RUNNING);
         ContinueAutomationRun::dispatch($run->id);
-        // The worker that took the job five minutes ago never finished it.
-        DB::table('jobs')->update(['attempts' => 1, 'reserved_at' => now()->subMinutes(5)->getTimestamp()]);
+        // The worker that took the job twenty minutes ago (longer than any job may run) never finished it.
+        DB::table('jobs')->update(['attempts' => 1, 'reserved_at' => now()->subMinutes(20)->getTimestamp()]);
 
         $this->artisan('queue:work', ['--once' => true, '--stop-when-empty' => true, '--tries' => 1])->assertSuccessful();
 
         $this->assertSame(AutomationRun::FAILED, $run->refresh()->status);
         $this->assertSame(1, DB::table('failed_jobs')->count());
         $this->assertSame(0, DB::table('jobs')->count());
+    }
+
+    public function test_a_long_vps_setup_that_is_still_running_is_left_to_its_worker(): void
+    {
+        config(['queue.default' => 'database']);
+        $service = Service::factory()->pending()->create();
+        ProvisionService::dispatch($service);
+        // A slow disk clone: the first worker took the job eleven minutes ago and still waits on the node.
+        DB::table('jobs')->update(['attempts' => 1, 'reserved_at' => now()->subMinutes(11)->getTimestamp()]);
+
+        $this->artisan('queue:work', ['--once' => true, '--stop-when-empty' => true, '--tries' => 1])->assertSuccessful();
+
+        $this->assertSame(1, DB::table('jobs')->count(), 'The running job stays with the worker doing it.');
+        $this->assertSame(0, DB::table('failed_jobs')->count());
+        $this->assertDatabaseMissing('activity_logs', ['action' => 'service.module_failed', 'subject_id' => $service->id]);
     }
 
     public function test_runs_left_running_for_a_long_time_are_marked_failed_by_the_regular_check(): void

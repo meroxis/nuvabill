@@ -10,6 +10,7 @@ use App\Models\Product;
 use App\Models\Server;
 use App\Models\Service;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
@@ -86,8 +87,9 @@ class ProxmoxModule extends Module implements HasClientPanel
             }
 
             $ipConfig = (string) ($this->productSetting($service, 'ip_config') ?: 'ip=dhcp');
+            $fixedIp = $this->fixedIp($ipConfig);
 
-            if ($this->fixedIpInUse($service, $ipConfig)) {
+            if ($fixedIp !== null && $this->fixedIpInUse($service, $fixedIp)) {
                 return ModuleResult::fail(__('This product has a fixed IP that another service already uses. Give each VPS its own IP.'));
             }
 
@@ -137,7 +139,9 @@ class ProxmoxModule extends Module implements HasClientPanel
             return ModuleResult::ok(__('Virtual server :id created.', ['id' => $vmId]), [
                 'username' => 'root',
                 'password' => $password,
-                'module_data' => ['vmid' => $vmId, 'node' => $node],
+                // The network the VM got, so the fixed IP check does not depend on the product's
+                // setting, which staff may change for the next sale.
+                'module_data' => array_filter(['vmid' => $vmId, 'node' => $node, 'ip_config' => $ipConfig, 'ip' => $fixedIp]),
             ]);
         });
     }
@@ -335,25 +339,35 @@ class ProxmoxModule extends Module implements HasClientPanel
     }
 
     /**
-     * Whether the product's fixed IP (not DHCP) is already used by a live VPS of a Proxmox product.
-     * Two VMs with one IP knock each other offline.
+     * The fixed IPv4 address in an ipconfig0 value such as "ip=203.0.113.10/24,gw=203.0.113.1",
+     * or null for DHCP.
      */
-    private function fixedIpInUse(Service $service, string $ipConfig): bool
+    private function fixedIp(string $ipConfig): ?string
     {
-        if (! preg_match('/(?:^|,)ip=([0-9.]+)\//', $ipConfig, $match)) {
-            return false;
-        }
+        return preg_match('/(?:^|,)ip=([0-9.]+)\//', $ipConfig, $match) ? $match[1] : null;
+    }
 
-        $sameIp = '/(?:^|,)ip='.preg_quote($match[1], '/').'\//';
-        $productIds = Product::query()->where('server_module', $this->slug())->get(['id', 'module_config'])
+    /**
+     * Whether a live VPS of a Proxmox product already has this fixed IP. Two VMs with one IP knock
+     * each other offline. A VPS remembers the network it got; one made before Nuvabill stored that
+     * is checked by its product's current setting.
+     */
+    private function fixedIpInUse(Service $service, string $ip): bool
+    {
+        $products = Product::query()->where('server_module', $this->slug())->get(['id', 'module_config']);
+        $sameIp = '/(?:^|,)ip='.preg_quote($ip, '/').'\//';
+        $olderWithIp = $products
             ->filter(fn (Product $product): bool => preg_match($sameIp, (string) ($product->module_config['ip_config'] ?? '')) === 1)
             ->modelKeys();
 
         return Service::query()
-            ->whereIn('product_id', $productIds)
+            ->whereIn('product_id', $products->modelKeys())
             ->whereKeyNot($service->id)
             ->whereIn('status', [ServiceStatus::Active, ServiceStatus::Suspended])
             ->whereNotNull('module_data->vmid')
+            ->where(fn (Builder $query): Builder => $query
+                ->where('module_data->ip', $ip)
+                ->orWhere(fn (Builder $query): Builder => $query->whereNull('module_data->ip_config')->whereIn('product_id', $olderWithIp)))
             ->exists();
     }
 

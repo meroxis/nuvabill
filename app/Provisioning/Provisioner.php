@@ -21,7 +21,6 @@ use Closure;
 use Illuminate\Contracts\Cache\Lock;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -124,24 +123,61 @@ class Provisioner
             $service->module_data = array_merge((array) $service->module_data, $result->data['module_data']);
         }
 
-        // Active only while it still waits under a row lock: a service cancelled while the server made
-        // the account (for example an unpaid order the nightly run cancelled) is not brought back
-        // without a due date. The account details are kept either way, so staff can find it.
-        $activated = DB::transaction(function () use ($service): bool {
-            $current = Service::query()->lockForUpdate()->whereKey($service->id)->first(['id', 'status'])?->status;
-            $service->status = $current === ServiceStatus::Pending ? ServiceStatus::Active : ($current ?? $service->status);
-            $service->save();
+        // The account details first, so they are kept even when the service is not activated below.
+        $service->save();
 
-            return $current === ServiceStatus::Pending;
-        });
+        // Only a service that still waits is activated: staff may have cancelled its order while the
+        // account was being made, and that cancel stands. An Active service without a due date
+        // would never be billed.
+        $activated = Service::query()->whereKey($service->id)->where('status', ServiceStatus::Pending)->update(['status' => ServiceStatus::Active]);
 
-        if (! $activated) {
-            return [$this->failed($service, 'create', ModuleResult::fail(__('The service was cancelled or changed while it was being set up, but its account was made on the server. Remove that account there if it is not needed.'))), false];
+        if ($activated === 0) {
+            return [$this->notActivated($service, $module), false];
         }
+
+        $service->status = ServiceStatus::Active;
+        $service->syncOriginalAttribute('status');
 
         Activity::log('service.created', "Service #{$service->id} ({$service->label()}) set up: {$result->message}", $service);
 
         return [$result, true];
+    }
+
+    /**
+     * The service stopped waiting while its account was being made: its order was cancelled, or
+     * staff changed its status by hand. It stays as it is now. A service that should have nothing
+     * on the server (cancelled, terminated or fraud) gets its new account removed again.
+     */
+    private function notActivated(Service $service, ?ServerModule $module): ModuleResult
+    {
+        $service->refresh();
+        $subject = "Service #{$service->id} ({$service->label()}) was {$service->status->value} while it was being set up, so it was not activated.";
+
+        if (in_array($service->status, [ServiceStatus::Active, ServiceStatus::Suspended], true)) {
+            Activity::log('service.module_failed', $subject.($module === null ? ' Check the service.' : ' Its new account was kept, so check the service.'), $service);
+
+            return ModuleResult::fail(__('The service was changed while it was being set up, so it was not activated. Check the service.'));
+        }
+
+        if ($module === null) {
+            Activity::log('service.module_failed', $subject, $service);
+
+            return ModuleResult::fail(__('The service was cancelled while it was being set up, so it was not activated.'));
+        }
+
+        // Logged before the removal: removing a VPS can take minutes, and the job may be stopped first.
+        Activity::log('service.module_failed', "{$subject} Removing its new account from the server.", $service);
+        $removed = $this->attempt(fn (): ModuleResult => $module->terminate($service));
+
+        if (! $removed->success) {
+            Activity::log('service.module_failed', "Remove the new account of service #{$service->id} ({$service->label()}) from the server: it could not be removed: {$removed->message}", $service);
+
+            return ModuleResult::fail(__('The service was cancelled while it was being set up. Remove the new account from the server.'));
+        }
+
+        Activity::log('service.account_removed', "Service #{$service->id} ({$service->label()}): the account made while it was {$service->status->value} was removed from the server.", $service);
+
+        return ModuleResult::fail(__('The service was cancelled while it was being set up, so its new account was removed again.'));
     }
 
     public function suspend(Service $service, string $reason): ModuleResult
@@ -195,7 +231,7 @@ class Provisioner
             'status' => ServiceStatus::Active,
             'suspended_at' => null,
             'suspension_reason' => null,
-        ]);
+        ] + $this->withoutRecheck($service));
 
         Activity::log('service.unsuspended', "Service #{$service->id} ({$service->label()}) unsuspended", $service);
         $this->mailer->send('service.unsuspended', $service->client, TemplateMailer::serviceContext($service));
@@ -213,7 +249,6 @@ class Provisioner
         $done = 0;
 
         $services = Service::query()
-            ->with('product', 'client', 'server')
             ->where('status', ServiceStatus::Suspended)
             ->whereNotNull('module_data->'.self::RECHECK_SUSPENSION)
             ->orderBy('updated_at')
@@ -221,7 +256,15 @@ class Provisioner
             ->limit($limit)
             ->get();
 
-        foreach ($services as $service) {
+        foreach ($services as $listed) {
+            // Read again: each call may wait minutes on its node, and a service unsuspended, removed
+            // or deleted meanwhile must not be stopped.
+            $service = $listed->fresh(['product', 'client', 'server']);
+
+            if ($service === null || $service->status !== ServiceStatus::Suspended || ! array_key_exists(self::RECHECK_SUSPENSION, (array) $service->module_data)) {
+                continue;
+            }
+
             $result = $this->runModule($service, fn (ServerModule $module): ModuleResult => $module->suspend($service, (string) $service->suspension_reason));
             $data = (array) $service->module_data;
             $triesLeft = $result->success ? 0 : (int) ($data[self::RECHECK_SUSPENSION] ?? 0) - 1;
@@ -238,6 +281,19 @@ class Provisioner
         }
 
         return $done;
+    }
+
+    /**
+     * The update that removes the RECHECK_SUSPENSION flag, or none when the service has no flag.
+     * A service that was unsuspended or terminated is not suspended again by the nightly run.
+     *
+     * @return array<string, mixed>
+     */
+    private function withoutRecheck(Service $service): array
+    {
+        $data = (array) $service->module_data;
+
+        return array_key_exists(self::RECHECK_SUSPENSION, $data) ? ['module_data' => Arr::except($data, self::RECHECK_SUSPENSION)] : [];
     }
 
     public function terminate(Service $service): ModuleResult
@@ -290,7 +346,7 @@ class Provisioner
             'status' => ServiceStatus::Terminated,
             'terminated_at' => now(),
             'next_due_date' => null,
-        ]);
+        ] + $this->withoutRecheck($service));
 
         Activity::log('service.terminated', "Service #{$service->id} ({$service->label()}) terminated", $service);
 
