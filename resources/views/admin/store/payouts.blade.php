@@ -16,7 +16,12 @@
                 <tbody>
                 @forelse ($developers as $developer)
                     <tr>
-                        <td><a class="row-link" href="{{ route('admin.store.developers.edit', $developer) }}">{{ $developer->name }}</a></td>
+                        <td>
+                            <a class="row-link" href="{{ route('admin.store.developers.edit', $developer) }}">{{ $developer->name }}</a>
+                            @if ($toCheck->has($developer->id))
+                                <div style="font-size:.8rem;color:var(--nb-warn)">{{ trans_choice('Invoice :numbers got part of its money back, but this developer\'s share was not reduced. Check it before you pay.|Invoices :numbers got part of their money back, but this developer\'s shares were not reduced. Check them before you pay.', $toCheck[$developer->id]->count(), ['numbers' => $toCheck[$developer->id]->implode(', ')]) }}</div>
+                            @endif
+                        </td>
                         <td>{{ \App\Http\Controllers\Marketplace\DeveloperController::PAYOUT_METHODS[$developer->payout_method] ?? __('Not set') }}</td>
                         <td class="end num">{{ (int) $owed[$developer->id]->sales }}</td>
                         <td class="end num"><b>{{ money((int) $owed[$developer->id]->owed, $currency) }}</b></td>

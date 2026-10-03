@@ -5,11 +5,13 @@ namespace App\Http\Controllers\Marketplace\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Developer;
 use App\Models\DeveloperEarning;
+use App\Models\Invoice;
 use App\Models\Payout;
 use App\Support\Activity;
 use App\Support\Settings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
@@ -33,6 +35,7 @@ class PayoutController extends Controller
         return view('admin.store.payouts', [
             'developers' => Developer::query()->whereIn('id', $owed->keys())->orderBy('name')->get(),
             'owed' => $owed,
+            'toCheck' => $this->toCheck($currency),
             'payouts' => Payout::query()->with('developer')->latest('id')->limit(20)->get(),
             'currency' => $currency,
             'share' => (int) setting('marketplace.developer_share', 83),
@@ -101,6 +104,32 @@ class PayoutController extends Controller
         Activity::log('payout.recorded', 'Payout of '.money($payout->amount, $currency)." to {$developer->name} recorded");
 
         return back()->with('status', __('Payout of :amount to :name recorded.', ['amount' => money($payout->amount, $currency), 'name' => $developer->name]));
+    }
+
+    /**
+     * Unpaid shares on invoices that got part of their money back while the share stayed whole. A
+     * credit note on an invoice with more lines cannot say whose item it refunds, so nothing was
+     * taken back (EarningsRecorder::reverse()) and staff check these before paying.
+     *
+     * @return Collection<int, Collection<int, string>> Invoice numbers by developer id.
+     */
+    private function toCheck(string $currency): Collection
+    {
+        $earnings = DeveloperEarning::query()
+            ->whereNull('payout_id')
+            ->whereNull('credit_note_id')
+            ->where('gross', '>', 0)
+            ->where('currency', $currency)
+            ->whereExists(fn ($query) => $query->selectRaw('1')->from('credit_notes')->whereColumn('credit_notes.invoice_id', 'developer_earnings.invoice_id'))
+            ->whereNotExists(fn ($query) => $query->selectRaw('1')->from('developer_earnings as taken')->whereColumn('taken.reverses_id', 'developer_earnings.id'))
+            ->get(['developer_id', 'invoice_id']);
+        $invoices = Invoice::query()->whereIn('id', $earnings->pluck('invoice_id')->unique())->get(['id', 'number'])->keyBy('id');
+
+        return $earnings->groupBy('developer_id')->map(fn (Collection $rows): Collection => $rows
+            ->map(fn (DeveloperEarning $earning): ?string => $invoices->get($earning->invoice_id)?->displayNumber())
+            ->filter()
+            ->unique()
+            ->values());
     }
 
     public function commission(Request $request, Settings $settings): RedirectResponse

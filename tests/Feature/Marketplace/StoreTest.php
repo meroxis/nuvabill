@@ -400,6 +400,47 @@ class StoreTest extends TestCase
         $this->assertSame(1, ActivityLog::query()->where('action', 'earning.review')->count());
     }
 
+    public function test_part_of_one_item_sold_with_other_lines_is_left_for_staff_who_are_told_at_once(): void
+    {
+        $item = $this->liveItem('swift', 'orderform', 3900, 1500);
+        $developer = $item->developer;
+        $invoice = $this->buy($item);
+
+        // One more line on the same invoice that is no marketplace item.
+        $invoice->items()->create(['description' => 'Setup help', 'amount' => 6100]);
+        $invoice->recalculate();
+        $invoice->save();
+        $this->assertSame(10000, $invoice->total);
+        app(PaymentRecorder::class)->record($invoice->fresh(), 10000, 'banktransfer', 'wire-1');
+        $license = License::query()->sole();
+        $this->assertSame(3237, $developer->balance('USD'));
+
+        // $61 back for the setup help: the item's share stays whole, and the admin is told so at once.
+        $this->signInAdmin();
+        $this->from(route('admin.invoices.show', $invoice))->followingRedirects()
+            ->post(route('admin.invoices.credit-notes.store', $invoice), ['amount' => '61.00', 'method' => CreditNote::METHOD_NONE, 'reason' => 'Setup help refund'])
+            ->assertOk()
+            ->assertSee(CreditNote::query()->sole()->number)
+            ->assertSee('No developer share was reduced, so the developer of the refunded item is still owed its full share');
+        $this->assertSame(3237, $developer->balance('USD'));
+        $this->assertTrue($license->fresh()->isActive());
+        $review = ActivityLog::query()->where('action', 'earning.review')->sole();
+        $this->assertSame($invoice->id, $review->subject_id);
+
+        // Whoever pays the developer sees the share that was not reduced.
+        $marked = trans_choice('Invoice :numbers got part of its money back, but this developer\'s share was not reduced. Check it before you pay.|Invoices :numbers got part of their money back, but this developer\'s shares were not reduced. Check them before you pay.', 1, ['numbers' => $invoice->fresh()->displayNumber()]);
+        $this->get(route('admin.store.payouts.index'))->assertOk()->assertSee($marked);
+
+        // The rest back as well: the whole share is taken back and the key stops working.
+        $this->post(route('admin.invoices.credit-notes.store', $invoice), ['amount' => '39.00', 'method' => CreditNote::METHOD_NONE])
+            ->assertSessionHas('status')
+            ->assertSessionMissing('warning');
+        $this->assertSame(0, $developer->balance('USD'));
+        $this->assertSame(License::STATUS_REVOKED, $license->fresh()->status);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'earning.review')->count());
+        $this->get(route('admin.store.payouts.index'))->assertOk()->assertDontSee($marked);
+    }
+
     public function test_two_licenses_of_the_same_item_on_one_invoice_each_earn_a_share(): void
     {
         $item = $this->liveItem('swift', 'orderform', 3900, 1500);

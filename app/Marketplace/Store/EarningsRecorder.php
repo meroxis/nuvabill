@@ -166,9 +166,28 @@ class EarningsRecorder
             return true;
         }
 
-        Activity::log('earning.review', "Credit note {$creditNote->number} gives back part of invoice {$invoice->displayNumber()}, which has more than one line, so developer shares and keys were not changed. Check which item was refunded and revoke its key if needed.", $invoice);
+        $this->askStaffToCheck($invoice, $creditNote);
 
         return false;
+    }
+
+    /**
+     * Nothing was taken back, so staff must check the credit note: the activity log keeps it, the
+     * payouts page marks the shares, and the admin who made it is told at once.
+     */
+    private function askStaffToCheck(Invoice $invoice, CreditNote $creditNote): void
+    {
+        Activity::log('earning.review', "Credit note {$creditNote->number} gives back part of invoice {$invoice->displayNumber()}, which has more than one line, so no developer share was reduced and no key was revoked. The developer of the refunded item is still owed its full share. Check which item was refunded and revoke its key if needed.", $invoice);
+
+        $request = request();
+
+        // Only in the admin area: a client never sees how the store splits its money.
+        if ($request->hasSession() && $request->routeIs('admin.*')) {
+            $request->session()->flash('warning', __('Credit note :number gives back part of invoice :invoice, which has more than one line. No developer share was reduced, so the developer of the refunded item is still owed its full share, and its license key still works. Revoke the key by hand if needed.', [
+                'number' => $creditNote->number,
+                'invoice' => $invoice->displayNumber(),
+            ]));
+        }
     }
 
     /**
