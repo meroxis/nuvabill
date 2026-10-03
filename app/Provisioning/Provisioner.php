@@ -358,10 +358,7 @@ class Provisioner
             return false;
         }
 
-        return $server->max_accounts === null || $server->services()
-            ->whereKeyNot($service->id)
-            ->whereIn('status', [ServiceStatus::Active, ServiceStatus::Suspended, ServiceStatus::Pending])
-            ->count() < $server->max_accounts;
+        return $server->max_accounts === null || $server->accounts()->whereKeyNot($service->id)->count() < $server->max_accounts;
     }
 
     private function pickServer(Service $service): ?Server

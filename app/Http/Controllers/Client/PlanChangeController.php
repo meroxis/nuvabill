@@ -35,7 +35,7 @@ class PlanChangeController extends Controller
             'blocked' => $blocked,
             'pending' => $changes->pendingFor($service),
             'options' => $options,
-            'modeFor' => fn (int $difference): string => $changes->modeFor($difference),
+            'modeFor' => fn (int $difference): string => $changes->modeFor($difference, $service),
         ]);
     }
 

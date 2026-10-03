@@ -42,6 +42,7 @@ class OrderPlacer
      * @param  string|null  $ipCountry  The visitor's country from a trusted proxy, for the fraud check.
      *
      * @throws SoldOut When the order wants more of a product than is left; nothing is made then.
+     * @throws CouponUnavailable When the coupon stopped working in the meantime; nothing is made then.
      */
     public function place(Client $client, Collection $lines, ?string $ipAddress = null, ?string $ipCountry = null, ?Coupon $coupon = null): Order
     {
@@ -55,7 +56,12 @@ class OrderPlacer
 
         $fraudReasons = $this->fraud->reasons($client, $ipAddress, $ipCountry);
 
-        $order = DB::transaction(function () use ($client, $lines, $ipAddress, $fraudReasons, $coupon): Order {
+        $order = DB::transaction(function () use ($client, $lines, $ipAddress, $fraudReasons, &$coupon): Order {
+            // First, before anything is read: the coupon's limits are checked again under a lock.
+            if ($coupon !== null && $lines->contains(fn (CartLine $line): bool => $line->discount > 0)) {
+                $coupon = $this->lockCoupon($client, $coupon);
+            }
+
             $this->reserveStock($lines);
             $today = CarbonImmutable::today();
 
@@ -130,8 +136,16 @@ class OrderPlacer
             $order->update(['invoice_id' => $invoice->id, 'total' => $invoice->total, 'coupon_id' => $discount > 0 ? $coupon?->id : null, 'discount' => $discount]);
 
             if ($coupon !== null && $discount > 0) {
+                // Counted only while uses are left, so the limit holds even where rows cannot be locked.
+                $counted = Coupon::query()->whereKey($coupon->id)
+                    ->where(fn ($query) => $query->whereNull('max_uses')->orWhereColumn('uses', '<', 'max_uses'))
+                    ->increment('uses');
+
+                if ($counted === 0) {
+                    throw CouponUnavailable::because(__('This coupon has been used up.'));
+                }
+
                 $coupon->redemptions()->create(['client_id' => $client->id, 'order_id' => $order->id, 'invoice_id' => $invoice->id, 'amount' => $discount, 'currency' => $client->currency]);
-                $coupon->increment('uses');
             }
 
             return $order;
@@ -215,6 +229,28 @@ class OrderPlacer
         $fromServer = $lines->first(fn (CartLine $line): bool => ! $line->isDomain() && $line->product?->server?->nameservers)?->product->server->nameservers;
 
         return array_values(array_filter((array) ($fromServer ?: DomainProvisioner::defaultNameservers())));
+    }
+
+    /**
+     * The cart checked the coupon before the order started, but another checkout may have used it
+     * since. The client and the coupon are locked until the order is made, then its limits (uses
+     * left, uses per client, new clients only) are checked again. Run inside the order's database
+     * transaction, before anything else is read.
+     *
+     * @throws CouponUnavailable
+     */
+    private function lockCoupon(Client $client, Coupon $coupon): Coupon
+    {
+        // Client first, then coupon, then products: the same order everywhere, so no deadlocks.
+        Client::query()->whereKey($client->id)->lockForUpdate()->first();
+        $locked = Coupon::query()->lockForUpdate()->find($coupon->id);
+        $reason = $locked === null ? __('This coupon has ended.') : $locked->unavailableReason($client, $client->currency);
+
+        if ($reason !== null) {
+            throw CouponUnavailable::because($reason);
+        }
+
+        return $locked;
     }
 
     /**

@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Enums\OrderStatus;
 use App\Enums\ServiceStatus;
 use Database\Factories\ServerFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -62,9 +64,27 @@ class Server extends Model
         return $this->hasMany(Service::class);
     }
 
+    /**
+     * The services that take an account on the server: live ones, and new ones once their order is
+     * paid or accepted (or made by staff without an order). An unpaid order takes no room, so
+     * orders nobody pays cannot fill the server.
+     *
+     * @return HasMany<Service, $this>
+     */
+    public function accounts(): HasMany
+    {
+        return $this->services()->where(fn (Builder $query) => $query
+            ->whereIn('status', [ServiceStatus::Active, ServiceStatus::Suspended])
+            ->orWhere(fn (Builder $query) => $query
+                ->where('status', ServiceStatus::Pending)
+                ->where(fn (Builder $query) => $query
+                    ->whereNull('order_id')
+                    ->orWhereHas('order', fn (Builder $query) => $query->where('status', OrderStatus::Active)))));
+    }
+
     public function accountsCount(): int
     {
-        return $this->services()->whereIn('status', [ServiceStatus::Active, ServiceStatus::Suspended, ServiceStatus::Pending])->count();
+        return $this->accounts()->count();
     }
 
     public function hasCapacity(): bool

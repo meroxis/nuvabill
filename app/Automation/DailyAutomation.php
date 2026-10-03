@@ -5,6 +5,7 @@ namespace App\Automation;
 use App\Billing\Affiliates;
 use App\Billing\AutoPay;
 use App\Billing\InvoicePaidHandler;
+use App\Billing\OrderCanceller;
 use App\Billing\PlanChanges;
 use App\Billing\RenewalGenerator;
 use App\Domains\DomainProvisioner;
@@ -54,7 +55,7 @@ class DailyAutomation
      * Run everything once. Returns null when another run is busy: it does the work, so nothing is
      * done twice. Each step is also safe on its own when repeated (see the steps below).
      *
-     * @return array{invoices: int, charged: int, charge_failed: int, reminders: int, suspended: int, terminated: int, failed: int, domains_expired: int, commissions: int}|null
+     * @return array{invoices: int, charged: int, charge_failed: int, reminders: int, suspended: int, terminated: int, failed: int, domains_expired: int, commissions: int, orders_cancelled: int}|null
      */
     public function run(?CarbonInterface $today = null): ?array
     {
@@ -72,7 +73,7 @@ class DailyAutomation
     }
 
     /**
-     * @return array{invoices: int, charged: int, charge_failed: int, reminders: int, suspended: int, terminated: int, failed: int, domains_expired: int, commissions: int}
+     * @return array{invoices: int, charged: int, charge_failed: int, reminders: int, suspended: int, terminated: int, failed: int, domains_expired: int, commissions: int, orders_cancelled: int}
      */
     private function runSteps(CarbonImmutable $today): array
     {
@@ -82,6 +83,8 @@ class DailyAutomation
         $invoices = $this->renewals->generate($today);
         // Saved cards are charged before reminders and suspensions, so a paid renewal is never suspended.
         $autoPay = $this->autoPay->run($today);
+        // New orders nobody paid for give back their stock and server room, after their card had its chance.
+        $ordersCancelled = app(OrderCanceller::class)->cancelUnpaid($today);
 
         $summary = [
             'invoices' => $invoices,
@@ -93,6 +96,7 @@ class DailyAutomation
             'failed' => 0,
             'domains_expired' => 0,
             'commissions' => $this->affiliates->release($today),
+            'orders_cancelled' => $ordersCancelled,
         ];
 
         $this->syncDomains();

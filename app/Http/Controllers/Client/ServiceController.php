@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Client;
 
 use App\Billing\PlanChanges;
+use App\Enums\InvoiceStatus;
 use App\Enums\ServiceStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Service;
@@ -25,7 +26,12 @@ class ServiceController extends Controller
     {
         $this->authorizeOwner($request, $service);
 
-        $service->load('product', 'server', 'invoiceItems.invoice', 'addons', 'coupon');
+        // Drafts are not issued yet, so the client does not see them.
+        $service->load([
+            'product', 'server', 'addons', 'coupon',
+            'invoiceItems' => fn ($query) => $query->whereHas('invoice', fn ($invoice) => $invoice->where('status', '!=', InvoiceStatus::Draft)),
+            'invoiceItems.invoice',
+        ]);
         $changes = app(PlanChanges::class);
 
         return view('theme::client.services.show', [

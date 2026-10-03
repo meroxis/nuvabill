@@ -41,11 +41,13 @@ class RenewalGenerator
     {
         $today = CarbonImmutable::instance($today ?? today());
 
-        // Free renewals made before they were paid at once (0.6.11 and older) are paid now.
+        // Free renewals made before they were paid at once (0.6.11 and older) are paid now. Only a
+        // coupon makes a renewal free; one that is free because its price is missing stays unpaid.
         Invoice::query()
             ->where('status', InvoiceStatus::Unpaid)
             ->where('total', 0)
             ->whereHas('items', fn (Builder $query) => $query->whereNotNull('billing_key'))
+            ->whereHas('items', fn (Builder $query) => $query->where('type', InvoiceItem::TYPE_DISCOUNT))
             ->eachById(fn (Invoice $invoice) => app(PaymentRecorder::class)->settleFreeInvoice($invoice));
 
         /** @var array<string, array{client: Client, currency: string, due: CarbonImmutable, items: list<array<string, mixed>>}> $groups */
@@ -54,7 +56,15 @@ class RenewalGenerator
         /** @var array<int, Service> $discounted Services whose coupon was used on this run. */
         $discounted = [];
 
+        $planChanges = app(PlanChanges::class);
+
         foreach ($this->dueServices($today) as $service) {
+            // An upgrade still waiting for payment was priced for the period that ends now. It stops
+            // before the next period is billed, or is applied first when it was just paid.
+            if ($planChanges->settleBeforeRenewal($service)) {
+                $service = $service->fresh(['product', 'client', 'addons', 'coupon']);
+            }
+
             foreach ($this->serviceItems($service) as $item) {
                 $this->addToGroup($groups, $service->client, $service->currency, $service->next_due_date, $item);
 
@@ -167,11 +177,21 @@ class RenewalGenerator
     /**
      * The invoice for a domain's next period, created now if it does not exist yet. Used when a
      * client or staff member wants to renew before the automatic renewal invoice.
+     *
+     * @throws RenewalUnavailable When no renewal price is known for the domain; nothing is made then.
      */
     public function invoiceDomainRenewal(Domain $domain): Invoice
     {
         $domain->loadMissing('client');
         $start = $domain->next_due_date ?? $domain->expires_at ?? CarbonImmutable::today();
+
+        // Paying renews the domain only when the paid period starts on its next due date, so a
+        // domain without one gets the period's start date now.
+        $keepDueDate = function () use ($domain, $start): void {
+            if ($domain->next_due_date === null) {
+                $domain->update(['next_due_date' => $start]);
+            }
+        };
 
         $existing = fn (): ?InvoiceItem => InvoiceItem::query()
             ->with('invoice')
@@ -183,11 +203,20 @@ class RenewalGenerator
             ->first();
 
         if (($found = $existing()) !== null) {
+            $keepDueDate();
+
             return $found->invoice;
         }
 
         $years = max(1, $domain->years);
-        $amount = $domain->recurring_amount ?: (int) TldPrice::forTld($domain->tld, $domain->currency)?->priceFor('renew', $years);
+        $amount = $this->domainRenewalAmount($domain);
+
+        // A missing price is not a free renewal: the registrar would bill the company for it.
+        if ($amount <= 0) {
+            throw new RenewalUnavailable(__('This domain has no renewal price. Set its recurring amount, or renew it without an invoice.'));
+        }
+
+        $keepDueDate();
 
         try {
             $invoice = $this->invoices->create(
@@ -208,12 +237,21 @@ class RenewalGenerator
     }
 
     /**
-     * Email a new renewal invoice and pay it from the wallet when that is on. One that costs nothing
-     * (a 100% coupon) is paid at once, like a free order, so the period renews and nothing goes overdue.
+     * What renewing the domain for its usual number of years costs, in minor units: its own
+     * recurring amount, or the renew price of its extension in its currency. 0 when neither is known.
+     */
+    public function domainRenewalAmount(Domain $domain): int
+    {
+        return (int) ($domain->recurring_amount ?: TldPrice::forTld($domain->tld, $domain->currency)?->priceFor('renew', max(1, $domain->years)));
+    }
+
+    /**
+     * Email a new renewal invoice and pay it from the wallet when that is on. One that a coupon makes
+     * free is paid at once, like a free order, so the period renews and nothing goes overdue.
      */
     private function sendOrSettle(Invoice $invoice, Client $client): void
     {
-        if ($invoice->total === 0) {
+        if ($invoice->total === 0 && $invoice->items()->where('type', InvoiceItem::TYPE_DISCOUNT)->exists()) {
             app(PaymentRecorder::class)->settleFreeInvoice($invoice);
 
             return;

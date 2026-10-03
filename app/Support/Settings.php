@@ -102,6 +102,9 @@ class Settings
         'orderform.active' => 'standard',
 
         'orders.accept_terms_url' => '',
+        // New orders still unpaid this many days after their invoice was due are cancelled, so the
+        // stock and server room they hold go back on sale. 0 turns it off.
+        'orders.cancel_unpaid_days' => 7,
         'company.privacy_url' => '',
 
         'mail.mailer' => 'log',

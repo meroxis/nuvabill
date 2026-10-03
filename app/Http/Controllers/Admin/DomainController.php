@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Billing\RenewalGenerator;
+use App\Billing\RenewalUnavailable;
 use App\Domains\DomainProvisioner;
 use App\Enums\DomainStatus;
 use App\Extensions\ExtensionManager;
@@ -73,7 +74,11 @@ class DomainController extends Controller
     public function action(Request $request, Domain $domain, string $action, DomainProvisioner $provisioner, RenewalGenerator $renewals): RedirectResponse
     {
         if ($action === 'invoice') {
-            $invoice = $renewals->invoiceDomainRenewal($domain);
+            try {
+                $invoice = $renewals->invoiceDomainRenewal($domain);
+            } catch (RenewalUnavailable $exception) {
+                return back()->with('error', $exception->getMessage());
+            }
 
             return redirect()->route('admin.invoices.show', $invoice)->with('status', __('Renewal invoice ready.'));
         }

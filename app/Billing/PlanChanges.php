@@ -6,6 +6,7 @@ use App\Enums\InvoiceStatus;
 use App\Enums\ServiceStatus;
 use App\Mail\TemplateMailer;
 use App\Models\Admin;
+use App\Models\CreditNote;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\PlanChange;
@@ -56,7 +57,8 @@ class PlanChanges
 
     /**
      * The products the service may move to, with a price in its currency and billing cycle. Clients
-     * get the products chosen on the product; staff may pick any product with the same server module.
+     * get the products chosen on the product that are in stock; staff may pick any product with the
+     * same server module.
      *
      * @return Collection<int, Product>
      */
@@ -71,7 +73,8 @@ class PlanChanges
 
         return $query->get()
             ->filter(fn (Product $product): bool => $product->server_module === $service->product->server_module
-                && $product->priceFor($service->currency, $service->billing_cycle) !== null)
+                && $product->priceFor($service->currency, $service->billing_cycle) !== null
+                && ($staff || $product->isInStock()))
             ->values();
     }
 
@@ -91,11 +94,22 @@ class PlanChanges
         $old = (int) $service->recurring_amount;
         $new = (int) $product->priceFor($service->currency, $service->billing_cycle)?->price;
         $share = $this->paidShare($service);
-        // Unused time is worth what the client really paid for it: nothing after a free coupon or trial.
+        // Unused time is worth what the client really paid for it: nothing after a free coupon or trial,
+        // and never more than was paid for these days, even when the plan changed without a payment.
         $credit = (int) round($old * $share * $daysLeft / $periodDays);
+        $paidLeft = $this->paidForDaysLeft($service, $end, $daysLeft, $periodDays);
+
+        if ($paidLeft !== null) {
+            $credit = min($credit, $paidLeft);
+        }
+
         // A bigger plan costs its full price for the days left. A smaller one gets the same discount as
         // the period, so moving down never costs money and never pays out more than was paid.
         $cost = (int) round($new * ($new >= $old ? 1 : $share) * $daysLeft / $periodDays);
+
+        if ($new < $old) {
+            $cost = min($cost, $credit);
+        }
 
         return [
             'old' => $old,
@@ -110,15 +124,17 @@ class PlanChanges
 
     /**
      * The share of the plan's price the client paid for the current period, from 0 to 1: the latest
-     * paid line for the service, less the coupon on the same invoice. A free trial or a 100% coupon
-     * is 0. A service with no paid invoice here (imported, or made by staff) keeps its full price.
+     * paid line for the service, less the coupon on the same invoice and less what credit notes gave
+     * back. A free trial, a 100% coupon or a refunded period is 0. A service with no paid invoice here
+     * (imported, or made by staff) keeps its full price.
      */
     private function paidShare(Service $service): float
     {
         $line = InvoiceItem::query()
+            ->with('invoice.creditNotes')
             ->where('service_id', $service->id)
             ->where('type', InvoiceItem::TYPE_SERVICE)
-            ->whereHas('invoice', fn ($query) => $query->where('status', InvoiceStatus::Paid))
+            ->whereHas('invoice', fn ($query) => $query->whereIn('status', [InvoiceStatus::Paid, InvoiceStatus::Refunded]))
             ->latest('id')
             ->first();
 
@@ -130,25 +146,96 @@ class PlanChanges
             return 0.0;
         }
 
-        $discount = -(int) InvoiceItem::query()
-            ->where('invoice_id', $line->invoice_id)
-            ->where('service_id', $service->id)
-            ->where('type', InvoiceItem::TYPE_DISCOUNT)
-            ->sum('amount');
+        $share = ($line->amount - $this->discountFor($line)) / $line->amount;
 
-        return max(0.0, min(1.0, ($line->amount - $discount) / $line->amount));
+        return max(0.0, min(1.0, $share * $this->keptShare($line->invoice)));
     }
 
     /**
-     * How a change with this price difference happens.
+     * What the client paid for the days left of the current period, in minor units: the period's
+     * paid service line less its coupon, plus upgrades paid for these days, less credit notes. Null
+     * when no paid service line covers the period (an imported service, or one made by staff).
      */
-    public function modeFor(int $difference): string
+    private function paidForDaysLeft(Service $service, CarbonImmutable $end, int $daysLeft, int $periodDays): ?int
+    {
+        $lastDay = $end->subDay();
+        $lines = InvoiceItem::query()
+            ->with('invoice.creditNotes')
+            ->where('service_id', $service->id)
+            ->whereIn('type', [InvoiceItem::TYPE_SERVICE, InvoiceItem::TYPE_PLAN_CHANGE])
+            ->whereNotNull('period_start')
+            ->whereNotNull('period_end')
+            ->whereDate('period_start', '<=', $lastDay)
+            ->whereDate('period_end', '>=', $lastDay)
+            ->whereHas('invoice', fn ($query) => $query->whereIn('status', [InvoiceStatus::Paid, InvoiceStatus::Refunded]))
+            ->latest('id')
+            ->get();
+
+        $period = $lines->firstWhere('type', InvoiceItem::TYPE_SERVICE);
+
+        if ($period === null) {
+            return null;
+        }
+
+        $paid = max(0, $period->amount - $this->discountFor($period)) * $this->keptShare($period->invoice) * $daysLeft / $periodDays;
+
+        foreach ($lines->where('type', InvoiceItem::TYPE_PLAN_CHANGE) as $line) {
+            // An upgrade paid for the days from its start to the end of the period.
+            $days = max(1, (int) round($line->period_start->diffInDays($line->period_end)) + 1);
+            $paid += max(0, $line->amount) * $this->keptShare($line->invoice) * min($daysLeft, $days) / $days;
+        }
+
+        return (int) round($paid);
+    }
+
+    /**
+     * The coupon taken off a service line on the same invoice, as a positive amount.
+     */
+    private function discountFor(InvoiceItem $line): int
+    {
+        return -(int) InvoiceItem::query()
+            ->where('invoice_id', $line->invoice_id)
+            ->where('service_id', $line->service_id)
+            ->where('type', InvoiceItem::TYPE_DISCOUNT)
+            ->sum('amount');
+    }
+
+    /**
+     * The part of a paid invoice the client still pays for, from 0 to 1: less after a partial credit
+     * note, and 0 once it was refunded.
+     */
+    private function keptShare(Invoice $invoice): float
+    {
+        if ($invoice->status === InvoiceStatus::Refunded) {
+            return 0.0;
+        }
+
+        if ($invoice->total <= 0) {
+            return 1.0;
+        }
+
+        return max(0.0, min(1.0, $invoice->creditableAmount() / $invoice->total));
+    }
+
+    /**
+     * How a change with this price difference happens. A downgrade waits for the renewal when its
+     * money back cannot go into the client's wallet (wallet off, or in another currency).
+     */
+    public function modeFor(int $difference, ?Service $service = null): string
     {
         return match (true) {
             $difference > 0 => PlanChange::MODE_INVOICE,
-            setting('billing.downgrade') === 'renewal' && $difference < 0 => PlanChange::MODE_RENEWAL,
+            $difference < 0 && (setting('billing.downgrade') === 'renewal' || ($service !== null && ! $this->canCredit($service))) => PlanChange::MODE_RENEWAL,
             default => PlanChange::MODE_NOW,
         };
+    }
+
+    /**
+     * Whether money back for the service can go into its client's wallet.
+     */
+    private function canCredit(Service $service): bool
+    {
+        return $this->wallet->enabled() && $service->client?->currency === $service->currency;
     }
 
     /**
@@ -172,8 +259,13 @@ class PlanChanges
                 throw new RuntimeException(__('This service cannot move to that plan.'));
             }
 
+            // Two clients cannot both take the last one of a plan with a stock limit. Staff may.
+            if ($admin === null && $product->stock !== null && Product::query()->lockForUpdate()->findOrFail($product->id)->stockLeft() === 0) {
+                throw new RuntimeException(__('This plan is sold out.'));
+            }
+
             $quote = $this->quote($locked, $product);
-            $mode = $admin !== null && ! $charge ? PlanChange::MODE_NOW : $this->modeFor($quote['difference']);
+            $mode = $admin !== null && ! $charge ? PlanChange::MODE_NOW : $this->modeFor($quote['difference'], $locked);
 
             $change = PlanChange::create([
                 'service_id' => $locked->id,
@@ -200,6 +292,9 @@ class PlanChanges
                     'amount' => $quote['difference'],
                     'service_id' => $locked->id,
                     'taxed' => $product->taxable,
+                    // The days the price is for; paying it later than this period changes nothing.
+                    'period_start' => CarbonImmutable::today(),
+                    'period_end' => $end,
                 ]], dueAt: today(), currency: $locked->currency);
 
                 $change->update(['invoice_id' => $invoice->id]);
@@ -220,13 +315,16 @@ class PlanChanges
     }
 
     /**
-     * Move the service to its new product, once. Returns false when the change was not waiting.
+     * Move the service to its new product, once. Returns false when the change was not waiting, or
+     * when it can no longer happen; it is then stopped and a paid invoice goes back to the wallet.
      */
     public function apply(PlanChange $change): bool
     {
         $credit = 0;
+        $notCredited = 0;
+        $stopped = null;
 
-        $applied = DB::transaction(function () use ($change, &$credit): bool {
+        $applied = DB::transaction(function () use ($change, &$credit, &$notCredited, &$stopped): bool {
             $locked = PlanChange::query()->lockForUpdate()->find($change->id);
 
             if ($locked === null || ! $locked->isPending()) {
@@ -234,18 +332,36 @@ class PlanChanges
             }
 
             $service = Service::query()->lockForUpdate()->findOrFail($locked->service_id);
+            $stopped = $this->stopReason($locked, $service);
+
+            if ($stopped !== null) {
+                $locked->update(['status' => PlanChange::STATUS_CANCELLED]);
+
+                return false;
+            }
+
             $service->update(['product_id' => $locked->to_product_id, 'recurring_amount' => $locked->new_amount]);
             $locked->update(['status' => PlanChange::STATUS_APPLIED, 'applied_at' => now()]);
 
             $service->loadMissing('client');
 
-            if ($locked->mode === PlanChange::MODE_NOW && $locked->difference < 0 && $this->wallet->enabled() && $service->client->currency === $locked->currency) {
-                $credit = -$locked->difference;
-                $this->wallet->change($service->client, $credit, __('Unused time of your old plan for :service', ['service' => $service->domain ?: '#'.$service->id]));
+            if ($locked->mode === PlanChange::MODE_NOW && $locked->difference < 0) {
+                if ($this->wallet->enabled() && $service->client->currency === $locked->currency) {
+                    $credit = -$locked->difference;
+                    $this->wallet->change($service->client, $credit, __('Unused time of your old plan for :service', ['service' => $service->domain ?: '#'.$service->id]));
+                } else {
+                    $notCredited = -$locked->difference;
+                }
             }
 
             return true;
         });
+
+        if ($stopped !== null) {
+            $this->stopped($change->refresh(), $stopped);
+
+            return false;
+        }
 
         if (! $applied) {
             return false;
@@ -253,6 +369,10 @@ class PlanChanges
 
         $change->refresh()->load('service.client', 'service.product', 'fromProduct', 'toProduct');
         $service = $change->service;
+
+        if ($notCredited > 0) {
+            Activity::log('service.plan_change_credit', 'The '.money($notCredited, $change->currency)." for the unused time of the old plan of service #{$service->id} could not go into the client's wallet (wallet off or another currency). Settle it by hand.", $service);
+        }
 
         if ($service->product->server_module !== null && $service->server_id !== null) {
             // A failed server update is logged for staff; the new plan and price stand.
@@ -275,12 +395,133 @@ class PlanChanges
     }
 
     /**
-     * Apply the changes waiting for this invoice, now that it is paid.
+     * Why a waiting change can no longer happen, in words for the client, or null when it can.
+     */
+    private function stopReason(PlanChange $change, Service $service): ?string
+    {
+        $product = Product::query()->find($change->to_product_id);
+
+        if ($product === null) {
+            return __('The new plan is no longer sold.');
+        }
+
+        if ($change->mode === PlanChange::MODE_INVOICE && $this->periodPassed($change, $service)) {
+            return __('The service renewed before the plan change was paid.');
+        }
+
+        // The last one of a plan in stock may have gone while the client's change waited.
+        if ($change->admin_id === null && $change->mode !== PlanChange::MODE_RENEWAL && $product->stockLeft() === 0) {
+            return __('The new plan is sold out.');
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether the period an upgrade was priced for has passed: the service renewed since, or its
+     * next period is already invoiced at the old price, paid or not.
+     */
+    private function periodPassed(PlanChange $change, Service $service): bool
+    {
+        if ($change->invoice_id === null) {
+            return false;
+        }
+
+        // The upgrade's line runs to the day before the next due date it was priced for.
+        $dueDate = InvoiceItem::query()
+            ->where('invoice_id', $change->invoice_id)
+            ->where('type', InvoiceItem::TYPE_PLAN_CHANGE)
+            ->first()?->period_end?->addDay();
+
+        if ($dueDate !== null && $service->next_due_date?->isSameDay($dueDate) !== true) {
+            return true;
+        }
+
+        return InvoiceItem::query()
+            ->where('service_id', $service->id)
+            ->where('type', InvoiceItem::TYPE_SERVICE)
+            ->whereHas('invoice', fn ($query) => $query->where('status', '!=', InvoiceStatus::Cancelled))
+            ->when(
+                $dueDate !== null,
+                fn ($query) => $query->whereDate('period_start', '>=', $dueDate),
+                // Older upgrades do not keep their period: any renewal invoiced after the upgrade.
+                fn ($query) => $query->where('invoice_id', '>', $change->invoice_id),
+            )
+            ->exists();
+    }
+
+    /**
+     * Log a change that stopped, and give back the invoice paid for it: a credit note puts the money
+     * in the client's wallet, or staff are asked to settle it when it cannot go there.
+     */
+    private function stopped(PlanChange $change, string $reason): void
+    {
+        $change->loadMissing('service', 'invoice.client');
+        Activity::log('service.plan_change_stopped', "Plan change for service #{$change->service_id} stopped: {$reason}", $change->service);
+
+        $invoice = $change->invoice;
+
+        if ($invoice === null || $invoice->status !== InvoiceStatus::Paid || $invoice->creditableAmount() <= 0) {
+            return;
+        }
+
+        $credited = $this->wallet->enabled() && $invoice->currency === $invoice->client->currency
+            && rescue(fn (): bool => app(CreditNotes::class)->issue($invoice, $invoice->creditableAmount(), CreditNote::METHOD_WALLET, $reason) instanceof CreditNote, false);
+
+        if (! $credited) {
+            Activity::log('service.plan_change_refund', "Invoice {$invoice->displayNumber()} paid for a plan change that stopped. Give the money back to the client by hand.", $invoice);
+        }
+    }
+
+    /**
+     * Before the service's next period is billed. An upgrade still waiting for payment was priced for
+     * the period that ends now, so it stops and its unpaid invoice is cancelled; one whose invoice was
+     * just paid is applied first. Returns true when the service moved to its new plan.
+     */
+    public function settleBeforeRenewal(Service $service): bool
+    {
+        $change = PlanChange::query()
+            ->where('service_id', $service->id)
+            ->where('status', PlanChange::STATUS_PENDING)
+            ->where('mode', PlanChange::MODE_INVOICE)
+            ->latest('id')
+            ->first();
+
+        if ($change === null) {
+            return false;
+        }
+
+        $invoice = $change->invoice()->first();
+
+        if ($invoice?->status === InvoiceStatus::Paid) {
+            return $this->apply($change);
+        }
+
+        // Part of it is paid: it stays open. Paying the rest stops the change and the whole invoice
+        // goes back to the wallet then.
+        if ($invoice?->status === InvoiceStatus::Unpaid && $invoice->amount_paid > 0) {
+            return false;
+        }
+
+        if ($invoice !== null) {
+            // Cancelling the invoice cancels the change with it.
+            $this->invoices->cancel($invoice);
+        }
+
+        PlanChange::query()->whereKey($change->id)->where('status', PlanChange::STATUS_PENDING)->update(['status' => PlanChange::STATUS_CANCELLED]);
+        Activity::log('service.plan_change_expired', "Plan change for service #{$service->id} stopped: its invoice was not paid before the renewal", $service);
+
+        return false;
+    }
+
+    /**
+     * Apply the changes waiting for this invoice, now that it is paid. One that fails is reported
+     * and does not stop the rest of the payment.
      */
     public function applyForInvoice(Invoice $invoice): void
     {
         PlanChange::query()->where('invoice_id', $invoice->id)->where('status', PlanChange::STATUS_PENDING)->get()
-            ->each(fn (PlanChange $change): bool => $this->apply($change));
+            ->each(fn (PlanChange $change): bool => (bool) rescue(fn (): bool => $this->apply($change), false));
     }
 
     /**
@@ -322,7 +563,8 @@ class PlanChanges
     }
 
     /**
-     * Apply the downgrades planned for renewal dates up to today. Returns how many were applied.
+     * Apply the downgrades planned for renewal dates up to today. Returns how many were applied. One
+     * that fails is reported and skipped, so it never stops the nightly run.
      */
     public function applyScheduled(?CarbonInterface $today = null): int
     {
@@ -333,7 +575,7 @@ class PlanChanges
             ->where('mode', PlanChange::MODE_RENEWAL)
             ->whereDate('apply_on', '<=', $today)
             ->get()
-            ->filter(fn (PlanChange $change): bool => $this->apply($change))
+            ->filter(fn (PlanChange $change): bool => (bool) rescue(fn (): bool => $this->apply($change), false))
             ->count();
     }
 

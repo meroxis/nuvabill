@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Client;
 
 use App\Billing\RenewalGenerator;
+use App\Billing\RenewalUnavailable;
 use App\Domains\DomainProvisioner;
 use App\Enums\DomainStatus;
+use App\Enums\InvoiceStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Domain;
 use App\Support\Activity;
@@ -25,7 +27,8 @@ class DomainController extends Controller
     {
         $this->authorizeOwner($request, $domain);
 
-        $domain->load('invoiceItems.invoice');
+        // Drafts are not issued yet, so the client does not see them.
+        $domain->load(['invoiceItems' => fn ($query) => $query->whereHas('invoice', fn ($invoice) => $invoice->where('status', '!=', InvoiceStatus::Draft)), 'invoiceItems.invoice']);
 
         return view('theme::client.domains.show', ['domain' => $domain]);
     }
@@ -70,7 +73,11 @@ class DomainController extends Controller
         $this->authorizeOwner($request, $domain);
         abort_unless($domain->status->isRenewable(), 404);
 
-        $invoice = $renewals->invoiceDomainRenewal($domain);
+        try {
+            $invoice = $renewals->invoiceDomainRenewal($domain);
+        } catch (RenewalUnavailable) {
+            return back()->with('error', __('This domain has no renewal price. Please open a ticket to renew it.'));
+        }
 
         return redirect()->route('client.invoices.show', $invoice)->with('status', __('Pay this invoice to renew :domain.', ['domain' => $domain->name]));
     }

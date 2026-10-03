@@ -9,6 +9,7 @@ use App\Enums\ProductType;
 use App\Extensions\ExtensionManager;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ProductRequest;
+use App\Models\PlanChange;
 use App\Models\Product;
 use App\Models\ProductGroup;
 use App\Models\Server;
@@ -77,6 +78,10 @@ class ProductController extends Controller
     {
         if ($product->services()->exists()) {
             return back()->with('error', __('Clients own this product, so it cannot be deleted. Hide it from the store instead.'));
+        }
+
+        if (PlanChange::query()->where('to_product_id', $product->id)->where('status', PlanChange::STATUS_PENDING)->exists()) {
+            return back()->with('error', __('A client is waiting to move to this product. Stop that plan change first, or hide the product instead.'));
         }
 
         $product->delete();

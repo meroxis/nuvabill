@@ -45,6 +45,7 @@
                     <x-input name="reminder_days" :label="__('Send overdue reminders after (days)')" :value="implode(', ', (array) $settings['automation.reminder_days'])" :help="__('Comma separated, for example 1, 3, 7.')" />
                     <x-input name="suspend_days" type="number" min="0" max="90" :label="__('Suspend services overdue by (days)')" :value="$settings['automation.suspend_days']" required :help="__('0 turns automatic suspension off.')" />
                     <x-input name="terminate_days" type="number" min="0" max="365" :label="__('Terminate services overdue by (days)')" :value="$settings['automation.terminate_days']" required :help="__('0 turns it off. Termination deletes the account on the server.')" />
+                    <x-input name="cancel_unpaid_days" type="number" min="0" max="365" :label="__('Cancel unpaid new orders after (days)')" :value="$settings['orders.cancel_unpaid_days']" :help="__('0 turns it off. A cancelled order frees its stock and server space.')" />
                 </div>
                 <div class="flash" data-tone="info" style="display:grid;gap:.5rem">
                     <span>{{ __('Add this line to your server’s crontab (cPanel → Cron Jobs) so automation, emails and updates run:') }}</span>
