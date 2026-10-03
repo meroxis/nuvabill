@@ -8,6 +8,7 @@ use App\Extensions\Gateways\PaymentStart;
 use App\Extensions\Gateways\WebhookResult;
 use App\Models\Invoice;
 use App\Models\PaymentIntent;
+use App\Support\Activity;
 use App\Support\Money;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Http\Request;
@@ -134,10 +135,12 @@ class WaylGateway extends Gateway
 
     private function confirm(PaymentIntent $intent): ?PaymentResult
     {
+        $env = $intent->meta['env'] ?? null;
+
         // Wayl uses the same address and token in both modes, so a link made in Test mode would
         // still confirm after the switch to Live. Payments on live links always count, even while
         // staff try Test mode.
-        if (($intent->meta['env'] ?? null) === 'test' && $this->setting('mode') !== 'test') {
+        if ($env === 'test' && $this->setting('mode') !== 'test') {
             if ($intent->status === PaymentIntent::STATUS_PENDING) {
                 $intent->update(['status' => PaymentIntent::STATUS_FAILED]);
                 Log::warning("Wayl test link {$intent->reference} was ignored because Wayl is live now.");
@@ -146,9 +149,21 @@ class WaylGateway extends Gateway
             return null;
         }
 
+        // A link of unknown mode that staff were already asked to check never pays by itself
+        // later: they add that payment by hand.
+        if ($env === 'unknown' && $intent->status !== PaymentIntent::STATUS_PENDING) {
+            return null;
+        }
+
         $response = $this->api()->get(self::API.'/api/v1/links/'.rawurlencode($intent->reference));
 
         if (! $response->successful() || ! in_array(strtolower((string) $response->json('data.status')), self::PAID_STATUSES, true)) {
+            return null;
+        }
+
+        if ($env === 'unknown') {
+            $this->holdForStaff($intent);
+
             return null;
         }
 
@@ -165,6 +180,29 @@ class WaylGateway extends Gateway
         }
 
         return $result;
+    }
+
+    /**
+     * A link made before Wayl links kept their mode reports paid. It may be a test link paid with
+     * a test card, so the invoice is not marked paid: staff check the payment in Wayl and add it
+     * by hand. Claimed in one update, so the webhook and the return page never both report it.
+     */
+    private function holdForStaff(PaymentIntent $intent): void
+    {
+        $claimed = PaymentIntent::query()->whereKey($intent->id)
+            ->where('status', PaymentIntent::STATUS_PENDING)
+            ->update(['status' => PaymentIntent::STATUS_FAILED, 'updated_at' => now()]);
+
+        if ($claimed !== 1) {
+            return;
+        }
+
+        $intent->refresh();
+        $invoice = $intent->invoice;
+        $number = $invoice?->displayNumber() ?? '#'.$intent->invoice_id;
+
+        Log::warning("Wayl link {$intent->reference} reports paid, but it was made before Wayl links kept their mode, so it was not counted.");
+        Activity::log('payment.review', "Wayl says link {$intent->reference} for invoice {$number} is paid. The link is from before links noted Test or Live, so it may be a test payment. Check in Wayl that the money arrived, then add the payment by hand.", $invoice);
     }
 
     /**

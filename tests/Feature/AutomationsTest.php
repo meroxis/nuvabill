@@ -292,6 +292,47 @@ class AutomationsTest extends TestCase
         Mail::assertNothingSent();
     }
 
+    public function test_the_update_protects_runs_that_were_already_waiting_from_step_changes(): void
+    {
+        Mail::fake();
+        $wait = ['type' => 'wait', 'config' => ['amount' => '3', 'unit' => 'days']];
+        $reminder = ['type' => 'send_email', 'config' => ['subject' => 'Reminder', 'body' => 'Hello.']];
+        $welcome = ['type' => 'send_email', 'config' => ['subject' => 'Welcome', 'body' => 'Hello.']];
+        $credit = ['type' => 'add_credit', 'config' => ['amount' => '5', 'description' => 'Welcome gift']];
+        $changed = $this->automation('client.registered', null, [$wait, $reminder, $wait, $credit]);
+        $unchanged = $this->automation('client.registered', null, [$wait, $welcome]);
+        $client = Client::factory()->create(['first_name' => 'Mer', 'last_name' => 'Las']);
+
+        ClientRegistered::dispatch($client);
+
+        // Runs started before the update have no fingerprint of their steps.
+        $finished = AutomationRun::query()->forceCreate([
+            'automation_id' => $changed->id, 'subject_type' => $client->getMorphClass(), 'subject_id' => $client->id, 'client_id' => $client->id,
+            'status' => AutomationRun::DONE, 'step' => 4, 'dedupe_key' => 'older-run', 'log' => [],
+        ]);
+        AutomationRun::query()->update(['steps_hash' => null]);
+        $this->assertSame(2, AutomationRun::query()->where('status', AutomationRun::WAITING)->where('step', 1)->count());
+
+        (require database_path('migrations/2027_07_02_000001_automations_chat_ai_add_steps_hash_to_automation_runs.php'))->up();
+
+        $run = AutomationRun::query()->where('automation_id', $changed->id)->where('status', AutomationRun::WAITING)->sole();
+        $this->assertSame(Runner::hashSteps([$wait, $reminder, $wait, $credit]), $run->steps_hash);
+        $this->assertNull($finished->refresh()->steps_hash, 'Finished runs are left as they are.');
+
+        // Staff take the reminder out while the run waits: step 2 is now the credit.
+        $changed->update(['steps' => [$wait, $credit]]);
+
+        $this->travel(4)->days();
+        app(Runner::class)->resumeDue();
+
+        $this->assertSame(AutomationRun::STOPPED, $run->refresh()->status);
+        $this->assertStringContainsString('steps of the automation were changed', $run->lastLog());
+        $this->assertSame(0, $client->refresh()->credit);
+        $this->assertSame(AutomationRun::DONE, AutomationRun::query()->where('automation_id', $unchanged->id)->sole()->status, 'A run whose steps did not change goes on.');
+        Mail::assertSent(TemplatedMessage::class, 1);
+        Mail::assertSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => $mail->subjectLine === 'Welcome');
+    }
+
     public function test_a_web_address_step_refuses_shared_and_special_address_ranges(): void
     {
         foreach (['https://100.64.0.1/x', 'https://100.100.100.200/x', 'https://198.18.0.1/x', 'https://192.0.0.1/x', 'https://10.0.0.5/x', 'http://1.1.1.1/x'] as $url) {

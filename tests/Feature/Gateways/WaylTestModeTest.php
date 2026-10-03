@@ -3,6 +3,7 @@
 namespace Tests\Feature\Gateways;
 
 use App\Enums\InvoiceStatus;
+use App\Models\ActivityLog;
 use App\Models\Client;
 use App\Models\CreditTransaction;
 use App\Models\Invoice;
@@ -71,36 +72,76 @@ class WaylTestModeTest extends TestCase
         $this->assertSame(PaymentIntent::STATUS_PAID, $intent->fresh()->status);
     }
 
-    public function test_the_update_marks_open_links_as_test_links_while_wayl_is_in_test_mode(): void
+    public function test_the_update_marks_open_links_made_in_test_mode_as_test_links(): void
     {
-        $this->enableGateway('wayl', ['api_token' => 'wayl-token', 'mode' => 'test']);
         [, $invoice] = $this->invoice();
+        $older = $this->olderIntent($invoice, 'NB-1-older', PaymentIntent::STATUS_PENDING);
+        $this->travel(1)->minutes();
+        $this->enableGateway('wayl', ['api_token' => 'wayl-token', 'mode' => 'test']);
+        $this->travel(1)->minutes();
         $open = $this->olderIntent($invoice, 'NB-1-open', PaymentIntent::STATUS_PENDING);
         $paid = $this->olderIntent($invoice, 'NB-1-paid', PaymentIntent::STATUS_PAID);
 
         $this->runMigration();
 
+        // Made after Wayl was set to Test mode, so made in Test mode.
         $this->assertSame('test', $open->fresh()->meta['env']);
         $this->assertSame(30000, $open->fresh()->meta['charged_amount']);
         $this->assertArrayNotHasKey('env', $paid->fresh()->meta);
+        // Made before the mode was set, so it may be a live link.
+        $this->assertSame('unknown', $older->fresh()->meta['env']);
 
         // Once Wayl is live, the old test link no longer pays the invoice.
         $this->enableGateway('wayl', ['api_token' => 'wayl-token', 'mode' => 'live']);
         $this->postWebhook('NB-1-open')->assertOk();
         $this->assertSame(InvoiceStatus::Unpaid, $invoice->fresh()->status);
+        $this->assertSame(PaymentIntent::STATUS_FAILED, $open->fresh()->status);
     }
 
-    public function test_the_update_leaves_open_links_alone_while_wayl_is_live(): void
+    public function test_the_update_keeps_open_links_made_while_live_working(): void
     {
         $this->enableGateway('wayl', ['api_token' => 'wayl-token', 'mode' => 'live']);
         [, $invoice] = $this->invoice();
+        $this->travel(1)->minutes();
         $open = $this->olderIntent($invoice, 'NB-1-open', PaymentIntent::STATUS_PENDING);
 
         $this->runMigration();
 
-        $this->assertArrayNotHasKey('env', $open->fresh()->meta);
+        $this->assertSame('live', $open->fresh()->meta['env']);
         $this->postWebhook('NB-1-open')->assertOk();
         $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertFalse(ActivityLog::query()->where('action', 'payment.review')->exists());
+    }
+
+    public function test_older_open_links_go_to_staff_instead_of_paying_the_invoice_when_wayl_is_live(): void
+    {
+        // Wayl ran in Test mode for the first week, then went live, and then the update came.
+        $this->enableGateway('wayl', ['api_token' => 'wayl-token', 'mode' => 'test']);
+        [$client, $invoice] = $this->invoice();
+        $this->travel(1)->minutes();
+        $open = $this->olderIntent($invoice, 'NB-1-open', PaymentIntent::STATUS_PENDING);
+        $this->travel(7)->days();
+        $this->enableGateway('wayl', ['api_token' => 'wayl-token', 'mode' => 'live']);
+
+        $this->runMigration();
+
+        $this->assertSame('unknown', $open->fresh()->meta['env']);
+
+        // The link is paid on Wayl's test page with a test card: the return page and the signed webhook arrive.
+        $this->actingAs($client, 'web')->get(route('client.invoices.return', [$invoice, 'wayl']))->assertRedirect(route('client.invoices.show', $invoice));
+        $this->postWebhook('NB-1-open')->assertOk();
+        $this->postWebhook('NB-1-open')->assertOk();
+
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->fresh()->status);
+        $this->assertSame(0, $invoice->transactions()->count());
+        $this->assertSame(0, CreditTransaction::query()->count());
+        $this->assertSame(PaymentIntent::STATUS_FAILED, $open->fresh()->status);
+
+        // Staff are told once, on the invoice and the client.
+        $entry = ActivityLog::query()->where('action', 'payment.review')->sole();
+        $this->assertSame([$invoice->getMorphClass(), $invoice->id, $client->id], [$entry->subject_type, $entry->subject_id, $entry->client_id]);
+        $this->assertStringContainsString('NB-1-open', $entry->description);
+        $this->assertStringContainsString('add the payment by hand', $entry->description);
     }
 
     /**

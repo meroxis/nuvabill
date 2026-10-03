@@ -13,6 +13,7 @@ use App\Models\ApiToken;
 use App\Models\Client;
 use App\Models\Invoice;
 use App\Models\Order;
+use App\Models\Service;
 use App\Models\Transaction;
 use App\Support\Activity;
 use App\Support\AttentionList;
@@ -159,6 +160,35 @@ class StaffBillingVisibilityTest extends TestCase
             ->assertSee('profile-change-marker')
             ->assertSee('Payment of $123.45 received for invoice '.$invoice->number)
             ->assertSee('Added $50.00 (wallet): wallet-reason-marker');
+    }
+
+    public function test_the_client_activity_leaves_out_plan_change_amounts_without_billing_view(): void
+    {
+        $client = $this->client();
+        $service = Service::factory()->for($client)->create();
+        Activity::log('service.plan_change_credit', "The \$14.27 for the unused time of the old plan of service #{$service->id} could not go into the wallet. Settle it by hand.", $service);
+        Activity::log('service.plan_change_expired', "Plan change for service #{$service->id} stopped: its invoice INV-556677 was not paid before the renewal; \$9.13 paid on it went back to the wallet", $service);
+        Activity::log('service.plan_change_stopped', "Plan change for service #{$service->id} stopped: plan-stopped-marker", $service);
+        // Its invoice was deleted since, so only the action tells that it is billing data.
+        Activity::log('service.plan_change_refund', 'Invoice INV-998877 had $7.41 paid on it for a plan change that stopped. Give the money back to the client by hand.', client: $client);
+
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.view'])->create(['name' => 'Raz']));
+        $this->get(route('admin.clients.show', $client))
+            ->assertOk()
+            ->assertSee('plan-stopped-marker')
+            ->assertDontSee('$14.27')
+            ->assertDontSee('INV-556677')
+            ->assertDontSee('$9.13')
+            ->assertDontSee('$7.41');
+
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.view', 'billing.view'])->create(['name' => 'Mer Las']));
+        $this->get(route('admin.clients.show', $client))
+            ->assertOk()
+            ->assertSee('plan-stopped-marker')
+            ->assertSee('$14.27')
+            ->assertSee('INV-556677')
+            ->assertSee('$9.13')
+            ->assertSee('$7.41');
     }
 
     public function test_the_attention_list_shows_overdue_invoices_and_orders_only_to_staff_who_may_open_them(): void

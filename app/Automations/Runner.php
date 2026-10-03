@@ -58,7 +58,7 @@ class Runner
                 'client_id' => $context->client()?->id,
                 'status' => AutomationRun::QUEUED,
                 'step' => 0,
-                'steps_hash' => self::stepsHash($automation),
+                'steps_hash' => self::hashSteps($automation->steps ?? []),
                 'dedupe_key' => self::dedupeKey($automation, $subject, $occurrence),
                 'log' => [['step' => null, 'text' => __('Started: :trigger', ['trigger' => $trigger->describe($automation->trigger_days)]), 'at' => now()->toIso8601String()]],
             ]);
@@ -100,7 +100,7 @@ class Runner
 
         // A run only knows the number of its next step. After staff change the steps, that number
         // points at another step, so going on could repeat a step (credit twice) or skip one.
-        if ($run->step > 0 && $run->steps_hash !== null && $run->steps_hash !== self::stepsHash($automation)) {
+        if ($run->step > 0 && $run->steps_hash !== null && $run->steps_hash !== self::hashSteps($automation->steps ?? [])) {
             return $this->finish($run, AutomationRun::STOPPED, __('Stopped: the steps of the automation were changed after this run started.'));
         }
 
@@ -326,9 +326,12 @@ class Runner
     }
 
     /**
-     * A fingerprint of the automation's steps, the same however the database orders JSON keys.
+     * A fingerprint of an automation's steps, the same however the database orders JSON keys.
+     * The update that added it gives runs already under way the fingerprint of their steps.
+     *
+     * @param  array<int|string, mixed>  $steps
      */
-    private static function stepsHash(Automation $automation): string
+    public static function hashSteps(array $steps): string
     {
         $sorted = function (mixed $value) use (&$sorted): mixed {
             if (! is_array($value)) {
@@ -342,7 +345,7 @@ class Runner
             return array_map($sorted, $value);
         };
 
-        return hash('sha256', (string) json_encode($sorted(array_values($automation->steps ?? []))));
+        return hash('sha256', (string) json_encode($sorted(array_values($steps))));
     }
 
     private function finish(AutomationRun $run, string $status, string $text, ?int $step = null): AutomationRun

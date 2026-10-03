@@ -13,9 +13,13 @@ class ActivityLog extends Model
 
     /**
      * Actions whose entries show invoices, payments, quotes, saved cards, commissions or the wallet
-     * (SQL "like" patterns). Staff without billing.view do not see them.
+     * (SQL "like" patterns). Staff without billing.view do not see them. The plan change entries
+     * listed here hold amounts or invoice numbers; the other plan change entries do not.
      */
-    public const BILLING_ACTIONS = ['invoice.%', 'payment.%', 'payment_method.%', 'wallet.%', 'credit_note.%', 'quote.%', 'affiliate.commission', 'affiliate.withdrawn', 'client.auto_pay'];
+    public const BILLING_ACTIONS = [
+        'invoice.%', 'payment.%', 'payment_method.%', 'wallet.%', 'credit_note.%', 'quote.%', 'affiliate.commission', 'affiliate.withdrawn', 'client.auto_pay',
+        'service.plan_change_credit', 'service.plan_change_expired', 'service.plan_change_refund',
+    ];
 
     /**
      * Subjects that are billing records, so their entries are billing data whatever the action.
