@@ -41,13 +41,13 @@ class RenewalGenerator
     {
         $today = CarbonImmutable::instance($today ?? today());
 
-        // Free renewals made before they were paid at once (0.6.11 and older) are paid now. Only a
-        // coupon makes a renewal free; one that is free because its price is missing stays unpaid.
+        // Free renewals made before they were paid at once (0.6.11 and older) are paid now. A domain
+        // renewal that is free only because its price was missing stays unpaid.
         Invoice::query()
             ->where('status', InvoiceStatus::Unpaid)
             ->where('total', 0)
             ->whereHas('items', fn (Builder $query) => $query->whereNotNull('billing_key'))
-            ->whereHas('items', fn (Builder $query) => $query->where('type', InvoiceItem::TYPE_DISCOUNT))
+            ->whereDoesntHave('items', fn (Builder $query) => self::unpricedDomainRenewal($query))
             ->eachById(fn (Invoice $invoice) => app(PaymentRecorder::class)->settleFreeInvoice($invoice));
 
         /** @var array<string, array{client: Client, currency: string, due: CarbonImmutable, items: list<array<string, mixed>>}> $groups */
@@ -246,12 +246,14 @@ class RenewalGenerator
     }
 
     /**
-     * Email a new renewal invoice and pay it from the wallet when that is on. One that a coupon makes
-     * free is paid at once, like a free order, so the period renews and nothing goes overdue.
+     * Email a new renewal invoice and pay it from the wallet when that is on. A free one (a coupon,
+     * or a move to a free plan) is paid at once, like a free order, so the period renews and nothing
+     * goes overdue. A domain renewal with no price is never paid this way: the registrar would bill
+     * the company for it.
      */
     private function sendOrSettle(Invoice $invoice, Client $client): void
     {
-        if ($invoice->total === 0 && $invoice->items()->where('type', InvoiceItem::TYPE_DISCOUNT)->exists()) {
+        if ($invoice->total === 0 && ! self::unpricedDomainRenewal($invoice->items()->getQuery())->exists()) {
             app(PaymentRecorder::class)->settleFreeInvoice($invoice);
 
             return;
@@ -259,6 +261,14 @@ class RenewalGenerator
 
         $this->mailer->send('invoice.created', $client, TemplateMailer::invoiceContext($invoice));
         $this->wallet->applyAutomatically($invoice);
+    }
+
+    /**
+     * Narrows invoice lines to domain renewals that cost nothing, which only a missing price makes.
+     */
+    private static function unpricedDomainRenewal(Builder $query): Builder
+    {
+        return $query->where('type', InvoiceItem::TYPE_DOMAIN_RENEW)->where('amount', '<=', 0);
     }
 
     /**

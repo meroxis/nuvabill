@@ -11,10 +11,12 @@ use App\Enums\BillingCycle;
 use App\Enums\InvoiceStatus;
 use App\Enums\OrderStatus;
 use App\Enums\ServiceStatus;
+use App\Models\ActivityLog;
 use App\Models\Client;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Server;
+use App\Models\Service;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -139,6 +141,32 @@ class UnpaidOrdersTest extends TestCase
         $this->assertSame($server->id, $service->server_id);
         $this->assertSame(1, $server->fresh()->accountsCount());
         Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'full.example.test'));
+    }
+
+    public function test_the_nightly_log_says_how_many_unpaid_orders_were_cancelled(): void
+    {
+        $order = $this->checkout(Product::factory()->priced()->withoutDomain()->create());
+        $this->travel(7)->days();
+
+        $this->artisan('nuvabill:cron')->assertSuccessful();
+
+        $this->assertSame(OrderStatus::Cancelled, $order->fresh()->status);
+        $this->assertStringContainsString('unpaid orders cancelled: 1', ActivityLog::query()->where('action', 'automation.run')->sole()->description);
+    }
+
+    public function test_the_server_list_counts_the_accounts_its_limit_counts(): void
+    {
+        $server = Server::factory()->create(['name' => 'Web 1', 'max_accounts' => 5]);
+        $product = Product::factory()->cpanel($server)->priced(899)->create();
+
+        // Left unpaid, so it takes no room yet.
+        $this->placeOrder($product, 'raz@example.test');
+        Service::factory()->create(['product_id' => $product->id, 'server_id' => $server->id]);
+
+        $this->assertSame(1, $server->fresh()->accountsCount());
+
+        $this->signInAdmin();
+        $this->get(route('admin.servers.index'))->assertOk()->assertSee('1 / 5')->assertDontSee('2 / 5');
     }
 
     private function checkout(Product $product): Order

@@ -475,8 +475,11 @@ class PlanChanges
 
     /**
      * Before the service's next period is billed. An upgrade still waiting for payment was priced for
-     * the period that ends now, so it stops and its unpaid invoice is cancelled; one whose invoice was
-     * just paid is applied first. Returns true when the service moved to its new plan.
+     * the period that ends now, so it stops: what was paid of its invoice goes back to the wallet and
+     * the invoice is cancelled. One whose invoice was just paid is applied first. One with a card or
+     * gateway payment still going through stays open; if that payment lands after the renewal was
+     * billed, the change stops then and the money goes back to the wallet. Returns true when the
+     * service moved to its new plan, so the renewal bills the new plan.
      */
     public function settleBeforeRenewal(Service $service): bool
     {
@@ -491,25 +494,73 @@ class PlanChanges
             return false;
         }
 
+        $returned = 0;
+        $notReturned = 0;
+
+        // The change and then its invoice are locked (the invoice lock a payment takes), so a payment
+        // arriving now either lands first and applies the change, or finds the invoice cancelled.
+        $outcome = DB::transaction(function () use ($change, &$returned, &$notReturned): string {
+            $locked = PlanChange::query()->lockForUpdate()->find($change->id);
+
+            if ($locked === null || ! $locked->isPending()) {
+                return $locked?->status === PlanChange::STATUS_APPLIED ? 'applied' : 'gone';
+            }
+
+            $invoice = $locked->invoice_id === null ? null : Invoice::query()->lockForUpdate()->find($locked->invoice_id);
+
+            if ($invoice?->status === InvoiceStatus::Paid) {
+                return 'paid';
+            }
+
+            if ($invoice?->status === InvoiceStatus::Unpaid && PaymentUnderway::on($invoice)) {
+                return 'waiting';
+            }
+
+            if ($invoice?->status === InvoiceStatus::Unpaid && $invoice->amount_paid > 0) {
+                $invoice->load('client');
+
+                if ($this->wallet->enabled() && $invoice->currency === $invoice->client->currency) {
+                    $this->wallet->change($invoice->client, $invoice->amount_paid, __('Money back for the plan change on invoice :number', ['number' => $invoice->displayNumber()]), $invoice);
+                    $returned = $invoice->amount_paid;
+                } else {
+                    $notReturned = $invoice->amount_paid;
+                }
+            }
+
+            if ($invoice !== null) {
+                // Cancelling the invoice cancels the change with it.
+                $this->invoices->cancel($invoice);
+            }
+
+            $locked->update(['status' => PlanChange::STATUS_CANCELLED]);
+
+            return 'stopped';
+        });
+
+        return match ($outcome) {
+            'paid' => $this->apply($change),
+            // A payment got there first and moved the service already.
+            'applied' => true,
+            'stopped' => $this->expired($change, $service, $returned, $notReturned),
+            default => false,
+        };
+    }
+
+    /**
+     * Log an upgrade that stopped because it was not paid before the renewal, and ask staff to
+     * settle a part payment that could not go back into the wallet.
+     */
+    private function expired(PlanChange $change, Service $service, int $returned, int $notReturned): bool
+    {
         $invoice = $change->invoice()->first();
+        $number = $invoice?->displayNumber() ?? '';
 
-        if ($invoice?->status === InvoiceStatus::Paid) {
-            return $this->apply($change);
+        Activity::log('service.plan_change_expired', "Plan change for service #{$service->id} stopped: its invoice {$number} was not paid before the renewal"
+            .($returned > 0 ? '; '.money($returned, $change->currency).' paid on it went back to the wallet' : ''), $service);
+
+        if ($notReturned > 0) {
+            Activity::log('service.plan_change_refund', "Invoice {$number} had ".money($notReturned, $change->currency).' paid on it for a plan change that stopped. Give the money back to the client by hand.', $invoice);
         }
-
-        // Part of it is paid: it stays open. Paying the rest stops the change and the whole invoice
-        // goes back to the wallet then.
-        if ($invoice?->status === InvoiceStatus::Unpaid && $invoice->amount_paid > 0) {
-            return false;
-        }
-
-        if ($invoice !== null) {
-            // Cancelling the invoice cancels the change with it.
-            $this->invoices->cancel($invoice);
-        }
-
-        PlanChange::query()->whereKey($change->id)->where('status', PlanChange::STATUS_PENDING)->update(['status' => PlanChange::STATUS_CANCELLED]);
-        Activity::log('service.plan_change_expired', "Plan change for service #{$service->id} stopped: its invoice was not paid before the renewal", $service);
 
         return false;
     }

@@ -16,10 +16,14 @@ use Illuminate\View\View;
 
 class ServerController extends Controller
 {
+    /**
+     * Each server with the accounts that count towards its limit, the same count that decides
+     * whether it takes a new account.
+     */
     public function index(): View
     {
         return view('admin.servers.index', [
-            'servers' => Server::query()->withCount(['services as accounts_count' => fn ($query) => $query->whereIn('status', ['active', 'suspended', 'pending'])])->orderBy('name')->get(),
+            'servers' => Server::query()->withCount('accounts')->orderBy('name')->get(),
         ]);
     }
 

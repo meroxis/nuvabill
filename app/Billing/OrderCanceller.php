@@ -8,7 +8,6 @@ use App\Enums\OrderStatus;
 use App\Enums\ServiceStatus;
 use App\Models\Invoice;
 use App\Models\Order;
-use App\Models\PaymentIntent;
 use App\Support\Activity;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
@@ -91,7 +90,7 @@ class OrderCanceller
 
             if ($order === null || $invoice === null || $order->status !== OrderStatus::Pending
                 || ! in_array($invoice->status, [InvoiceStatus::Unpaid, InvoiceStatus::Cancelled], true)
-                || $invoice->amount_paid > 0 || $this->paymentUnderway($invoice)) {
+                || $invoice->amount_paid > 0 || PaymentUnderway::on($invoice)) {
                 return false;
             }
 
@@ -112,20 +111,5 @@ class OrderCanceller
         $query
             ->whereDoesntHave('services', fn (Builder $query) => $query->whereNotIn('status', [ServiceStatus::Pending, ServiceStatus::Cancelled, ServiceStatus::Terminated, ServiceStatus::Fraud]))
             ->whereDoesntHave('domains', fn (Builder $query) => $query->whereNotIn('status', [DomainStatus::Pending, DomainStatus::Cancelled, DomainStatus::Fraud]));
-    }
-
-    /**
-     * Whether money for the invoice may still arrive: a saved card charge that is not finished or
-     * will be tried again, or a gateway payment started in the last day.
-     */
-    private function paymentUnderway(Invoice $invoice): bool
-    {
-        return $invoice->autopay_pending !== null
-            || ($invoice->autopay_retry_at !== null && $invoice->autopay_retry_at->isFuture())
-            || PaymentIntent::query()
-                ->where('invoice_id', $invoice->id)
-                ->where('status', PaymentIntent::STATUS_PENDING)
-                ->where('created_at', '>=', now()->subDay())
-                ->exists();
     }
 }

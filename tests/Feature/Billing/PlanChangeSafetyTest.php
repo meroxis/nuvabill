@@ -14,8 +14,10 @@ use App\Models\ActivityLog;
 use App\Models\Admin;
 use App\Models\Client;
 use App\Models\CreditNote;
+use App\Models\CreditTransaction;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
+use App\Models\PaymentIntent;
 use App\Models\PlanChange;
 use App\Models\Product;
 use App\Models\Service;
@@ -82,6 +84,98 @@ class PlanChangeSafetyTest extends TestCase
 
         $this->assertSame($this->business->id, $this->service->fresh()->product_id);
         $this->assertSame(2000, Invoice::query()->whereKeyNot($upgrade->id)->sole()->total);
+    }
+
+    public function test_an_upgrade_paid_while_the_renewal_run_looks_at_it_bills_the_new_plan(): void
+    {
+        $upgrade = $this->requestUpgrade();
+        $paid = false;
+
+        // The payment lands just after the run found the upgrade still waiting.
+        PlanChange::retrieved(function () use (&$paid, $upgrade): void {
+            if (! $paid) {
+                $paid = true;
+                app(PaymentRecorder::class)->record($upgrade, 500, 'banktransfer');
+            }
+        });
+
+        app(RenewalGenerator::class)->generate(Carbon::parse('2026-10-09'));
+
+        $this->assertTrue($paid);
+        $this->assertSame(InvoiceStatus::Paid, $upgrade->fresh()->status);
+        $this->assertSame($this->business->id, $this->service->fresh()->product_id);
+        $this->assertSame(2000, Invoice::query()->whereKeyNot($upgrade->id)->sole()->total, 'The renewal bills the plan the payment moved the service to.');
+    }
+
+    public function test_a_part_paid_upgrade_is_stopped_and_the_part_goes_back_to_the_wallet(): void
+    {
+        $upgrade = $this->requestUpgrade();
+        app(PaymentRecorder::class)->record($upgrade, 200, 'banktransfer');
+
+        app(RenewalGenerator::class)->generate(Carbon::parse('2026-10-09'));
+
+        $this->assertSame(InvoiceStatus::Cancelled, $upgrade->fresh()->status, 'The service is not left overdue on it.');
+        $this->assertSame(PlanChange::STATUS_CANCELLED, PlanChange::query()->sole()->status);
+        $this->assertSame($this->starter->id, $this->service->fresh()->product_id);
+        $this->assertSame(200, CreditTransaction::query()->where('description', "Money back for the plan change on invoice {$upgrade->number}")->sole()->amount);
+
+        // The money is the client's: in the wallet, or already used on the renewal.
+        $renewal = Invoice::query()->whereKeyNot($upgrade->id)->sole();
+        $this->assertSame(1000, $renewal->total);
+        $this->assertSame(200, $renewal->amount_paid + $this->service->client->fresh()->credit);
+    }
+
+    public function test_a_part_paid_upgrade_the_wallet_cannot_take_back_is_left_to_staff(): void
+    {
+        $this->setSettings(['wallet.enabled' => false]);
+        $upgrade = $this->requestUpgrade();
+        app(PaymentRecorder::class)->record($upgrade, 200, 'banktransfer');
+
+        app(RenewalGenerator::class)->generate(Carbon::parse('2026-10-09'));
+
+        $this->assertSame(InvoiceStatus::Cancelled, $upgrade->fresh()->status);
+        $this->assertSame(PlanChange::STATUS_CANCELLED, PlanChange::query()->sole()->status);
+        $this->assertSame(0, $this->service->client->fresh()->credit);
+        $this->assertTrue(ActivityLog::query()->where('action', 'service.plan_change_refund')->where('subject_id', $upgrade->id)->exists());
+    }
+
+    public function test_an_upgrade_with_a_payment_going_through_stays_open_and_is_given_back_when_it_lands(): void
+    {
+        $upgrade = $this->requestUpgrade();
+        PaymentIntent::query()->create(['invoice_id' => $upgrade->id, 'gateway' => 'stripe', 'reference' => 'pi_late', 'amount' => 500, 'currency' => 'USD', 'status' => PaymentIntent::STATUS_PENDING]);
+
+        app(RenewalGenerator::class)->generate(Carbon::parse('2026-10-09'));
+
+        $this->assertSame(InvoiceStatus::Unpaid, $upgrade->fresh()->status, 'Not cancelled while its payment may still land.');
+        $this->assertSame(1000, Invoice::query()->whereKeyNot($upgrade->id)->sole()->total);
+
+        app(PaymentRecorder::class)->record($upgrade, 500, 'stripe', 'pi_late');
+
+        $this->assertUpgradeStoppedAndPaidBack($upgrade);
+    }
+
+    public function test_a_downgrade_to_a_free_plan_renews_without_going_overdue(): void
+    {
+        $free = Product::factory()->priced(0)->create(['name' => 'Free']);
+        $this->business->update(['upgrade_product_ids' => [$this->starter->id, $free->id]]);
+        $this->setSettings(['billing.downgrade' => 'renewal']);
+        $this->service->update(['product_id' => $this->business->id, 'recurring_amount' => 2000]);
+
+        $this->assertSame(PlanChange::MODE_RENEWAL, app(PlanChanges::class)->start($this->service->fresh(), $free)->mode);
+
+        app(RenewalGenerator::class)->generate(Carbon::parse('2026-10-09'));
+
+        $renewal = Invoice::query()->sole();
+        $this->assertSame(0, $renewal->total);
+        $this->assertSame(InvoiceStatus::Paid, $renewal->status, 'Nothing to pay, so it is settled at once.');
+        $this->assertTrue($this->service->fresh()->next_due_date->isSameDay('2026-11-16'));
+
+        $this->travelTo(Carbon::parse('2026-10-25 03:00'));
+        app(DailyAutomation::class)->run();
+
+        $service = $this->service->fresh();
+        $this->assertSame($free->id, $service->product_id);
+        $this->assertSame(ServiceStatus::Active, $service->status);
     }
 
     public function test_an_upgrade_paid_after_the_renewal_was_paid_does_not_move_the_renewed_period(): void
