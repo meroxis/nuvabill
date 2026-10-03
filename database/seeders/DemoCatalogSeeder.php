@@ -17,9 +17,9 @@ class DemoCatalogSeeder extends Seeder
     /**
      * Currencies where the example prices (3.99, 8.99 and 15.99 a month) make sense. In others,
      * such as IQD, they would cost almost nothing, so the plans stay hidden and are not set up
-     * on their own until staff set real prices.
+     * on their own until staff set real prices. The installer's help text names the same list.
      */
-    private const PRICED_FOR = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'NZD', 'CHF', 'SGD'];
+    public const PRICED_FOR = ['USD', 'EUR', 'GBP', 'CAD', 'AUD', 'NZD', 'CHF', 'SGD'];
 
     public function run(string $currency = 'USD'): void
     {

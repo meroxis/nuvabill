@@ -96,9 +96,9 @@ class HeadTags
         // Odd values, such as ?lang[]=x, count as none.
         $lang = $request->query('lang');
         $lang = is_string($lang) && isset(Locales::enabled()[$lang]) ? $lang : null;
-        // Each page of a list, such as /announcements?page=2, is a page of its own.
-        $page = $request->query('page');
-        $page = is_string($page) && ctype_digit($page) && (int) $page > 1 ? (int) $page : null;
+        // Each page of a list, such as /announcements?page=2, is a page of its own. Anywhere
+        // else ?page= is ignored, so /?page=7 still points to /.
+        $page = $this->seo->page();
         $canonical = SiteAddress::url($request->path(), $lang, $page);
 
         if (! $has('rel="canonical"')) {

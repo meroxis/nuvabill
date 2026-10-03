@@ -86,6 +86,27 @@ class InstallerTest extends TestCase
         $plans->each(fn (Product $plan) => $this->assertSame(AutoSetup::Manual, $plan->auto_setup));
     }
 
+    public function test_the_installer_says_which_currencies_keep_the_example_plans_on_sale(): void
+    {
+        config(['nuvabill.installed' => false]);
+        $this->app->instance(Installer::class, new class extends Installer
+        {
+            public function databaseIsReady(): bool
+            {
+                return true;
+            }
+        });
+
+        $help = 'Three sample plans you can edit or delete. Their prices fit USD, EUR, GBP, CAD, AUD, NZD, CHF and SGD. In other currencies they stay hidden until you set their prices.';
+
+        $this->get(route('install.account'))->assertOk()->assertSee($help);
+
+        // The help text names every currency the plans stay on sale in.
+        foreach (DemoCatalogSeeder::PRICED_FOR as $currency) {
+            $this->assertStringContainsString($currency, $help);
+        }
+    }
+
     public function test_example_plans_in_usd_stay_on_sale(): void
     {
         (new DemoCatalogSeeder)->run('USD');

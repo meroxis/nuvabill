@@ -15,10 +15,12 @@ class AnnouncementController extends Controller
     public function index(Seo $seo): View
     {
         $this->ensureEnabled();
-        $seo->setDescription(__('News from :company: new services, changes and planned work.', ['company' => setting('company.name')]));
+        $announcements = Announcement::query()->public()->withTranslation()->newestFirst()->paginate(10);
+        $seo->setDescription(__('News from :company: new services, changes and planned work.', ['company' => setting('company.name')]))
+            ->paginated($announcements);
 
         return view('theme::announcements.index', [
-            'announcements' => Announcement::query()->public()->withTranslation()->newestFirst()->paginate(10),
+            'announcements' => $announcements,
         ]);
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Seo;
 
+use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Http\Request;
 
 /**
@@ -10,7 +11,8 @@ use Illuminate\Http\Request;
  * pages fill it in; AddSearchEngineTags writes it into the page, whatever the theme.
  *
  * Add-ons with public pages call allowIndexing() on it: every page that is not on the list
- * below is hidden from search engines unless it asks.
+ * below is hidden from search engines unless it asks. Public lists split into pages also call
+ * paginated().
  */
 class Seo
 {
@@ -55,6 +57,11 @@ class Seo
     private ?string $image = null;
 
     private string $type = 'website';
+
+    /**
+     * Which page of a list this is, after the first; see paginated().
+     */
+    private ?int $page = null;
 
     /**
      * @var list<array<string, mixed>>
@@ -109,6 +116,18 @@ class Seo
     }
 
     /**
+     * Marks the page as one page of a list that uses ?page=, such as /announcements?page=2, so
+     * its address keeps the page number. Other pages ignore ?page=, and so do pages past the end
+     * of the list: they point to the list itself.
+     */
+    public function paginated(Paginator $list): static
+    {
+        $this->page = $list->currentPage() > 1 && ! $list->isEmpty() ? $list->currentPage() : null;
+
+        return $this;
+    }
+
+    /**
      * A block of structured data (schema.org) for Google.
      *
      * @param  array<string, mixed>  $data
@@ -143,6 +162,11 @@ class Seo
     public function type(): string
     {
         return $this->type;
+    }
+
+    public function page(): ?int
+    {
+        return $this->page;
     }
 
     /**

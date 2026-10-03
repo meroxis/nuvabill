@@ -97,9 +97,24 @@ class SearchEnginesTest extends TestCase
             ->assertSee('<link rel="alternate" hreflang="de" href="'.$address.'?lang=de&amp;page=2">', false);
         $this->get(route('announcements.index', ['lang' => 'de', 'page' => 2]))->assertSee('<link rel="canonical" href="'.$address.'?lang=de&amp;page=2">', false);
 
-        foreach (['page=1', 'page=abc', 'page[]=2'] as $query) {
+        // Page 999 is past the end of the list, so it points to the list itself.
+        foreach (['page=1', 'page=abc', 'page[]=2', 'page=999'] as $query) {
             $this->get('/announcements?'.$query)->assertOk()->assertSee('<link rel="canonical" href="'.$address.'">', false);
         }
+    }
+
+    public function test_pages_that_are_not_lists_ignore_the_page_number_in_their_address(): void
+    {
+        $product = Product::factory()->priced(899)->create(['name' => 'Business Plan']);
+        $productAddress = url('/').'/'.$product->storePath();
+
+        $this->get('/?page=2')->assertOk()
+            ->assertSee('<link rel="canonical" href="'.url('/').'/">', false)
+            ->assertSee('<meta property="og:url" content="'.url('/').'/">', false)
+            ->assertDontSee('page=2', false);
+        $this->get($productAddress.'?page=3')->assertOk()
+            ->assertSee('<link rel="canonical" href="'.$productAddress.'">', false)
+            ->assertDontSee('page=3', false);
     }
 
     public function test_titles_and_descriptions_written_by_staff_replace_the_theme_ones(): void
