@@ -116,12 +116,25 @@ class PleskModule extends Module
         return $this->setStatus($service, 'active', __('Subscription unsuspended.'));
     }
 
+    /**
+     * Removes the customer Nuvabill made for this service. A service set up elsewhere (for example an
+     * import) has no stored customer, and its customer may own other subscriptions, so only its own
+     * subscription is removed.
+     */
     public function terminate(Service $service): ModuleResult
     {
         return $this->attempt(function () use ($service): ModuleResult {
-            $this->call($service->server, 'delete', 'clients/'.$this->clientId($service));
+            $clientId = (int) $this->moduleValue($service, 'client_id', 0);
 
-            return ModuleResult::ok(__('Customer and subscription removed.'));
+            if ($clientId > 0) {
+                $this->call($service->server, 'delete', 'clients/'.$clientId);
+
+                return ModuleResult::ok(__('Customer and subscription removed.'));
+            }
+
+            $this->call($service->server, 'delete', 'domains/'.$this->domainId($service));
+
+            return ModuleResult::ok(__('Subscription :domain removed. Its Plesk customer was not created by Nuvabill, so it stays.', ['domain' => $service->domain]));
         });
     }
 
@@ -196,27 +209,39 @@ class PleskModule extends Module
         });
     }
 
-    private function clientId(Service $service): int
-    {
-        return (int) ($this->moduleValue($service, 'client_id') ?: $this->lookupId($service, 'clients?login='.rawurlencode((string) $service->username)));
-    }
-
     private function domainId(Service $service): int
     {
-        return (int) ($this->moduleValue($service, 'domain_id') ?: $this->lookupId($service, 'domains?name='.rawurlencode((string) $service->domain)));
+        return (int) ($this->moduleValue($service, 'domain_id') ?: $this->lookupDomainId($service));
     }
 
     /**
-     * Find an ID by login or domain, for services set up before Nuvabill stored the IDs.
+     * Find the subscription by its domain, for services set up outside Nuvabill (for example
+     * imported ones). Only a row whose name is exactly this domain counts: Plesk may ignore the
+     * filter and list every subscription, and acting on the wrong one would hit another customer.
      */
-    private function lookupId(Service $service, string $path): int
+    private function lookupDomainId(Service $service): int
     {
-        $found = $this->call($service->server, 'get', $path);
-        $id = (int) ($found[0]['id'] ?? $found['id'] ?? 0);
+        $domain = mb_strtolower(trim((string) $service->domain));
 
-        if ($id === 0) {
-            throw new RuntimeException(__('Plesk has no customer or subscription for this service.'));
+        if ($domain === '') {
+            throw new RuntimeException(__('This service has no domain to find its Plesk subscription.'));
         }
+
+        $found = $this->call($service->server, 'get', 'domains?name='.rawurlencode($domain));
+        $rows = array_is_list($found) ? $found : [$found];
+
+        $matches = array_values(array_filter($rows, fn (mixed $row): bool => is_array($row)
+            && (mb_strtolower((string) ($row['name'] ?? '')) === $domain || mb_strtolower((string) ($row['ascii_name'] ?? '')) === $domain)));
+
+        $id = count($matches) === 1 ? (int) ($matches[0]['id'] ?? 0) : 0;
+
+        if ($id <= 0) {
+            throw new RuntimeException(__('Plesk has no single subscription for :domain.', ['domain' => $domain]));
+        }
+
+        // Remember it, so the next action does not need to look it up again.
+        $service->module_data = array_merge((array) $service->module_data, ['domain_id' => $id]);
+        $service->save();
 
         return $id;
     }

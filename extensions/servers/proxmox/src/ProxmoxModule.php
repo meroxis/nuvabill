@@ -3,10 +3,13 @@
 namespace Nuvabill\Extensions\Proxmox;
 
 use App\Contracts\HasClientPanel;
+use App\Enums\ServiceStatus;
 use App\Extensions\Servers\Module;
 use App\Extensions\Servers\ModuleResult;
+use App\Models\Product;
 use App\Models\Server;
 use App\Models\Service;
+use Carbon\CarbonInterface;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
@@ -20,9 +23,18 @@ use RuntimeException;
 class ProxmoxModule extends Module implements HasClientPanel
 {
     /**
-     * How long to wait for a Proxmox task (clone, stop, delete), in seconds.
+     * How long to wait for a Proxmox task (stop, start, delete), in seconds.
      */
     private const TASK_TIMEOUT = 600;
+
+    /**
+     * create() runs in the setup job, which is stopped after 900 seconds. So all its tasks
+     * together (clone, resize, start) get this long, and removing a half-made VM gets CLEANUP_TIMEOUT.
+     * Both end in time for the error to be logged and the VM to be removed.
+     */
+    private const CREATE_TIMEOUT = 660;
+
+    private const CLEANUP_TIMEOUT = 90;
 
     public function productFields(): array
     {
@@ -34,7 +46,7 @@ class ProxmoxModule extends Module implements HasClientPanel
             'memory' => ['label' => 'RAM (MB)', 'type' => 'text', 'required' => true],
             'disk' => ['label' => 'Disk size (GB)', 'type' => 'text', 'help' => 'The disk grows to this size. Empty keeps the template size.'],
             'disk_device' => ['label' => 'Disk device', 'type' => 'text', 'help' => 'Default "scsi0".'],
-            'ip_config' => ['label' => 'Network (ipconfig0)', 'type' => 'text', 'help' => 'Default "ip=dhcp". For a fixed IP: "ip=203.0.113.10/24,gw=203.0.113.1".'],
+            'ip_config' => ['label' => 'Network (ipconfig0)', 'type' => 'text', 'help' => 'Default "ip=dhcp". Every VPS of this product gets this setting, so a fixed IP such as "ip=203.0.113.10/24,gw=203.0.113.1" only works for one VPS: set the product stock to 1.'],
         ];
     }
 
@@ -73,28 +85,54 @@ class ProxmoxModule extends Module implements HasClientPanel
                 return ModuleResult::fail(__('Set the template VM ID on the product first.'));
             }
 
+            $ipConfig = (string) ($this->productSetting($service, 'ip_config') ?: 'ip=dhcp');
+
+            if ($this->fixedIpInUse($service, $ipConfig)) {
+                return ModuleResult::fail(__('This product has a fixed IP that another service already uses. Give each VPS its own IP.'));
+            }
+
+            $deadline = now()->addSeconds(self::CREATE_TIMEOUT);
             $vmId = (int) $this->call($server, 'get', 'cluster/nextid');
             $password = $this->makePassword();
 
-            $this->waitFor($server, $node, $this->call($server, 'post', "nodes/{$node}/qemu/{$template}/clone", array_filter([
+            $clone = $this->call($server, 'post', "nodes/{$node}/qemu/{$template}/clone", array_filter([
                 'newid' => $vmId,
                 'name' => $this->vmName($service),
                 'full' => 1,
                 'storage' => $this->productSetting($service, 'storage') ?: null,
                 'description' => 'Nuvabill service #'.$service->id,
-            ])));
+            ]));
 
-            $this->call($server, 'put', "nodes/{$node}/qemu/{$vmId}/config", [
-                'cores' => max(1, (int) $this->productSetting($service, 'cores', 1)),
-                'memory' => max(256, (int) $this->productSetting($service, 'memory', 1024)),
-                'ciuser' => 'root',
-                'cipassword' => $password,
-                'ipconfig0' => (string) ($this->productSetting($service, 'ip_config') ?: 'ip=dhcp'),
-                'onboot' => 1,
-            ]);
+            try {
+                $this->waitFor($server, $node, $clone, $deadline);
+            } catch (RuntimeException $exception) {
+                // A clone that fails or is stopped removes its half-copied VM itself.
+                $this->stopTask($server, $node, $clone);
 
-            $this->resizeDisk($service, $node, $vmId);
-            $this->waitFor($server, $node, $this->call($server, 'post', "nodes/{$node}/qemu/{$vmId}/status/start"));
+                throw new RuntimeException($exception->getMessage().' '.__('Also check that VM :id was removed from the node.', ['id' => $vmId]));
+            }
+
+            // From here the VM exists. If a later step fails, remove it again: Nuvabill does not
+            // store its ID, so it would be left on the node, and the next try clones a new one.
+            try {
+                $this->call($server, 'put', "nodes/{$node}/qemu/{$vmId}/config", [
+                    'cores' => max(1, (int) $this->productSetting($service, 'cores', 1)),
+                    'memory' => max(256, (int) $this->productSetting($service, 'memory', 1024)),
+                    'ciuser' => 'root',
+                    'cipassword' => $password,
+                    'ipconfig0' => $ipConfig,
+                    'onboot' => 1,
+                ]);
+
+                $this->resizeDisk($service, $node, $vmId, $deadline);
+                $this->waitFor($server, $node, $this->call($server, 'post', "nodes/{$node}/qemu/{$vmId}/status/start"), $deadline);
+            } catch (RuntimeException $exception) {
+                if (! $this->removeVm($server, $node, $vmId)) {
+                    throw new RuntimeException($exception->getMessage().' '.__('Also check that VM :id was removed from the node.', ['id' => $vmId]));
+                }
+
+                throw $exception;
+            }
 
             return ModuleResult::ok(__('Virtual server :id created.', ['id' => $vmId]), [
                 'username' => 'root',
@@ -104,14 +142,58 @@ class ProxmoxModule extends Module implements HasClientPanel
         });
     }
 
+    /**
+     * Stops the VM and waits until it is off. Start on boot is turned off first, so a node
+     * restart does not bring a suspended VM back. A stop that fails (for example while a backup
+     * holds a lock) fails the suspension, so the service stays active and is tried again.
+     */
     public function suspend(Service $service, string $reason): ModuleResult
     {
-        return $this->power($service, 'stop', __('Virtual server stopped.'));
+        return $this->attempt(function () use ($service): ModuleResult {
+            [$node, $vmId] = $this->vm($service);
+            $server = $service->server;
+
+            $this->call($server, 'put', "nodes/{$node}/qemu/{$vmId}/config", ['onboot' => 0]);
+
+            try {
+                if (($this->status($service)['status'] ?? '') !== 'stopped') {
+                    $this->waitFor($server, $node, $this->call($server, 'post', "nodes/{$node}/qemu/{$vmId}/status/stop"));
+                }
+            } catch (RuntimeException $exception) {
+                // The service stays active, so it should start on boot again.
+                rescue(fn () => $this->call($server, 'put', "nodes/{$node}/qemu/{$vmId}/config", ['onboot' => 1]), report: false);
+
+                throw $exception;
+            }
+
+            return ModuleResult::ok(__('Virtual server stopped.'));
+        });
     }
 
+    /**
+     * Turns start on boot back on and starts the VM. When the start fails, the service stays
+     * suspended, so start on boot is turned off again.
+     */
     public function unsuspend(Service $service): ModuleResult
     {
-        return $this->power($service, 'start', __('Virtual server started.'));
+        return $this->attempt(function () use ($service): ModuleResult {
+            [$node, $vmId] = $this->vm($service);
+            $server = $service->server;
+
+            $this->call($server, 'put', "nodes/{$node}/qemu/{$vmId}/config", ['onboot' => 1]);
+
+            try {
+                if (($this->status($service)['status'] ?? '') !== 'running') {
+                    $this->waitFor($server, $node, $this->call($server, 'post', "nodes/{$node}/qemu/{$vmId}/status/start"));
+                }
+            } catch (RuntimeException $exception) {
+                rescue(fn () => $this->call($server, 'put', "nodes/{$node}/qemu/{$vmId}/config", ['onboot' => 0]), report: false);
+
+                throw $exception;
+            }
+
+            return ModuleResult::ok(__('Virtual server started.'));
+        });
     }
 
     public function terminate(Service $service): ModuleResult
@@ -225,7 +307,7 @@ class ProxmoxModule extends Module implements HasClientPanel
         });
     }
 
-    private function resizeDisk(Service $service, string $node, int $vmId): void
+    private function resizeDisk(Service $service, string $node, int $vmId, ?CarbonInterface $deadline = null): void
     {
         $size = (int) $this->productSetting($service, 'disk', 0);
 
@@ -244,7 +326,60 @@ class ProxmoxModule extends Module implements HasClientPanel
             }
         }
 
-        $this->waitFor($service->server, $node, $this->call($service->server, 'put', "nodes/{$node}/qemu/{$vmId}/resize", ['disk' => $device, 'size' => $size.'G']));
+        $this->waitFor($service->server, $node, $this->call($service->server, 'put', "nodes/{$node}/qemu/{$vmId}/resize", ['disk' => $device, 'size' => $size.'G']), $deadline);
+    }
+
+    /**
+     * Whether the product's fixed IP (not DHCP) is already used by a live VPS of a Proxmox product.
+     * Two VMs with one IP knock each other offline.
+     */
+    private function fixedIpInUse(Service $service, string $ipConfig): bool
+    {
+        if (! preg_match('/(?:^|,)ip=([0-9.]+)\//', $ipConfig, $match)) {
+            return false;
+        }
+
+        $sameIp = '/(?:^|,)ip='.preg_quote($match[1], '/').'\//';
+        $productIds = Product::query()->where('server_module', $this->slug())->get(['id', 'module_config'])
+            ->filter(fn (Product $product): bool => preg_match($sameIp, (string) ($product->module_config['ip_config'] ?? '')) === 1)
+            ->modelKeys();
+
+        return Service::query()
+            ->whereIn('product_id', $productIds)
+            ->whereKeyNot($service->id)
+            ->whereIn('status', [ServiceStatus::Active, ServiceStatus::Suspended])
+            ->whereNotNull('module_data->vmid')
+            ->exists();
+    }
+
+    /**
+     * Stop and delete a VM that create() could not finish. False when that did not work,
+     * so staff can be told to check the node. The create error stays the one shown.
+     */
+    private function removeVm(?Server $server, string $node, int $vmId): bool
+    {
+        return rescue(function () use ($server, $node, $vmId): bool {
+            $deadline = now()->addSeconds(self::CLEANUP_TIMEOUT);
+            $status = (array) $this->call($server, 'get', "nodes/{$node}/qemu/{$vmId}/status/current");
+
+            if (($status['status'] ?? '') === 'running') {
+                $this->waitFor($server, $node, $this->call($server, 'post', "nodes/{$node}/qemu/{$vmId}/status/stop"), $deadline);
+            }
+
+            $this->waitFor($server, $node, $this->call($server, 'delete', "nodes/{$node}/qemu/{$vmId}", ['purge' => 1, 'destroy-unreferenced-disks' => 1]), $deadline);
+
+            return true;
+        }, false, report: false);
+    }
+
+    /**
+     * Ask Proxmox to stop a running task. Nothing happens when it already finished.
+     */
+    private function stopTask(?Server $server, string $node, mixed $task): void
+    {
+        if (is_string($task) && str_starts_with($task, 'UPID:')) {
+            rescue(fn () => $this->call($server, 'delete', "nodes/{$node}/tasks/".rawurlencode($task)), report: false);
+        }
     }
 
     /**
@@ -289,22 +424,25 @@ class ProxmoxModule extends Module implements HasClientPanel
     }
 
     /**
-     * Wait until a Proxmox task (a "UPID:..." string) has finished, and fail if it did not end with OK.
+     * Wait until a Proxmox task (a "UPID:..." string) has finished, and fail if it did not succeed.
+     * A task succeeded when it ended with "OK", or with "WARNINGS: n" (done, but it logged warnings).
      */
-    private function waitFor(?Server $server, string $node, mixed $task): void
+    private function waitFor(?Server $server, string $node, mixed $task, ?CarbonInterface $deadline = null): void
     {
         if (! is_string($task) || ! str_starts_with($task, 'UPID:')) {
             return;
         }
 
-        $deadline = now()->addSeconds(self::TASK_TIMEOUT);
+        $deadline ??= now()->addSeconds(self::TASK_TIMEOUT);
 
         do {
             $status = (array) $this->call($server, 'get', "nodes/{$node}/tasks/".rawurlencode($task).'/status');
 
             if (($status['status'] ?? '') === 'stopped') {
-                if (($status['exitstatus'] ?? '') !== 'OK') {
-                    throw new RuntimeException('Proxmox: '.($status['exitstatus'] ?? __('the task failed')));
+                $exit = trim((string) ($status['exitstatus'] ?? ''));
+
+                if ($exit !== 'OK' && ! preg_match('/^WARNINGS: \d+$/', $exit)) {
+                    throw new RuntimeException('Proxmox: '.($exit !== '' ? $exit : __('the task failed')));
                 }
 
                 return;

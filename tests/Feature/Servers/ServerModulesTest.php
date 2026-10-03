@@ -4,6 +4,8 @@ namespace Tests\Feature\Servers;
 
 use App\Enums\ServiceStatus;
 use App\Extensions\ExtensionManager;
+use App\Jobs\ProvisionService;
+use App\Models\ActivityLog;
 use App\Models\Client;
 use App\Models\Product;
 use App\Models\Server;
@@ -13,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
+use RuntimeException;
 use Tests\TestCase;
 
 class ServerModulesTest extends TestCase
@@ -205,6 +208,267 @@ class ServerModulesTest extends TestCase
 
         $this->post(route('client.services.panel', [$service, 'start']))->assertSessionHas('status', 'The server is starting.');
         $this->post(route('client.services.panel', [$service, 'password']), ['password' => 'short'])->assertSessionHas('error');
+    }
+
+    public function test_plesk_terminate_of_an_imported_service_removes_only_its_own_subscription(): void
+    {
+        $this->fakePlesk([['id' => 33, 'name' => 'merlas.example'], ['id' => 34, 'name' => 'razsite.example', 'ascii_name' => 'razsite.example']]);
+
+        // Imported: Nuvabill did not create the customer, so it has no stored IDs.
+        $service = $this->service('plesk', 'plesk.example.test', ['plan' => 'Default Domain'], ['username' => 'razsite', 'domain' => 'razsite.example', 'module_data' => null], ['port' => 8443]);
+
+        $result = app(Provisioner::class)->terminate($service);
+
+        $this->assertTrue($result->success, $result->message);
+        $this->assertSame(ServiceStatus::Terminated, $service->fresh()->status);
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'DELETE' && str_ends_with($request->url(), '/api/v2/domains/34'));
+        Http::assertNotSent(fn (Request $request): bool => $request->method() === 'DELETE' && str_contains($request->url(), '/api/v2/clients'));
+        Http::assertNotSent(fn (Request $request): bool => str_ends_with($request->url(), '/domains/33'));
+    }
+
+    public function test_plesk_suspends_only_the_subscription_whose_name_matches_and_remembers_it(): void
+    {
+        $this->fakePlesk([['id' => 33, 'name' => 'merlas.example'], ['id' => 34, 'name' => 'RazSite.example']]);
+
+        $service = $this->service('plesk', 'plesk.example.test', ['plan' => 'Default Domain'], ['username' => 'razsite', 'domain' => 'razsite.example', 'module_data' => null], ['port' => 8443]);
+
+        $this->assertTrue(app(Provisioner::class)->suspend($service, 'Overdue')->success);
+
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'PUT' && str_ends_with($request->url(), '/api/v2/domains/34/status') && $request['status'] === 'suspended');
+        Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/domains/33'));
+        $this->assertSame(['domain_id' => 34], $service->fresh()->module_data);
+        $this->assertSame(ServiceStatus::Suspended, $service->fresh()->status);
+    }
+
+    public function test_plesk_does_nothing_when_no_single_subscription_matches_the_service(): void
+    {
+        $this->fakePlesk([['id' => 33, 'name' => 'merlas.example']]);
+
+        $blank = $this->service('plesk', 'plesk.example.test', ['plan' => 'Default Domain'], ['username' => null, 'domain' => null, 'module_data' => null], ['port' => 8443]);
+        $other = $this->service('plesk', 'plesk2.example.test', ['plan' => 'Default Domain'], ['username' => 'razsite', 'domain' => 'razsite.example', 'module_data' => null], ['port' => 8443]);
+
+        foreach ([$blank, $other] as $service) {
+            $this->assertFalse(app(Provisioner::class)->suspend($service, 'Overdue')->success);
+            $this->assertFalse(app(Provisioner::class)->terminate($service)->success);
+            $this->assertSame(ServiceStatus::Active, $service->fresh()->status);
+        }
+
+        Http::assertNotSent(fn (Request $request): bool => in_array($request->method(), ['PUT', 'DELETE'], true));
+    }
+
+    public function test_proxmox_suspend_fails_when_the_stop_task_fails(): void
+    {
+        Sleep::fake();
+        $node = $this->fakeProxmox(running: true, exitStatus: 'VM is locked (backup)');
+
+        $service = $this->service('proxmox', 'pve.example.test', ['node' => 'pve1'], ['module_data' => ['vmid' => 105, 'node' => 'pve1']], ['port' => 8006]);
+
+        $result = app(Provisioner::class)->suspend($service, 'Overdue');
+
+        $this->assertFalse($result->success);
+        $this->assertStringContainsString('VM is locked (backup)', $result->message);
+        $this->assertSame(ServiceStatus::Active, $service->fresh()->status, 'The next nightly run tries again.');
+        $this->assertSame(['PUT config onboot=0', 'GET qemu/105/status/current', 'POST qemu/105/status/stop', 'PUT config onboot=1'], $this->calls($node));
+    }
+
+    public function test_proxmox_suspend_turns_off_start_on_boot_and_unsuspend_turns_it_back_on(): void
+    {
+        Sleep::fake();
+        $node = $this->fakeProxmox(running: true, exitStatus: 'OK');
+
+        $service = $this->service('proxmox', 'pve.example.test', ['node' => 'pve1'], ['module_data' => ['vmid' => 105, 'node' => 'pve1']], ['port' => 8006]);
+
+        $this->assertTrue(app(Provisioner::class)->suspend($service, 'Overdue')->success);
+        $this->assertSame(ServiceStatus::Suspended, $service->fresh()->status);
+        $this->assertSame(['PUT config onboot=0', 'GET qemu/105/status/current', 'POST qemu/105/status/stop'], $this->calls($node));
+
+        [$node->running, $node->log] = [false, []];
+
+        $this->assertTrue(app(Provisioner::class)->unsuspend($service->fresh())->success);
+        $this->assertSame(ServiceStatus::Active, $service->fresh()->status);
+        $this->assertSame(['PUT config onboot=1', 'GET qemu/105/status/current', 'POST qemu/105/status/start'], $this->calls($node));
+    }
+
+    public function test_proxmox_unsuspend_that_cannot_start_the_vm_keeps_start_on_boot_off(): void
+    {
+        Sleep::fake();
+        $node = $this->fakeProxmox(running: false, exitStatus: 'start failed: storage is not online');
+
+        $service = $this->service('proxmox', 'pve.example.test', ['node' => 'pve1'], ['status' => ServiceStatus::Suspended, 'module_data' => ['vmid' => 105, 'node' => 'pve1']], ['port' => 8006]);
+
+        $result = app(Provisioner::class)->unsuspend($service);
+
+        $this->assertFalse($result->success);
+        $this->assertSame(ServiceStatus::Suspended, $service->fresh()->status);
+        $this->assertSame(['PUT config onboot=1', 'GET qemu/105/status/current', 'POST qemu/105/status/start', 'PUT config onboot=0'], $this->calls($node));
+    }
+
+    public function test_a_stopped_setup_job_is_logged_for_staff(): void
+    {
+        $service = Service::factory()->pending()->create();
+
+        (new ProvisionService($service))->failed(new RuntimeException('The job ran too long.'));
+
+        $this->assertDatabaseHas('activity_logs', ['action' => 'service.module_failed', 'subject_id' => $service->id]);
+        $this->assertStringContainsString('The job ran too long.', (string) ActivityLog::query()->where('action', 'service.module_failed')->value('description'));
+    }
+
+    public function test_proxmox_treats_a_task_that_ended_with_warnings_as_done(): void
+    {
+        Sleep::fake();
+        $node = $this->fakeProxmox(running: false, exitStatus: 'WARNINGS: 1');
+
+        $service = $this->service('proxmox', 'pve.example.test', ['node' => 'pve1', 'template' => '9000', 'cores' => '2', 'memory' => '2048'], ['status' => ServiceStatus::Pending], ['port' => 8006]);
+
+        $result = app(Provisioner::class)->create($service);
+
+        $this->assertTrue($result->success, $result->message);
+        $this->assertSame(ServiceStatus::Active, $service->fresh()->status);
+        $this->assertSame(['vmid' => 105, 'node' => 'pve1'], $service->fresh()->module_data);
+
+        // A task that really failed still fails.
+        $node->exitStatus = 'unable to remove disk';
+
+        $this->assertFalse(app(Provisioner::class)->terminate($service->fresh())->success);
+        $this->assertSame(ServiceStatus::Active, $service->fresh()->status);
+    }
+
+    public function test_proxmox_deletes_the_clone_when_a_later_step_fails(): void
+    {
+        Sleep::fake();
+        $node = $this->fakeProxmox(running: false, exitStatus: 'OK', configFails: true);
+
+        $service = $this->service('proxmox', 'pve.example.test', ['node' => 'pve1', 'template' => '9000', 'cores' => '2', 'memory' => '2048', 'ip_config' => 'ip=bad'], ['status' => ServiceStatus::Pending], ['port' => 8006]);
+
+        $result = app(Provisioner::class)->create($service);
+
+        $this->assertFalse($result->success);
+        $this->assertStringContainsString('ipconfig0', $result->message);
+        $this->assertStringNotContainsString('VM 105', $result->message, 'The VM was removed, so staff need not check it.');
+        $this->assertSame(ServiceStatus::Pending, $service->fresh()->status);
+        $this->assertNull($service->fresh()->module_data);
+        $this->assertSame(['POST qemu/9000/clone', 'PUT config', 'GET qemu/105/status/current', 'DELETE qemu/105'], $this->calls($node));
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'DELETE' && str_contains($request->url(), '/nodes/pve1/qemu/105?') && str_contains($request->url(), 'purge=1'));
+    }
+
+    public function test_proxmox_stops_a_clone_that_takes_longer_than_the_setup_may_wait(): void
+    {
+        Sleep::fake(syncWithCarbon: true);
+        $node = $this->fakeProxmox(running: false, exitStatus: null);
+
+        $service = $this->service('proxmox', 'pve.example.test', ['node' => 'pve1', 'template' => '9000', 'cores' => '2', 'memory' => '2048'], ['status' => ServiceStatus::Pending], ['port' => 8006]);
+        $started = now();
+
+        $result = app(Provisioner::class)->create($service);
+
+        $this->assertFalse($result->success);
+        $this->assertStringContainsString('Proxmox did not finish the task in time.', $result->message);
+        $this->assertStringContainsString('VM 105', $result->message);
+        $this->assertLessThan((new ProvisionService($service))->timeout - 60, $started->diffInSeconds(now()), 'The setup job is stopped at its time limit, so create() ends well before it.');
+        $this->assertGreaterThanOrEqual(600, $started->diffInSeconds(now()), 'A slow full clone gets several minutes.');
+        $this->assertSame('DELETE tasks', last($this->calls($node)));
+        Http::assertNotSent(fn (Request $request): bool => str_ends_with($request->url(), '/qemu/105/config'));
+        $this->assertSame(ServiceStatus::Pending, $service->fresh()->status);
+    }
+
+    public function test_proxmox_refuses_a_fixed_ip_that_another_service_already_uses(): void
+    {
+        Http::fake();
+        $config = ['node' => 'pve1', 'template' => '9000', 'cores' => '1', 'memory' => '1024', 'ip_config' => 'ip=203.0.113.20/24,gw=203.0.113.1'];
+
+        $first = $this->service('proxmox', 'pve.example.test', $config, ['module_data' => ['vmid' => 104, 'node' => 'pve1']], ['port' => 8006]);
+        $second = Service::factory()->pending()->create(['product_id' => $first->product_id, 'server_id' => $first->server_id]);
+
+        $result = app(Provisioner::class)->create($second);
+
+        $this->assertFalse($result->success);
+        $this->assertSame('This product has a fixed IP that another service already uses. Give each VPS its own IP.', $result->message);
+        $this->assertSame(ServiceStatus::Pending, $second->fresh()->status);
+        Http::assertNothingSent();
+    }
+
+    public function test_cpanel_sends_the_account_password_in_the_body_not_the_url(): void
+    {
+        Http::fake(['*/json-api/createacct' => Http::response(['metadata' => ['result' => 1, 'reason' => 'Account Creation Ok']])]);
+
+        $service = $this->service('cpanel', 'whm.example.test', ['package' => 'starter'], ['status' => ServiceStatus::Pending, 'domain' => 'razstudio.com'], ['port' => 2087]);
+
+        $this->assertTrue(app(Provisioner::class)->create($service)->success);
+        $password = (string) $service->fresh()->password;
+
+        $this->assertNotSame('', $password);
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'POST'
+            && $request->url() === 'https://whm.example.test:2087/json-api/createacct'
+            && ! str_contains($request->url(), 'password')
+            && ! str_contains($request->url(), rawurlencode($password))
+            && $request['password'] === $password
+            && $request['api.version'] === 1
+            && $request['domain'] === 'razstudio.com');
+    }
+
+    /**
+     * Plesk with stored-ID-free lookups: the domains list ignores the name filter and lists $domains.
+     *
+     * @param  list<array<string, mixed>>  $domains
+     */
+    private function fakePlesk(array $domains): void
+    {
+        Http::fake(function (Request $request) use ($domains) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+
+            return match (true) {
+                $request->method() === 'GET' && str_ends_with($path, '/api/v2/clients') => Http::response([['id' => 5, 'login' => 'merlas']]),
+                $request->method() === 'GET' && str_ends_with($path, '/api/v2/domains') => Http::response($domains),
+                default => Http::response(['status' => 'success']),
+            };
+        });
+    }
+
+    /**
+     * A Proxmox node with VM 105, cloned from template 9000. Change the returned node's fields to
+     * change its answers: tasks end with exitStatus, or keep running when it is null. Its log
+     * lists each request as "METHOD what".
+     */
+    private function fakeProxmox(bool $running, ?string $exitStatus, bool $configFails = false): \stdClass
+    {
+        $node = (object) ['running' => $running, 'exitStatus' => $exitStatus, 'configFails' => $configFails, 'log' => []];
+
+        Http::fake(function (Request $request) use ($node) {
+            $path = (string) preg_replace('#^/api2/json/(nodes/pve1/)?#', '', (string) parse_url($request->url(), PHP_URL_PATH));
+            $method = $request->method();
+            $onbootOnly = $method === 'PUT' && str_ends_with($path, '/config') && array_keys($request->data()) === ['onboot'];
+
+            $node->log[] = match (true) {
+                str_starts_with($path, 'tasks/') => $method === 'DELETE' ? 'DELETE tasks' : 'GET task',
+                $onbootOnly => 'PUT config onboot='.$request['onboot'],
+                str_ends_with($path, '/config') => $method.' config',
+                default => $method.' '.$path,
+            };
+
+            return match (true) {
+                $path === 'cluster/nextid' => Http::response(['data' => '105']),
+                $path === 'qemu/9000/clone' => Http::response(['data' => 'UPID:pve1:0001:clone']),
+                str_starts_with($path, 'tasks/') && $method === 'DELETE' => Http::response(['data' => null]),
+                str_starts_with($path, 'tasks/') => Http::response(['data' => $node->exitStatus === null ? ['status' => 'running'] : ['status' => 'stopped', 'exitstatus' => $node->exitStatus]]),
+                $path === 'qemu/105/status/current' => Http::response(['data' => ['status' => $node->running ? 'running' : 'stopped']]),
+                in_array($path, ['qemu/105/status/stop', 'qemu/105/status/start'], true) => Http::response(['data' => 'UPID:pve1:0002:power']),
+                $node->configFails && $method === 'PUT' && $path === 'qemu/105/config' && ! $onbootOnly => Http::response(['data' => null, 'errors' => ['ipconfig0' => 'invalid format']], 400),
+                $path === 'qemu/105' && $method === 'DELETE' => Http::response(['data' => 'UPID:pve1:0003:destroy']),
+                default => Http::response(['data' => null]),
+            };
+        });
+
+        return $node;
+    }
+
+    /**
+     * The node's requests, without the task status checks in between.
+     *
+     * @return list<string>
+     */
+    private function calls(\stdClass $node): array
+    {
+        return array_values(array_filter($node->log, fn (string $line): bool => $line !== 'GET task' && $line !== 'GET cluster/nextid'));
     }
 
     /**

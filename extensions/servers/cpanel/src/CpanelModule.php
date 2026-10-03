@@ -131,6 +131,9 @@ class CpanelModule extends Module
     }
 
     /**
+     * Calls a WHM API 1 function. Values go in a POST body, never in the URL, because WHM and any
+     * proxy in front of it log URLs, and createacct sends the account password.
+     *
      * @param  array<string, mixed>  $params
      * @return array{ok: bool, reason: string, data: array<string, mixed>}
      */
@@ -148,7 +151,8 @@ class CpanelModule extends Module
             $response = Http::withHeaders(['Authorization' => 'whm '.($server->username ?: 'root').':'.$server->api_token])
                 ->timeout($timeout)
                 ->acceptJson()
-                ->get($url, ['api.version' => 1] + $params);
+                ->asForm()
+                ->post($url, ['api.version' => 1] + $params);
         } catch (ConnectionException $exception) {
             return ['ok' => false, 'reason' => __('Could not connect to :host: :error', ['host' => $server->hostname, 'error' => $exception->getMessage()]), 'data' => []];
         }

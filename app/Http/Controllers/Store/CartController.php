@@ -157,8 +157,15 @@ class CartController extends Controller
         $prices = TldPrice::query()->enabled($this->currency())->get();
         [, $tld] = DomainName::split($domain, $prices->pluck('tld'));
 
-        return $prices->firstWhere('tld', $tld)
+        $price = $prices->firstWhere('tld', $tld)
             ?? throw ValidationException::withMessages(['domain' => __('We do not sell .:tld domains.', ['tld' => $tld])]);
+
+        // A subdomain such as blog.example.com can be hosted, but not registered or transferred.
+        if (! DomainName::isRegistrable($domain, $prices->pluck('tld'))) {
+            throw ValidationException::withMessages(['domain' => __('Enter a domain like example.com.')]);
+        }
+
+        return $price;
     }
 
     private function currency(): string

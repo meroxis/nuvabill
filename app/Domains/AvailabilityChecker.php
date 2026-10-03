@@ -10,11 +10,16 @@ use Throwable;
 
 /**
  * Finds out which domains are free to register. Asks the registrar set for each extension,
- * or RDAP when the extension has no registrar. Answers are kept for a few minutes.
+ * or RDAP when the extension has no registrar. Answers are kept for a few minutes, and an
+ * unknown answer for a minute, so a registry that does not answer slows down one search only.
  */
 class AvailabilityChecker
 {
     private const CACHE_SECONDS = 300;
+
+    private const UNKNOWN_SECONDS = 60;
+
+    private const UNKNOWN = 'unknown';
 
     public function __construct(
         private ExtensionManager $extensions,
@@ -35,6 +40,8 @@ class AvailabilityChecker
 
             if (is_bool($cached)) {
                 $results[$domain] = $cached;
+            } elseif ($cached === self::UNKNOWN) {
+                $results[$domain] = null;
             } else {
                 $toAsk[] = $domain;
             }
@@ -58,6 +65,8 @@ class AvailabilityChecker
 
                 if (is_bool($results[$domain])) {
                     Cache::put($this->cacheKey($domain), $results[$domain], self::CACHE_SECONDS);
+                } else {
+                    Cache::put($this->cacheKey($domain), self::UNKNOWN, self::UNKNOWN_SECONDS);
                 }
             }
         }

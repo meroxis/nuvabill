@@ -44,6 +44,11 @@ class CallingCodes
         'XK' => '383', 'YE' => '967', 'YT' => '262', 'ZA' => '27', 'ZM' => '260', 'ZW' => '263',
     ];
 
+    /**
+     * Countries whose local numbers start with a 0 that is part of the number, also from abroad.
+     */
+    private const KEEPS_LEADING_ZERO = ['IT', 'SM', 'VA'];
+
     public static function forCountry(?string $country): ?string
     {
         return self::BY_COUNTRY[strtoupper((string) $country)] ?? null;
@@ -90,6 +95,25 @@ class CallingCodes
             return null;
         }
 
-        return [$countryCode, ltrim($digits, '0')];
+        return [$countryCode, self::nationalNumber($digits, strtoupper((string) $country), $countryCode)];
+    }
+
+    /**
+     * A number typed the local way without its trunk prefix. Most countries dial a 0 first,
+     * but Italy, San Marino and Vatican City keep the 0 as part of the number, North America
+     * dials 1, Russia and Kazakhstan 8, Belarus 80 and Hungary 06.
+     */
+    private static function nationalNumber(string $digits, string $country, string $countryCode): string
+    {
+        $length = strlen($digits);
+
+        return match (true) {
+            in_array($country, self::KEEPS_LEADING_ZERO, true) => $digits,
+            $countryCode === '1' && $length === 11 && $digits[0] === '1' => substr($digits, 1),
+            in_array($country, ['RU', 'KZ'], true) && $length === 11 && ($digits[0] === '8' || $digits[0] === '7') => substr($digits, 1),
+            $country === 'BY' && $length === 11 && str_starts_with($digits, '80') => substr($digits, 2),
+            $country === 'HU' && in_array($length, [10, 11], true) && str_starts_with($digits, '06') => substr($digits, 2),
+            default => ltrim($digits, '0'),
+        };
     }
 }

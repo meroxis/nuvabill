@@ -71,4 +71,22 @@ final class DomainName
 
         return [substr($domain, 0, -strlen($best) - 1), $best];
     }
+
+    /**
+     * Whether a normalized name can be registered or transferred: one name in front of the
+     * extension, such as "shop.co.uk" with "co.uk" sold. "blog.example.com" is a subdomain:
+     * fine for hosting, but no registrar can register it.
+     *
+     * @param  iterable<string>  $knownTlds
+     */
+    public static function isRegistrable(string $domain, iterable $knownTlds = []): bool
+    {
+        if (! str_contains($domain, '.')) {
+            return false;
+        }
+
+        [$name] = self::split($domain, $knownTlds);
+
+        return $name !== '' && ! str_contains($name, '.');
+    }
 }

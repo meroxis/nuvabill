@@ -14,6 +14,20 @@ class Rdap
 {
     public const BOOTSTRAP_URL = 'https://data.iana.org/rdap/dns.json';
 
+    private const CACHE_KEY = 'nuvabill.rdap.servers';
+
+    /**
+     * How long to wait before downloading the list again after IANA did not answer.
+     */
+    private const RETRY_MINUTES = 10;
+
+    /**
+     * The list for this request, so it is read at most once however many names are checked.
+     *
+     * @var array<string, string>|null
+     */
+    private ?array $servers = null;
+
     /**
      * True when registered, false when free, null when the answer is unknown
      * (the extension has no RDAP server or the server did not answer).
@@ -52,20 +66,24 @@ class Rdap
      */
     private function servers(): array
     {
-        $servers = Cache::get('nuvabill.rdap.servers');
+        if ($this->servers !== null) {
+            return $this->servers;
+        }
+
+        $servers = Cache::get(self::CACHE_KEY);
 
         if (is_array($servers)) {
-            return $servers;
+            return $this->servers = $servers;
         }
 
         try {
-            $response = Http::timeout(10)->acceptJson()->get(self::BOOTSTRAP_URL);
+            $response = Http::connectTimeout(5)->timeout(10)->acceptJson()->get(self::BOOTSTRAP_URL);
         } catch (Throwable) {
-            return [];
+            return $this->unreachable();
         }
 
         if (! $response->successful()) {
-            return [];
+            return $this->unreachable();
         }
 
         $servers = [];
@@ -81,8 +99,21 @@ class Rdap
             }
         }
 
-        Cache::put('nuvabill.rdap.servers', $servers, now()->addDay());
+        Cache::put(self::CACHE_KEY, $servers, now()->addDay());
 
-        return $servers;
+        return $this->servers = $servers;
+    }
+
+    /**
+     * IANA did not answer. Remember that for a few minutes, so a search over many names, and the
+     * searches after it, do not each wait for the download again.
+     *
+     * @return array<string, string>
+     */
+    private function unreachable(): array
+    {
+        Cache::put(self::CACHE_KEY, [], now()->addMinutes(self::RETRY_MINUTES));
+
+        return $this->servers = [];
     }
 }
