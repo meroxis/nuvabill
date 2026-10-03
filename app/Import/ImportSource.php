@@ -8,6 +8,7 @@ use App\Billing\Wallet;
 use App\Enums\InvoiceStatus;
 use App\Extensions\ExtensionManager;
 use App\Extensions\ExtensionManifest;
+use App\Models\ActivityLog;
 use App\Models\Client;
 use App\Models\CreditTransaction;
 use App\Models\Domain;
@@ -21,14 +22,18 @@ use App\Models\TicketReply;
 use App\Support\Money;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\ConnectionInterface;
+use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use PDO;
+use Pdo\Mysql;
 use RuntimeException;
 use stdClass;
 use Throwable;
@@ -137,6 +142,15 @@ abstract class ImportSource
     private array $clientCurrencies = [];
 
     /**
+     * The database is on another server and staff turned encryption off.
+     */
+    private bool $unencrypted = false;
+
+    private ?bool $sameDatabase = null;
+
+    private ?string $placeholderPassword = null;
+
+    /**
      * @param  string|null  $secret  The source's own encryption key, when staff gave it.
      */
     public function __construct(
@@ -145,9 +159,10 @@ abstract class ImportSource
     ) {}
 
     /**
-     * Connect to the source's MySQL database.
+     * Connect to the source's MySQL database. A database on another server is reached over TLS and its
+     * certificate is checked, unless staff turn that off ("tls" false) for a server without TLS.
      *
-     * @param  array{host?: string, port?: int|string|null, database?: string, username?: string, password?: string|null, key?: string|null}  $credentials
+     * @param  array{host?: string, port?: int|string|null, database?: string, username?: string, password?: string|null, key?: string|null, tls?: bool|string|null, ssl_ca?: string|null}  $credentials
      */
     public static function connect(array $credentials, string $connection = self::CONNECTION): static
     {
@@ -166,12 +181,70 @@ abstract class ImportSource
             'collation' => 'utf8mb4_unicode_ci',
             'prefix' => (string) ($credentials['prefix'] ?? ''),
             'strict' => false,
-            'options' => [PDO::ATTR_TIMEOUT => 10],
+            'options' => [PDO::ATTR_TIMEOUT => 10] + self::tlsOptions($credentials),
         ]]);
 
         DB::purge($connection);
 
-        return new static($connection, filled($credentials['key'] ?? null) ? (string) $credentials['key'] : null);
+        $importer = new static($connection, filled($credentials['key'] ?? null) ? (string) $credentials['key'] : null);
+        $importer->unencrypted = ! self::isLocalHost((string) $credentials['host']) && ! self::wantsTls($credentials);
+
+        return $importer;
+    }
+
+    private static function isLocalHost(string $host): bool
+    {
+        $host = strtolower(trim($host, " []\t\n\r"));
+
+        return $host === 'localhost' || $host === '::1' || str_starts_with($host, '127.');
+    }
+
+    /**
+     * @param  array<string, mixed>  $credentials
+     */
+    private static function wantsTls(array $credentials): bool
+    {
+        return ! array_key_exists('tls', $credentials) || $credentials['tls'] === null || filter_var($credentials['tls'], FILTER_VALIDATE_BOOL);
+    }
+
+    /**
+     * PDO options that encrypt the connection to another server and check its certificate, against the CA
+     * file staff gave or this server's own list of certificate authorities.
+     *
+     * @param  array<string, mixed>  $credentials
+     * @return array<int, mixed>
+     */
+    private static function tlsOptions(array $credentials): array
+    {
+        if (self::isLocalHost((string) $credentials['host']) || ! self::wantsTls($credentials) || ! extension_loaded('pdo_mysql')) {
+            return [];
+        }
+
+        if (filled($credentials['ssl_ca'] ?? null)) {
+            $file = trim((string) $credentials['ssl_ca']);
+
+            if (! is_file($file) || ! is_readable($file)) {
+                throw new InvalidArgumentException(__('The CA file :path was not found on this server.', ['path' => $file]));
+            }
+
+            return [Mysql::ATTR_SSL_CA => $file, Mysql::ATTR_SSL_VERIFY_SERVER_CERT => true];
+        }
+
+        $locations = function_exists('openssl_get_cert_locations') ? openssl_get_cert_locations() : [];
+
+        foreach ([ini_get('openssl.cafile'), getenv((string) ($locations['default_cert_file_env'] ?? 'SSL_CERT_FILE')), $locations['default_cert_file'] ?? null] as $file) {
+            if (is_string($file) && $file !== '' && is_file($file)) {
+                return [Mysql::ATTR_SSL_CA => $file, Mysql::ATTR_SSL_VERIFY_SERVER_CERT => true];
+            }
+        }
+
+        foreach ([ini_get('openssl.capath'), getenv((string) ($locations['default_cert_dir_env'] ?? 'SSL_CERT_DIR')), $locations['default_cert_dir'] ?? null] as $directory) {
+            if (is_string($directory) && $directory !== '' && is_dir($directory)) {
+                return [Mysql::ATTR_SSL_CAPATH => $directory, Mysql::ATTR_SSL_VERIFY_SERVER_CERT => true];
+            }
+        }
+
+        throw new InvalidArgumentException(__('This server has no list of certificate authorities to check the database server with. Enter the CA file of the database server.'));
     }
 
     /**
@@ -181,10 +254,18 @@ abstract class ImportSource
      */
     public function check(): array
     {
-        foreach ($this->requiredTables() as $table) {
-            if (! $this->hasTable($table)) {
-                throw new RuntimeException(__('This database has no :system tables (:tables).', ['system' => static::name(), 'tables' => implode(', ', $this->requiredTables())]));
+        try {
+            foreach ($this->requiredTables() as $table) {
+                if (! $this->hasTable($table)) {
+                    throw new RuntimeException(__('This database has no :system tables (:tables).', ['system' => static::name(), 'tables' => implode(', ', $this->requiredTables())]));
+                }
             }
+        } catch (Throwable $exception) {
+            if (! $this->unencrypted && preg_match('/\b(ssl|tls|certificate)\b/i', $exception->getMessage())) {
+                throw new RuntimeException(__('The encrypted connection failed (:error). Enter the CA file of the database server, or turn off encryption if that server has no TLS.', ['error' => Str::limit($exception->getMessage(), 200)]), previous: $exception);
+            }
+
+            throw $exception;
         }
 
         $counts = [];
@@ -206,6 +287,10 @@ abstract class ImportSource
         $table = $this->tables()[$step] ?? throw new InvalidArgumentException("Unknown import step [{$step}].");
         $this->counts = ['created' => 0, 'updated' => 0, 'skipped' => 0];
         $this->errors = [];
+
+        if (! ($this->sameDatabase ??= $this->isSameDatabase())) {
+            throw new RuntimeException(__('Nuvabill already holds records imported from another :system database. Importing a second one is not supported.', ['system' => static::name()]));
+        }
 
         if (! $this->hasTable($table)) {
             return ['last_id' => $afterId, 'done' => true, 'errors' => []] + $this->counts;
@@ -272,6 +357,7 @@ abstract class ImportSource
     /**
      * Create or update the Nuvabill record for a source row. $createOnly values are set on the first import only,
      * so changes staff make in Nuvabill (slugs, module settings, emails) are kept when the import runs again.
+     * Payments and renewals made in Nuvabill are kept too (see {@see self::keepLocalProgress()}).
      *
      * @template TModel of Model
      *
@@ -286,7 +372,7 @@ abstract class ImportSource
         $record = $localId !== null ? $model::query()->find($localId) : null;
 
         if ($record !== null) {
-            $record->forceFill($attributes)->save();
+            $record->forceFill($this->keepLocalProgress($record, $attributes))->save();
             $this->counts['updated']++;
 
             return $record;
@@ -299,6 +385,63 @@ abstract class ImportSource
         $this->counts['created']++;
 
         return $record;
+    }
+
+    /**
+     * The old system never sees what happens in Nuvabill after the switch, so a later run must not undo it:
+     * an invoice paid, cancelled or published here stays so, and due and expiry dates never move back. The
+     * source can still move an invoice on (unpaid to paid or cancelled, paid to refunded).
+     *
+     * @param  array<string, mixed>  $attributes
+     * @return array<string, mixed>
+     */
+    protected function keepLocalProgress(Model $record, array $attributes): array
+    {
+        if ($record instanceof Invoice) {
+            $source = InvoiceStatus::tryFrom((string) ($attributes['status'] ?? ''));
+            $settled = match ($record->status) {
+                InvoiceStatus::Paid => $source !== InvoiceStatus::Refunded,
+                InvoiceStatus::Cancelled => ! in_array($source, [InvoiceStatus::Paid, InvoiceStatus::Refunded, InvoiceStatus::Cancelled], true),
+                InvoiceStatus::Refunded => true,
+                default => false,
+            };
+
+            if ($settled || ($source === InvoiceStatus::Draft && $record->status !== InvoiceStatus::Draft)) {
+                return Arr::except($attributes, ['status', 'amount_paid', 'paid_at', 'payment_method', 'subtotal', 'tax', 'total']);
+            }
+
+            // Paid in part here: the amount paid never goes down.
+            if (array_key_exists('amount_paid', $attributes) && $record->amount_paid > (int) $attributes['amount_paid']) {
+                $attributes['amount_paid'] = min($record->amount_paid, (int) ($attributes['total'] ?? $record->total));
+            }
+
+            return $attributes;
+        }
+
+        if ($record instanceof Service || $record instanceof Domain) {
+            foreach (['next_due_date', 'expires_at'] as $column) {
+                if (array_key_exists($column, $attributes)) {
+                    $attributes[$column] = $this->laterDate($attributes[$column], $record->getAttribute($column));
+                }
+            }
+        }
+
+        return $attributes;
+    }
+
+    /**
+     * The later of the source's date and the one Nuvabill has, so renewing in Nuvabill is never undone.
+     */
+    protected function laterDate(mixed $source, mixed $local): mixed
+    {
+        if ($local === null) {
+            return $source;
+        }
+
+        $local = CarbonImmutable::parse($local)->startOfDay();
+        $date = filled($source) ? rescue(fn (): CarbonImmutable => CarbonImmutable::parse($source)->startOfDay(), null, false) : null;
+
+        return $date === null || $date->lessThan($local) ? $local->toDateString() : $source;
     }
 
     protected function localId(string $entity, mixed $sourceId): ?int
@@ -347,10 +490,14 @@ abstract class ImportSource
     }
 
     /**
-     * One line per step: rows found, and how many were imported before.
+     * One line per step: rows found, and how many were imported before. Also stops a second database
+     * of the same system, and warns when the connection to another server is not encrypted.
      */
     protected function addSteps(Preflight $report): void
     {
+        $report->problem(Preflight::ERROR, $this->isSameDatabase() ? 0 : 1, 'Nuvabill already holds records imported from another :system database. Importing a second one is not supported.', ['system' => static::name()]);
+        $report->problem(Preflight::WARNING, (int) $this->unencrypted, 'The database is on another server and the connection is not encrypted.');
+
         foreach (static::steps() as $step => $label) {
             $total = $this->hasTable($this->tables()[$step]) ? $this->rows($step)->count() : 0;
             $entity = $this->entities()[$step] ?? null;
@@ -361,8 +508,8 @@ abstract class ImportSource
     }
 
     /**
-     * Client emails that are not valid (skipped) or already used by a Nuvabill client that did not come
-     * from this source (linked to it).
+     * Client emails that are not valid, or already used by a Nuvabill client that did not come from this
+     * source: both are skipped. Also clients an earlier version linked by email, which are not changed.
      *
      * @param  Collection<int, mixed>  $emails
      */
@@ -370,15 +517,86 @@ abstract class ImportSource
     {
         $emails = $emails->map(fn (mixed $email): string => strtolower((string) $this->text($email)));
         $invalid = $emails->reject(fn (string $email): bool => (bool) filter_var($email, FILTER_VALIDATE_EMAIL));
-        $imported = ImportMapping::query()->where(['source' => static::key(), 'entity' => 'client'])->pluck('local_id')->all();
-        $linked = collect();
+        // A subquery, so the number of bound values stays the same however many clients came across.
+        $imported = ImportMapping::query()->select('local_id')->where(['source' => static::key(), 'entity' => 'client']);
+        $taken = collect();
 
         foreach ($emails->diff($invalid)->unique()->chunk(500) as $chunk) {
-            $linked = $linked->merge(Client::query()->whereIn('email', $chunk->values())->whereNotIn('id', $imported)->pluck('email'));
+            $taken = $taken->merge(Client::query()->whereIn('email', $chunk->values())->whereNotIn('id', $imported)->pluck('email'));
         }
 
         $report->problem(Preflight::WARNING, $invalid->count(), 'Clients without a valid email address: :count. They are skipped.', examples: $invalid->map(fn (string $email): string => $email === '' ? '(empty)' : $email)->all());
-        $report->problem(Preflight::INFO, $linked->count(), 'Clients that already have a Nuvabill account with the same email: :count. They are linked to it and not changed.', examples: $linked->all());
+        $report->problem(Preflight::WARNING, $taken->count(), 'Clients whose email is already used by a Nuvabill account: :count. They are skipped until you change the email of that account or delete it.', examples: $taken->all());
+        $report->problem(Preflight::WARNING, $this->linkedClients()->count(), 'Clients an earlier import linked by email to a Nuvabill account: :count. They are not changed; check that each account belongs to the same person.', examples: Client::query()->whereIn('id', $this->linkedClients()->select('local_id'))->orderBy('id')->limit(5)->pluck('email')->all());
+    }
+
+    /**
+     * Mappings of clients that an import before 0.6.12 linked by email to an account made in Nuvabill
+     * (by sign-up, staff or the API), instead of creating them.
+     *
+     * @return EloquentBuilder<ImportMapping>
+     */
+    protected function linkedClients(): EloquentBuilder
+    {
+        return ImportMapping::query()
+            ->where(['source' => static::key(), 'entity' => 'client'])
+            ->where(fn (EloquentBuilder $query) => $query
+                ->whereIn('source_id', ImportMapping::query()->select('source_id')->where(['source' => static::key(), 'entity' => 'client_link']))
+                ->orWhereIn('local_id', ActivityLog::query()->select('subject_id')->where('subject_type', (new Client)->getMorphClass())->whereIn('action', ['client.registered', 'client.created'])));
+    }
+
+    /**
+     * Whether the saved mappings came from this database. They only hold the source's IDs, so a second
+     * database of the same system would update and add to the first one's clients by ID. The clients
+     * imported first and last are compared by email and sign-up day, which do not change on a re-run.
+     */
+    protected function isSameDatabase(): bool
+    {
+        $sample = collect();
+
+        foreach (['asc', 'desc'] as $direction) {
+            foreach (ImportMapping::query()->where(['source' => static::key(), 'entity' => 'client'])->orderBy('source_id', $direction)->limit(15)->get(['source_id', 'local_id']) as $mapping) {
+                $sample[(int) $mapping->source_id] = (int) $mapping->local_id;
+            }
+        }
+
+        $local = $sample->isEmpty() ? collect() : Client::query()->whereKey($sample->values()->all())->get(['id', 'email', 'created_at'])->keyBy('id');
+        $sample = $sample->filter(fn (int $localId): bool => $local->has($localId));
+
+        if ($sample->isEmpty() || ($source = $this->sourceClients($sample->keys()->all())) === null) {
+            return true;
+        }
+
+        $present = $sample->filter(fn (int $localId, int $sourceId): bool => isset($source[$sourceId]));
+        $matched = $present->filter(function (int $localId, int $sourceId) use ($local, $source): bool {
+            $client = $local->get($localId);
+
+            return strtolower((string) $this->text($source[$sourceId]['email'])) === strtolower((string) $client->email)
+                || substr(trim((string) $source[$sourceId]['created']), 0, 10) === $client->created_at?->toDateString();
+        });
+
+        return $present->isNotEmpty() && $matched->count() * 2 >= $present->count();
+    }
+
+    /**
+     * The source's clients with these IDs: their email and when they were added. Null when the source
+     * cannot tell, which skips the check in {@see self::isSameDatabase()}.
+     *
+     * @param  list<int>  $ids
+     * @return array<int, array{email: mixed, created: mixed}>|null
+     */
+    protected function sourceClients(array $ids): ?array
+    {
+        return null;
+    }
+
+    /**
+     * @param  Collection<int, stdClass>  $rows  Rows with id, email and created.
+     * @return array<int, array{email: mixed, created: mixed}>
+     */
+    protected function keyClients(Collection $rows): array
+    {
+        return $rows->mapWithKeys(fn (stdClass $row): array => [(int) $row->id => ['email' => $row->email, 'created' => $row->created]])->all();
     }
 
     /**
@@ -460,11 +678,23 @@ abstract class ImportSource
     }
 
     /**
-     * The client's email when the row should be imported. Null when it was skipped (no valid email) or
-     * linked to the Nuvabill client that already uses the email.
+     * The client's email when the row should be imported. Null when it is skipped: no valid email, or the
+     * email belongs to a Nuvabill account this import did not create. Nuvabill does not prove that a client
+     * owns their email, so a source client is never joined to an account someone could sign up with; staff
+     * sort those out by hand. Clients an earlier version linked that way are left as they are.
+     *
+     * @param  string|null  $currency  The client's currency in the source. A linked account in another currency
+     *                                 would get the source's amounts unconverted, so its records stop coming across.
      */
-    protected function clientEmailToImport(int $sourceId, mixed $email): ?string
+    protected function clientEmailToImport(int $sourceId, mixed $email, ?string $currency = null): ?string
     {
+        if ($this->isLinkedClient($sourceId)) {
+            $this->holdOtherCurrency($sourceId, $currency);
+            $this->counts['updated']++;
+
+            return null;
+        }
+
         $email = strtolower((string) $this->text($email));
 
         if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
@@ -473,14 +703,93 @@ abstract class ImportSource
             return null;
         }
 
-        if ($this->localId('client', $sourceId) === null && ($existing = Client::query()->where('email', $email)->first())) {
-            $this->remember('client', $sourceId, $existing->id);
-            $this->counts['updated']++;
+        if ($this->localId('client', $sourceId) === null && ($existing = Client::query()->where('email', $email)->value('id')) !== null) {
+            $this->counts['skipped']++;
+            $this->errors[] = ['id' => $sourceId, 'error' => __('The email :email is already used by Nuvabill client #:id. Change the email of that account or delete it, then run the import again.', ['email' => $email, 'id' => $existing])];
 
             return null;
         }
 
         return $email;
+    }
+
+    /**
+     * A client an import before 0.6.12 linked by email to an account made in Nuvabill. Every run since then
+     * would have overwritten that account's details and wallet; now it is never changed.
+     */
+    private function isLinkedClient(int $sourceId): bool
+    {
+        if ($this->localId('client_link', $sourceId) !== null) {
+            return true;
+        }
+
+        if (($localId = $this->localId('client', $sourceId)) === null) {
+            return false;
+        }
+
+        $madeInNuvabill = ActivityLog::query()
+            ->where('subject_type', (new Client)->getMorphClass())
+            ->where('subject_id', $localId)
+            ->whereIn('action', ['client.registered', 'client.created'])
+            ->exists();
+
+        if ($madeInNuvabill) {
+            $this->remember('client_link', $sourceId, $localId);
+        }
+
+        return $madeInNuvabill;
+    }
+
+    /**
+     * A linked account in another currency than the source client: its services, domains and invoices
+     * would keep the source's amounts under the account's currency. They are no longer imported (the
+     * client is no longer found), and staff are told on every run.
+     */
+    private function holdOtherCurrency(int $sourceId, ?string $currency): void
+    {
+        $localId = $this->localId('client_link', $sourceId);
+        $local = $localId !== null ? Client::query()->whereKey($localId)->value('currency') : null;
+
+        if ($currency === null || $local === null || strtoupper($currency) === strtoupper((string) $local)) {
+            return;
+        }
+
+        ImportMapping::query()->where(['source' => static::key(), 'entity' => 'client', 'source_id' => $sourceId])->delete();
+        $this->mappings['client'][$sourceId] = null;
+        $this->errors[] = ['id' => $sourceId, 'error' => __('This client uses :source, but the Nuvabill account #:id it was linked to uses :local. Its services, domains and invoices are not imported; add them by hand.', ['source' => strtoupper($currency), 'id' => $localId, 'local' => strtoupper((string) $local)])];
+    }
+
+    /**
+     * Whether a support department should be imported. One with the name of a Nuvabill department is
+     * linked to it instead, and the import never changes that department.
+     */
+    protected function departmentToImport(int $sourceId, string $name): bool
+    {
+        if ($this->localId('department_link', $sourceId) !== null) {
+            $this->counts['updated']++;
+
+            return false;
+        }
+
+        if ($this->localId('department', $sourceId) === null && ($existing = TicketDepartment::query()->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->value('id')) !== null) {
+            $this->remember('department', $sourceId, (int) $existing);
+            $this->remember('department_link', $sourceId, (int) $existing);
+            $this->counts['updated']++;
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * The password of a new client or staff account until its own one is applied. Hashing a random value
+     * for every row made a batch slower than a job may run, so one hash is shared per run. Nobody knows
+     * the value it hides, so it cannot be used to sign in.
+     */
+    protected function placeholderPassword(): string
+    {
+        return $this->placeholderPassword ??= Hash::make(Str::random(40));
     }
 
     /**
@@ -492,15 +801,20 @@ abstract class ImportSource
         $description = 'Balance from '.static::name();
         $entries = fn () => CreditTransaction::query()->where('client_id', $client->id)->where('description', $description);
 
-        // Imported before 0.4.9, when the balance was copied without a wallet entry: that balance came from the source.
-        if (! $client->wasRecentlyCreated && $client->credit > 0 && ! $entries()->exists()) {
-            CreditTransaction::create([
-                'client_id' => $client->id,
-                'amount' => $client->credit,
-                'balance' => $client->credit,
-                'currency' => $client->currency,
-                'description' => $description,
-            ]);
+        // Imported before 0.4.9, when the balance was copied without a wallet entry. Every change in Nuvabill
+        // writes an entry, so only money that no entry explains came from the source.
+        if (! $client->wasRecentlyCreated && ! $entries()->exists()) {
+            $untracked = $client->credit - (int) CreditTransaction::query()->where('client_id', $client->id)->sum('amount');
+
+            if ($untracked > 0) {
+                CreditTransaction::create([
+                    'client_id' => $client->id,
+                    'amount' => min($untracked, $client->credit),
+                    'balance' => $client->credit,
+                    'currency' => $client->currency,
+                    'description' => $description,
+                ]);
+            }
         }
 
         $difference = $credit - (int) $entries()->sum('amount');

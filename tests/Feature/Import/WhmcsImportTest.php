@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Import;
 
+use App\Billing\PaymentRecorder;
 use App\Billing\RenewalGenerator;
+use App\Billing\Wallet;
 use App\Enums\BillingCycle;
 use App\Enums\ClientStatus;
 use App\Enums\DomainStatus;
@@ -16,21 +18,27 @@ use App\Models\Admin;
 use App\Models\Client;
 use App\Models\CreditTransaction;
 use App\Models\Domain;
+use App\Models\ImportMapping;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\Product;
 use App\Models\Server;
 use App\Models\Service;
 use App\Models\Ticket;
+use App\Models\TicketDepartment;
 use App\Models\TldPrice;
 use App\Models\Transaction;
+use App\Support\Activity;
 use App\Support\Settings;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 use Tests\TestCase;
 
 class WhmcsImportTest extends TestCase
@@ -248,7 +256,9 @@ class WhmcsImportTest extends TestCase
 
         $texts = collect($preview['problems'])->mapWithKeys(fn (array $problem): array => [$problem['text'] => $problem]);
         $this->assertSame(['not-an-email'], $texts['Clients without a valid email address: :count. They are skipped.']['examples']);
-        $this->assertSame(['sam@example.com'], $texts['Clients that already have a Nuvabill account with the same email: :count. They are linked to it and not changed.']['examples']);
+        $taken = $texts['Clients whose email is already used by a Nuvabill account: :count. They are skipped until you change the email of that account or delete it.'];
+        $this->assertSame('warning', $taken['level'], 'Staff are warned, not told it is fine');
+        $this->assertSame(['sam@example.com'], $taken['examples']);
         $this->assertSame(['Old (somethingelse)'], $texts['Servers with a module Nuvabill does not have: :count. They are skipped.']['examples']);
         $this->assertSame(1, $texts['Tickets from guests without a client account: :count. They are skipped.']['params']['count']);
         $this->assertSame(1, $texts['Clients with credit: :count. It becomes their Nuvabill wallet balance.']['params']['count']);
@@ -273,9 +283,323 @@ class WhmcsImportTest extends TestCase
         Queue::assertNothingPushed();
     }
 
-    private function runImport(?string $key = null): void
+    public function test_an_account_signed_up_with_a_source_email_does_not_get_that_clients_records(): void
     {
-        $importer = new WhmcsImporter(self::CONNECTION, $key);
+        Mail::fake();
+        $this->seedWhmcs();
+
+        // Anyone can sign up with any email: Nuvabill does not prove they own it.
+        $this->post(route('client.register'), [
+            'first_name' => 'Raz',
+            'last_name' => 'Las',
+            'email' => 'raz@example.com',
+            'country' => 'IQ',
+            'password' => 'taken-pass-1',
+            'password_confirmation' => 'taken-pass-1',
+        ])->assertRedirect();
+        $registered = Client::query()->where('email', 'raz@example.com')->firstOrFail();
+        auth('web')->logout();
+
+        $texts = collect((new WhmcsImporter(self::CONNECTION))->preflight()->toArray()['problems'])->keyBy('text');
+        $taken = $texts['Clients whose email is already used by a Nuvabill account: :count. They are skipped until you change the email of that account or delete it.'];
+        $this->assertSame('warning', $taken['level']);
+        $this->assertSame(['raz@example.com'], $taken['examples']);
+
+        $errors = $this->runImport();
+
+        $this->assertFalse(ImportMapping::query()->where(['source' => 'whmcs', 'entity' => 'client', 'source_id' => 1])->exists(), 'Not linked to the account');
+        $this->assertContains(1, collect($errors)->where('step', 'clients')->pluck('id')->all());
+        $this->assertSame(0, Service::query()->where('client_id', $registered->id)->count());
+        $this->assertSame(0, Domain::query()->where('client_id', $registered->id)->count());
+        $this->assertSame(0, Invoice::query()->where('client_id', $registered->id)->count());
+        $this->assertSame(0, Ticket::query()->where('client_id', $registered->id)->count());
+
+        $this->runImport();
+        $this->assertSame(0, $registered->fresh()->credit, 'The source credit never reaches the account');
+        $this->assertSame('Raz', $registered->fresh()->first_name);
+    }
+
+    public function test_a_client_linked_by_an_earlier_version_is_never_changed(): void
+    {
+        $this->seedWhmcs();
+        $mer = Client::factory()->create(['email' => 'sam@example.com', 'first_name' => 'Mer', 'last_name' => 'Las', 'status' => ClientStatus::Active, 'notes' => 'VIP', 'currency' => 'USD']);
+        Activity::log('client.created', 'Client created', $mer);
+        app(Wallet::class)->change($mer, 5000, 'Top-up');
+
+        // How an import before 0.6.12 left it: a plain client mapping to the existing account.
+        ImportMapping::query()->create(['source' => 'whmcs', 'entity' => 'client', 'source_id' => 2, 'local_id' => $mer->id]);
+
+        $texts = collect((new WhmcsImporter(self::CONNECTION))->preflight()->toArray()['problems'])->keyBy('text');
+        $this->assertSame(['sam@example.com'], $texts['Clients an earlier import linked by email to a Nuvabill account: :count. They are not changed; check that each account belongs to the same person.']['examples']);
+
+        $this->runImport();
+        $this->runImport();
+
+        $mer->refresh();
+        $this->assertSame('Mer', $mer->first_name);
+        $this->assertSame('Las', $mer->last_name);
+        $this->assertSame('VIP', $mer->notes);
+        $this->assertSame(ClientStatus::Active, $mer->status, 'Not closed or made inactive by the old system');
+        $this->assertSame(5000, $mer->credit);
+        $this->assertFalse(CreditTransaction::query()->where('client_id', $mer->id)->where('description', 'Balance from WHMCS')->exists());
+        $this->assertTrue(ImportMapping::query()->where(['source' => 'whmcs', 'entity' => 'client_link', 'source_id' => 2])->exists());
+    }
+
+    public function test_a_department_with_the_same_name_is_linked_and_never_changed(): void
+    {
+        $this->seedWhmcs();
+        $department = TicketDepartment::query()->create(['name' => 'Technical', 'email' => 'help@nuvabill.test', 'description' => 'Ours', 'is_visible' => true]);
+
+        $this->runImport();
+        $this->runImport();
+
+        $this->assertSame(1, TicketDepartment::query()->where('name', 'Technical')->count());
+        $this->assertSame('help@nuvabill.test', $department->fresh()->email);
+        $this->assertSame('Ours', $department->fresh()->description);
+        $this->assertSame($department->id, Ticket::query()->firstOrFail()->ticket_department_id);
+    }
+
+    public function test_a_linked_account_in_another_currency_gets_no_unconverted_records(): void
+    {
+        $this->seedWhmcs();
+        // Raz uses IQD in WHMCS; the account an earlier version linked him to uses USD.
+        $account = Client::factory()->create(['email' => 'raz@example.com', 'currency' => 'USD']);
+        Activity::log('client.registered', 'Signed up', $account, $account, $account);
+        ImportMapping::query()->create(['source' => 'whmcs', 'entity' => 'client', 'source_id' => 1, 'local_id' => $account->id]);
+
+        $errors = $this->runImport();
+
+        $this->assertSame(0, Service::query()->where('client_id', $account->id)->count());
+        $this->assertSame(0, Domain::query()->where('client_id', $account->id)->count());
+        $this->assertSame(0, Invoice::query()->where('client_id', $account->id)->count());
+        $this->assertFalse(Service::query()->where('currency', 'USD')->where('recurring_amount', 500)->exists(), 'No IQD amount is relabelled as USD');
+        $this->assertStringContainsString('IQD', (string) collect($errors)->where('step', 'clients')->firstWhere('id', 1)['error']);
+
+        $this->runImport();
+        $this->assertSame(0, Service::query()->count(), 'Later runs keep it out too');
+    }
+
+    public function test_a_rerun_keeps_wallet_money_added_in_nuvabill(): void
+    {
+        $this->seedWhmcs();
+        $this->runImport();
+
+        // No balance in WHMCS, so the first run wrote no wallet entry.
+        $client = Client::query()->where('email', 'sam@example.com')->firstOrFail();
+        app(Wallet::class)->change($client, 5000, 'Added funds');
+
+        $this->runImport();
+
+        $this->assertSame(5000, $client->fresh()->credit);
+        $this->assertSame(0, (int) $client->creditTransactions()->where('description', 'Balance from WHMCS')->sum('amount'));
+
+        DB::connection(self::CONNECTION)->table('tblclients')->where('id', 2)->update(['credit' => '10.00']);
+        $this->runImport();
+
+        $this->assertSame(6000, $client->fresh()->credit, 'Only the change in WHMCS is added');
+    }
+
+    public function test_running_it_again_keeps_payments_made_in_nuvabill(): void
+    {
+        Mail::fake();
+        $this->seedWhmcs();
+        $this->runImport();
+
+        $invoice = Invoice::query()->where('number', '1001')->firstOrFail();
+        app(PaymentRecorder::class)->record($invoice, $invoice->balance(), 'banktransfer', 'nb-1');
+        $service = Service::query()->firstOrFail();
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertSame('2026-11-01', $service->fresh()->next_due_date->toDateString());
+
+        // WHMCS never saw that payment.
+        $this->runImport();
+
+        $invoice->refresh();
+        $this->assertSame(InvoiceStatus::Paid, $invoice->status);
+        $this->assertSame(500, $invoice->amount_paid);
+        $this->assertNotNull($invoice->paid_at);
+        $this->assertSame('2026-11-01', $service->fresh()->next_due_date->toDateString(), 'The renewal is not undone');
+
+        // Cancelled in WHMCS afterwards: the paid period is not freed to be invoiced again.
+        DB::connection(self::CONNECTION)->table('tblinvoices')->where('id', 1001)->update(['status' => 'Cancelled']);
+        $this->runImport();
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertNotNull($invoice->items()->firstOrFail()->billing_key);
+
+        // Moving forward in WHMCS still comes across.
+        DB::connection(self::CONNECTION)->table('tblhosting')->where('id', 10)->update(['nextduedate' => '2026-12-01']);
+        $this->runImport();
+        $this->assertSame('2026-12-01', $service->fresh()->next_due_date->toDateString());
+    }
+
+    public function test_an_invoice_cancelled_in_nuvabill_stays_cancelled(): void
+    {
+        $this->seedWhmcs();
+        $this->runImport();
+
+        $invoice = Invoice::query()->where('number', '1001')->firstOrFail();
+        $invoice->forceFill(['status' => InvoiceStatus::Cancelled])->save();
+
+        $this->runImport();
+
+        $this->assertSame(InvoiceStatus::Cancelled, $invoice->fresh()->status);
+    }
+
+    public function test_a_draft_published_in_whmcs_gets_its_number_on_the_next_run(): void
+    {
+        $this->seedWhmcs();
+        $whmcs = DB::connection(self::CONNECTION);
+        $whmcs->table('tblinvoices')->insert(['id' => 1002, 'userid' => 1, 'invoicenum' => '', 'date' => '2026-10-20', 'duedate' => '2026-11-01', 'datepaid' => '0000-00-00 00:00:00', 'subtotal' => '3.00', 'credit' => '0.00', 'tax' => '0.00', 'tax2' => '0.00', 'total' => '3.00', 'status' => 'Draft', 'paymentmethod' => 'fib', 'notes' => '']);
+        $whmcs->table('tblinvoiceitems')->insert(['id' => 4, 'invoiceid' => 1002, 'userid' => 1, 'type' => 'Hosting', 'relid' => 10, 'description' => 'Starter Hosting', 'amount' => '3.00', 'duedate' => '2026-11-01']);
+
+        $this->runImport();
+
+        $invoice = Invoice::query()->findOrFail(ImportMapping::query()->where(['source' => 'whmcs', 'entity' => 'invoice', 'source_id' => 1002])->value('local_id'));
+        $this->assertSame(InvoiceStatus::Draft, $invoice->status);
+        $this->assertNull($invoice->number);
+
+        $whmcs->table('tblinvoices')->where('id', 1002)->update(['status' => 'Unpaid', 'subtotal' => '5.00', 'total' => '5.00']);
+        $whmcs->table('tblinvoiceitems')->where('id', 4)->update(['amount' => '5.00']);
+        $count = Invoice::query()->count();
+
+        $this->runImport();
+
+        $invoice->refresh();
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->status);
+        $this->assertSame('1002', $invoice->number);
+        $this->assertStringStartsNotWith('Draft', $invoice->displayNumber());
+        $this->assertSame($count, Invoice::query()->count(), 'No copy was made');
+        $this->assertSame([500], $invoice->items()->pluck('amount')->all(), 'The lines are the published ones');
+        $this->assertSame('2026-11-01', $invoice->items()->firstOrFail()->period_start->toDateString());
+    }
+
+    public function test_a_second_whmcs_database_is_refused_instead_of_merged_by_id(): void
+    {
+        $this->seedWhmcs();
+        $this->runImport();
+        $raz = Client::query()->where('email', 'raz@example.com')->firstOrFail();
+
+        config(['database.connections.whmcs_other' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']]);
+        DB::purge('whmcs_other');
+        $this->createWhmcsTables('whmcs_other');
+        $other = DB::connection('whmcs_other');
+        $other->table('tblcurrencies')->insert(['id' => 1, 'code' => 'USD', 'default' => 1]);
+        $other->table('tblclients')->insert(['id' => 1, 'firstname' => 'Mer', 'lastname' => 'Las', 'email' => 'mer@example.com', 'currency' => 1, 'credit' => '0.00', 'status' => 'Closed', 'password' => '', 'datecreated' => '2023-05-06']);
+        $other->table('tblhosting')->insert(['id' => 10, 'userid' => 1, 'packageid' => 3, 'server' => 1, 'regdate' => '2025-01-01', 'domain' => 'merlas.test', 'amount' => '9.00', 'billingcycle' => 'Monthly', 'nextduedate' => '2026-01-01', 'domainstatus' => 'Active', 'username' => 'merlas']);
+
+        $preview = (new WhmcsImporter('whmcs_other'))->preflight();
+        $this->assertTrue($preview->hasErrors());
+        $this->assertContains('Nuvabill already holds records imported from another :system database. Importing a second one is not supported.', collect($preview->toArray()['problems'])->pluck('text')->all());
+
+        try {
+            (new WhmcsImporter('whmcs_other'))->run('clients');
+            $this->fail('A second database must not be imported');
+        } catch (RuntimeException) {
+        }
+
+        $raz->refresh();
+        $this->assertSame('Raz', $raz->first_name);
+        $this->assertSame(ClientStatus::Active, $raz->status);
+        $this->assertFalse(Client::query()->where('email', 'mer@example.com')->exists());
+        $this->assertFalse(Service::query()->where('domain', 'merlas.test')->exists());
+        $this->assertSame('razstudio.com', Service::query()->firstOrFail()->domain);
+    }
+
+    public function test_running_again_on_a_copy_of_the_same_database_still_works(): void
+    {
+        $this->seedWhmcs();
+        $this->runImport();
+
+        config(['database.connections.whmcs_copy' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']]);
+        DB::purge('whmcs_copy');
+        $this->createWhmcsTables('whmcs_copy');
+        $this->seedWhmcs('whmcs_copy');
+
+        $this->assertFalse((new WhmcsImporter('whmcs_copy'))->preflight()->hasErrors());
+        $this->assertSame([], $this->runImport(connection: 'whmcs_copy'));
+        $this->assertSame(2, Client::query()->count());
+        $this->assertSame(1, Service::query()->count());
+    }
+
+    public function test_a_piece_of_a_stopped_import_does_not_join_the_next_run(): void
+    {
+        Queue::fake();
+        $this->signInAdmin();
+        app(Settings::class)->set('import.connection', ['source' => 'whmcs', 'host' => 'localhost', 'port' => 3306, 'database' => 'whmcs', 'username' => 'whmcs', 'password' => 'secret', 'prefix' => '']);
+
+        $this->post(route('admin.settings.import.start'))->assertSessionHas('status');
+        $old = Queue::pushed(RunImport::class)->first();
+        $this->assertNotNull($old->runId);
+        $stale = new RunImport(2, 5, $old->runId);
+
+        $this->post(route('admin.settings.import.cancel'));
+        $this->post(route('admin.settings.import.start'))->assertSessionHas('status');
+        $new = RunImport::status();
+        $this->assertNotSame($old->runId, $new['run_id']);
+
+        $stale->handle(app(Settings::class));
+
+        app(Settings::class)->flush();
+        $this->assertSame($new, RunImport::status(), 'The new run is left as it was');
+        Queue::assertPushed(RunImport::class, 2);
+        $this->assertSame(0, Client::query()->count());
+    }
+
+    public function test_the_dry_run_keeps_queries_small_for_large_installs(): void
+    {
+        $this->seedWhmcs();
+        $whmcs = DB::connection(self::CONNECTION);
+        $hash = password_hash('raz-password-1', PASSWORD_BCRYPT, ['cost' => 4]);
+
+        foreach (array_chunk(range(100, 1599), 250) as $ids) {
+            $whmcs->table('tblclients')->insert(array_map(fn (int $id): array => ['id' => $id, 'firstname' => 'Raz', 'lastname' => 'Las', 'email' => "raz{$id}@example.com", 'currency' => 1, 'credit' => '0.00', 'status' => 'Active', 'password' => '', 'datecreated' => '2024-01-01'], $ids));
+            $whmcs->table('tblusers')->insert(array_map(fn (int $id): array => ['id' => $id, 'email' => "raz{$id}@example.com", 'password' => $hash], $ids));
+            $whmcs->table('tblusers_clients')->insert(array_map(fn (int $id): array => ['auth_user_id' => $id, 'client_id' => $id, 'owner' => 1], $ids));
+            ImportMapping::query()->insert(array_map(fn (int $id): array => ['source' => 'whmcs', 'entity' => 'client', 'source_id' => $id + 5000, 'local_id' => $id], $ids));
+        }
+
+        $most = 0;
+        DB::listen(function (QueryExecuted $query) use (&$most): void {
+            $most = max($most, count($query->bindings));
+        });
+
+        $preview = (new WhmcsImporter(self::CONNECTION))->preflight()->toArray();
+
+        $this->assertLessThanOrEqual(1000, $most, 'No query binds every client');
+        $this->assertSame(1502, $preview['steps']['clients']['total']);
+        $texts = collect($preview['problems'])->keyBy('text');
+        $this->assertArrayNotHasKey('Clients with a password Nuvabill cannot read: :count. They choose a new one on the sign-in page.', $texts->all(), 'The owner passwords are still found');
+    }
+
+    public function test_new_accounts_share_one_placeholder_password_hash(): void
+    {
+        $this->seedWhmcs();
+        $whmcs = DB::connection(self::CONNECTION);
+        $whmcs->table('tblclients')->insert([
+            ['id' => 3, 'firstname' => 'Mer', 'lastname' => 'Las', 'email' => 'mer@example.com', 'currency' => 1, 'credit' => '0.00', 'status' => 'Active', 'password' => '', 'datecreated' => '2024-03-01'],
+            ['id' => 4, 'firstname' => 'Mer', 'lastname' => 'Las', 'email' => 'mer.las@example.com', 'currency' => 1, 'credit' => '0.00', 'status' => 'Active', 'password' => '', 'datecreated' => '2024-03-02'],
+        ]);
+        $whmcs->table('tbladmins')->insert(['id' => 2, 'firstname' => 'Raz', 'lastname' => 'Las', 'email' => 'raz.staff@example.com']);
+
+        $this->runImport();
+
+        $passwords = Client::query()->whereIn('email', ['mer@example.com', 'mer.las@example.com'])->pluck('password');
+        $this->assertCount(2, $passwords);
+        $this->assertCount(1, $passwords->unique(), 'One hash for the run, not one per row');
+        $this->assertFalse(Hash::check('', $passwords->first()));
+        $this->assertCount(1, Admin::query()->pluck('password')->unique());
+
+        $this->post(route('client.login'), ['email' => 'mer@example.com', 'password' => 'not-the-password'])->assertSessionHasErrors('email');
+        $this->assertGuest('web');
+    }
+
+    /**
+     * @return list<array{step: string, id: int, error: string}> The rows that were skipped with a reason.
+     */
+    private function runImport(?string $key = null, string $connection = self::CONNECTION): array
+    {
+        $importer = new WhmcsImporter($connection, $key);
+        $errors = [];
 
         foreach (array_keys(WhmcsImporter::STEPS) as $step) {
             $afterId = 0;
@@ -283,13 +607,19 @@ class WhmcsImportTest extends TestCase
             do {
                 $result = $importer->run($step, $afterId, 1);
                 $afterId = $result['last_id'];
+
+                foreach ($result['errors'] as $error) {
+                    $errors[] = ['step' => $step] + $error;
+                }
             } while (! $result['done']);
         }
+
+        return $errors;
     }
 
-    private function seedWhmcs(): void
+    private function seedWhmcs(string $connection = self::CONNECTION): void
     {
-        $db = DB::connection(self::CONNECTION);
+        $db = DB::connection($connection);
 
         $db->table('tblcurrencies')->insert([
             ['id' => 1, 'code' => 'USD', 'default' => 1],
@@ -338,9 +668,9 @@ class WhmcsImportTest extends TestCase
         $db->table('tblticketreplies')->insert(['id' => 2, 'tid' => 7, 'userid' => 0, 'admin' => 'Lana Staff', 'date' => '2026-09-20 09:00:00', 'message' => 'Fixed &amp; working now.']);
     }
 
-    private function createWhmcsTables(): void
+    private function createWhmcsTables(string $connection = self::CONNECTION): void
     {
-        $schema = Schema::connection(self::CONNECTION);
+        $schema = Schema::connection($connection);
         $columns = [
             'tblconfiguration' => ['setting', 'value'],
             'tblcurrencies' => ['code', 'default'],

@@ -7,6 +7,7 @@ use App\Support\Activity;
 use App\Support\Settings;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -37,15 +38,27 @@ class RunImport implements ShouldQueue
      */
     private const KEEP_ERRORS = 50;
 
-    public function __construct(public int $step = 0, public int $afterId = 0) {}
+    /**
+     * The run this piece belongs to. Null for pieces queued before 0.6.12 (declared with a default, so
+     * those still unserialize).
+     */
+    public ?string $runId = null;
+
+    public function __construct(public int $step = 0, public int $afterId = 0, ?string $runId = null)
+    {
+        $this->runId = $runId;
+    }
 
     /**
      * Start the import from the first step. Records imported before are updated, not added again.
      */
     public static function start(string $source): void
     {
+        $runId = (string) Str::uuid();
+
         app(Settings::class)->set('import.status', [
             'state' => 'running',
+            'run_id' => $runId,
             'source' => $source,
             'step' => array_key_first(ImportSources::get($source)::steps()),
             'counts' => [],
@@ -56,7 +69,7 @@ class RunImport implements ShouldQueue
             'finished_at' => null,
         ]);
 
-        static::dispatch();
+        static::dispatch(0, 0, $runId);
     }
 
     /**
@@ -75,11 +88,22 @@ class RunImport implements ShouldQueue
             && now()->subMinutes(self::STALLED_AFTER_MINUTES)->lessThan($status['updated_at'] ?? now());
     }
 
+    /**
+     * Whether this piece belongs to the import that is running now. A piece still queued from a stopped or
+     * stalled run would otherwise carry on inside a new run, from its own step and row.
+     *
+     * @param  array<string, mixed>  $status
+     */
+    private function isCurrent(array $status): bool
+    {
+        return ($status['state'] ?? null) === 'running' && ($status['run_id'] ?? null) === $this->runId;
+    }
+
     public function handle(Settings $settings): void
     {
         $status = self::status();
 
-        if (($status['state'] ?? null) !== 'running') {
+        if (! $this->isCurrent($status)) {
             return;
         }
 
@@ -108,16 +132,23 @@ class RunImport implements ShouldQueue
             }
         } catch (Throwable $exception) {
             report($exception);
+            $settings->flush();
+
+            // Staff may have stopped this run and started another while this piece ran.
+            if (! $this->isCurrent(self::status())) {
+                return;
+            }
+
             $settings->set('import.status', ['state' => 'failed', 'message' => $exception->getMessage(), 'finished_at' => now()->toIso8601String()] + $status);
             Activity::log('import.failed', 'Import stopped: '.$exception->getMessage());
 
             return;
         }
 
-        // Staff may have cancelled the import while this piece ran.
+        // Staff may have cancelled the import, or started another one, while this piece ran.
         $settings->flush();
 
-        if ((self::status()['state'] ?? null) !== 'running') {
+        if (! $this->isCurrent(self::status())) {
             return;
         }
 
@@ -136,6 +167,6 @@ class RunImport implements ShouldQueue
             return;
         }
 
-        static::dispatch($step, $afterId);
+        static::dispatch($step, $afterId, $this->runId);
     }
 }

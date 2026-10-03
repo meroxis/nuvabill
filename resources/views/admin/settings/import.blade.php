@@ -31,6 +31,8 @@
                         <x-input name="username" :label="__('Database user')" :value="$connection['username'] ?? ''" required autocomplete="off" />
                         <x-input name="password" type="password" :label="__('Database password')" :help="$hasPassword ? __('Saved. Leave empty to keep it.') : null" autocomplete="new-password" />
                         <x-input name="prefix" :label="__('Table prefix')" :value="$connection['prefix'] ?? ''" :help="__('Only if the tables start with a prefix, for example nb_.')" autocomplete="off" />
+                        <x-checkbox name="tls" :label="__('Use an encrypted connection (TLS)')" :checked="$connection['tls'] ?? true" :help="__('Used when the database is on another server. Untick it only if that server has no TLS.')" />
+                        <x-input name="ssl_ca" :label="__('CA file of the database server')" :value="$connection['ssl_ca'] ?? ''" :help="__('Optional. Only when the database server uses its own certificate: the path to its CA file on this server.')" autocomplete="off" />
                         <div class="field" x-show="info[source].key" @if (! ($sourceInfo[$selected]['key'] ?? null)) style="display:none" @endif>
                             <x-input name="key" type="password" :label="__('Encryption key')" autocomplete="off" />
                             <p class="help" style="margin-top:.3rem"><span x-text="info[source].key">{{ $sourceInfo[$selected]['key'] ?? '' }}</span> @if ($hasKey){{ __('Saved. Leave empty to keep it.') }}@endif</p>

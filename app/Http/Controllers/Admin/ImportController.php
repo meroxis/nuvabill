@@ -58,9 +58,14 @@ class ImportController extends Controller
             'password' => ['nullable', 'string', 'max:255'],
             'prefix' => ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9_]*$/'],
             'key' => ['nullable', 'string', 'max:500'],
+            'tls' => ['nullable', 'boolean'],
+            'ssl_ca' => ['nullable', 'string', 'max:500'],
         ]);
 
         $saved = ImportSources::connection();
+        // Encrypted unless staff untick it, for a database server without TLS.
+        $data['tls'] = $request->has('tls') ? $request->boolean('tls') : true;
+        $data['ssl_ca'] = trim((string) ($data['ssl_ca'] ?? ''));
         $data['port'] = (int) ($data['port'] ?? 3306);
         $data['prefix'] = (string) ($data['prefix'] ?? '');
         $data['password'] = filled($data['password'] ?? null) ? $data['password'] : (string) ($saved['password'] ?? '');

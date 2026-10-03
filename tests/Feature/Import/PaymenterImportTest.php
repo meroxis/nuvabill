@@ -4,6 +4,7 @@ namespace Tests\Feature\Import;
 
 use App\Billing\RenewalGenerator;
 use App\Enums\BillingCycle;
+use App\Enums\ClientStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\ServiceStatus;
 use App\Enums\TicketStatus;
@@ -69,6 +70,8 @@ class PaymenterImportTest extends TestCase
         $unpaid = Invoice::query()->where('number', 'INV-2')->firstOrFail();
         $this->assertSame(InvoiceStatus::Unpaid, $unpaid->status);
         $this->assertSame(1000, $unpaid->total);
+        $this->assertSame(200, $unpaid->amount_paid, 'Credit already used counts as paid');
+        $this->assertSame(800, $unpaid->balance());
         $this->assertSame(RenewalGenerator::billingKey('service', $service->id, $service->next_due_date), $unpaid->items()->firstOrFail()->billing_key);
         $this->assertSame(InvoiceStatus::Paid, Invoice::query()->where('number', 'INV-1')->firstOrFail()->status);
 
@@ -105,19 +108,76 @@ class PaymenterImportTest extends TestCase
         $this->assertSame(0, Client::query()->count());
     }
 
-    private function runImport(): void
+    public function test_services_billed_by_the_week_are_not_made_one_time(): void
+    {
+        $db = DB::connection(self::CONNECTION);
+        $db->table('plans')->insert(['id' => 4, 'name' => 'Weekly', 'priceable_type' => 'App\Models\Product', 'priceable_id' => 3, 'type' => 'recurring', 'billing_period' => 1, 'billing_unit' => 'week']);
+        $db->table('prices')->insert(['id' => 4, 'plan_id' => 4, 'price' => '3.00', 'setup_fee' => '0', 'currency_code' => 'EUR']);
+        $db->table('services')->insert(['id' => 21, 'status' => 'active', 'product_id' => 3, 'user_id' => 2, 'currency_code' => 'EUR', 'quantity' => 1, 'price' => '3.00', 'plan_id' => 4, 'expires_at' => '2026-10-08 00:00:00', 'created_at' => '2026-09-01 10:00:00']);
+
+        $texts = collect((new PaymenterImporter(self::CONNECTION))->preflight()->toArray()['problems'])->keyBy('text');
+        $this->assertSame(1, $texts['Services with a billing period Nuvabill does not have: :count. They are not imported; add them by hand.']['params']['count']);
+
+        $errors = $this->runImport(expectErrors: true);
+
+        $this->assertSame([21], collect($errors)->where('step', 'services')->pluck('id')->all());
+        $this->assertFalse(Service::query()->where('billing_cycle', BillingCycle::OneTime)->exists(), 'Not a free one-time service');
+        $this->assertSame(1, Service::query()->count());
+    }
+
+    public function test_running_it_again_keeps_a_status_staff_set(): void
+    {
+        $this->runImport();
+        Client::query()->where('email', 'raz@example.com')->update(['status' => ClientStatus::Closed->value]);
+        DB::connection(self::CONNECTION)->table('properties')->where('id', 2)->update(['value' => 'Duhok']);
+
+        $this->runImport();
+
+        $raz = Client::query()->where('email', 'raz@example.com')->firstOrFail();
+        $this->assertSame(ClientStatus::Closed, $raz->status, 'A client closed in Nuvabill stays closed');
+        $this->assertSame('Duhok', $raz->city, 'Their details still come from Paymenter');
+    }
+
+    public function test_an_account_with_the_same_email_is_not_linked(): void
+    {
+        $account = Client::factory()->create(['email' => 'raz@example.com', 'first_name' => 'Raz', 'last_name' => 'Las', 'currency' => 'EUR']);
+
+        $errors = $this->runImport(expectErrors: true);
+
+        $this->assertSame([2], collect($errors)->where('step', 'clients')->pluck('id')->all());
+        $this->assertSame(0, Service::query()->where('client_id', $account->id)->count());
+        $this->assertSame(0, Invoice::query()->where('client_id', $account->id)->count());
+        $this->assertSame(0, Ticket::query()->where('client_id', $account->id)->count());
+        $this->assertSame(0, $account->fresh()->credit);
+    }
+
+    /**
+     * @return list<array{step: string, id: int, error: string}>
+     */
+    private function runImport(bool $expectErrors = false): array
     {
         $importer = new PaymenterImporter(self::CONNECTION);
+        $errors = [];
 
         foreach (array_keys(PaymenterImporter::STEPS) as $step) {
             $afterId = 0;
 
             do {
                 $result = $importer->run($step, $afterId, 1);
-                $this->assertSame([], $result['errors'], "Step {$step}");
+
+                if (! $expectErrors) {
+                    $this->assertSame([], $result['errors'], "Step {$step}");
+                }
+
+                foreach ($result['errors'] as $error) {
+                    $errors[] = ['step' => $step] + $error;
+                }
+
                 $afterId = $result['last_id'];
             } while (! $result['done']);
         }
+
+        return $errors;
     }
 
     private function seedPaymenter(): void

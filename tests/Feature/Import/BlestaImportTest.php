@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Import;
 
+use App\Billing\PaymentRecorder;
 use App\Billing\RenewalGenerator;
 use App\Enums\BillingCycle;
 use App\Enums\DomainStatus;
@@ -21,10 +22,12 @@ use App\Models\Ticket;
 use App\Models\TldPrice;
 use App\Models\Transaction;
 use App\Support\Settings;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -138,6 +141,80 @@ class BlestaImportTest extends TestCase
         $withKey = collect((new BlestaImporter(self::CONNECTION, self::SYSTEM_KEY))->preflight()->toArray()['problems'])->pluck('text');
         $this->assertNotContains('Client passwords that need the Blesta key: :count. Add the key, or clients choose a new password on the sign-in page.', $withKey);
         $this->assertSame(0, Client::query()->count());
+    }
+
+    public function test_running_it_again_keeps_payments_made_in_nuvabill(): void
+    {
+        Mail::fake();
+        $this->runImport();
+
+        $invoice = Invoice::query()->where('number', 'INV-1501')->firstOrFail();
+        app(PaymentRecorder::class)->record($invoice, 550, 'banktransfer', 'nb-1');
+        $service = Service::query()->firstOrFail();
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertSame('2026-11-01', $service->fresh()->next_due_date->toDateString());
+
+        // Blesta never saw that payment.
+        $this->runImport();
+
+        $invoice->refresh();
+        $this->assertSame(InvoiceStatus::Paid, $invoice->status);
+        $this->assertSame(550, $invoice->amount_paid);
+        $this->assertNotNull($invoice->paid_at);
+        $this->assertSame('2026-11-01', $service->fresh()->next_due_date->toDateString(), 'The renewal is not undone');
+    }
+
+    public function test_a_draft_finalized_later_gets_its_number_and_lines(): void
+    {
+        $db = DB::connection(self::CONNECTION);
+        $db->table('invoices')->insert(['id' => 3, 'id_format' => 'DRAFT-{num}', 'id_value' => 5, 'client_id' => 1, 'date_billed' => '2026-10-20 00:00:00', 'date_due' => '2026-11-01 00:00:00', 'date_closed' => null, 'status' => 'draft', 'currency' => 'USD', 'subtotal' => '5.0000', 'total' => '5.0000', 'paid' => '0.0000', 'note_public' => '']);
+        $db->table('invoice_lines')->insert(['id' => 4, 'invoice_id' => 3, 'service_id' => 30, 'description' => 'Starter Hosting', 'qty' => '1', 'amount' => '5.0000', 'order' => 0]);
+
+        $this->runImport();
+
+        $invoice = Invoice::query()->where('status', InvoiceStatus::Draft)->firstOrFail();
+        $this->assertNull($invoice->number);
+
+        $db->table('invoices')->where('id', 3)->update(['status' => 'active', 'id_format' => 'INV-{num}', 'id_value' => 1502, 'subtotal' => '7.0000', 'total' => '7.0000']);
+        $db->table('invoice_lines')->where('id', 4)->update(['amount' => '7.0000']);
+        // It bills the period after INV-1501's.
+        $db->table('services')->where('id', 30)->update(['date_renews' => '2026-11-01 00:00:00']);
+
+        $this->runImport();
+
+        $invoice->refresh();
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->status);
+        $this->assertSame('INV-1502', $invoice->number);
+        $this->assertSame(700, (int) $invoice->items()->sum('amount'));
+        $item = $invoice->items()->firstOrFail();
+        $this->assertNotNull($item->period_start, 'Paying it renews the service');
+        $this->assertNotNull($item->billing_key);
+    }
+
+    public function test_the_dry_run_counts_credit_in_few_queries_and_in_each_clients_currency(): void
+    {
+        $db = DB::connection(self::CONNECTION);
+
+        foreach (range(100, 139) as $id) {
+            $db->table('clients')->insert(['id' => $id, 'user_id' => null, 'status' => 'active']);
+            $db->table('transactions')->insert(['client_id' => $id, 'amount' => '3.0000', 'currency' => 'USD', 'type' => 'other', 'gateway_id' => null, 'transaction_id' => "bank-{$id}", 'status' => 'approved', 'date_added' => '2026-09-22 12:00:00']);
+        }
+
+        $db->table('clients')->insert(['id' => 200, 'user_id' => null, 'status' => 'active']);
+        $db->table('client_settings')->insert(['client_id' => 200, 'key' => 'default_currency', 'value' => 'EUR', 'encrypted' => 0]);
+        $db->table('transactions')->insert(['client_id' => 200, 'amount' => '4.0000', 'currency' => 'EUR', 'type' => 'other', 'gateway_id' => null, 'transaction_id' => 'bank-eur', 'status' => 'approved', 'date_added' => '2026-09-22 12:00:00']);
+
+        $queries = 0;
+        DB::listen(function (QueryExecuted $query) use (&$queries): void {
+            if ($query->connectionName === self::CONNECTION && str_contains($query->sql, 'transactions')) {
+                $queries++;
+            }
+        });
+
+        $texts = collect((new BlestaImporter(self::CONNECTION, self::SYSTEM_KEY))->preflight()->toArray()['problems'])->keyBy('text');
+
+        $this->assertSame(42, $texts['Clients with credit: :count. It becomes their Nuvabill wallet balance.']['params']['count'], 'Raz, 40 clients in USD and one in EUR');
+        $this->assertLessThan(5, $queries, 'Not two queries per client');
     }
 
     private function runImport(): void

@@ -2,7 +2,9 @@
 
 namespace Tests\Feature\Import;
 
+use App\Billing\PaymentRecorder;
 use App\Billing\RenewalGenerator;
+use App\Billing\Wallet;
 use App\Enums\BillingCycle;
 use App\Enums\DomainStatus;
 use App\Enums\InvoiceStatus;
@@ -23,6 +25,7 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -127,19 +130,83 @@ class FossbillingImportTest extends TestCase
         $this->assertSame('FOSSBilling', $texts['Turn off automation in :system when you switch, and run the import one last time, so clients do not get two invoices.']['system']);
     }
 
-    private function runImport(): void
+    public function test_an_account_signed_up_with_a_source_email_does_not_get_that_clients_hosting(): void
+    {
+        // Nuvabill does not prove a client owns their email, so this account may be anyone's.
+        $account = Client::factory()->create(['email' => 'raz@example.com', 'first_name' => 'Raz', 'last_name' => 'Las', 'currency' => 'USD']);
+
+        $errors = $this->runImport(expectErrors: true);
+
+        $this->assertSame([1], collect($errors)->where('step', 'clients')->pluck('id')->all());
+        $this->assertSame(0, Service::query()->where('client_id', $account->id)->count(), 'The hosting account and its password stay out');
+        $this->assertSame(0, Domain::query()->where('client_id', $account->id)->count());
+        $this->assertSame(0, Invoice::query()->where('client_id', $account->id)->count());
+        $this->assertSame(0, Ticket::query()->where('client_id', $account->id)->count());
+        $this->assertSame(0, $account->fresh()->credit);
+    }
+
+    public function test_running_it_again_keeps_payments_made_in_nuvabill(): void
+    {
+        Mail::fake();
+        $this->runImport();
+
+        $invoice = Invoice::query()->where('number', 'INV00002')->firstOrFail();
+        app(PaymentRecorder::class)->record($invoice, $invoice->balance(), 'banktransfer', 'nb-1');
+        $service = Service::query()->firstOrFail();
+        $this->assertSame('2026-11-01', $service->fresh()->next_due_date->toDateString());
+
+        // FOSSBilling never saw that payment.
+        $this->runImport();
+
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertSame(550, $invoice->fresh()->amount_paid);
+        $this->assertSame('2026-11-01', $service->fresh()->next_due_date->toDateString(), 'The renewal is not undone');
+    }
+
+    public function test_a_rerun_keeps_wallet_money_added_in_nuvabill(): void
+    {
+        $db = DB::connection(self::CONNECTION);
+        $db->table('client_balance')->delete();
+        $this->runImport();
+
+        $raz = Client::query()->where('email', 'raz@example.com')->firstOrFail();
+        app(Wallet::class)->change($raz, 5000, 'Added funds');
+
+        $this->runImport();
+        $this->assertSame(5000, $raz->fresh()->credit);
+
+        $db->table('client_balance')->insert(['id' => 3, 'client_id' => 1, 'amount' => '10.00', 'description' => 'Deposit']);
+        $this->runImport();
+        $this->assertSame(6000, $raz->fresh()->credit);
+    }
+
+    /**
+     * @return list<array{step: string, id: int, error: string}>
+     */
+    private function runImport(bool $expectErrors = false): array
     {
         $importer = new FossbillingImporter(self::CONNECTION);
+        $errors = [];
 
         foreach (array_keys(FossbillingImporter::STEPS) as $step) {
             $afterId = 0;
 
             do {
                 $result = $importer->run($step, $afterId, 1);
-                $this->assertSame([], $result['errors'], "Step {$step}");
+
+                if (! $expectErrors) {
+                    $this->assertSame([], $result['errors'], "Step {$step}");
+                }
+
+                foreach ($result['errors'] as $error) {
+                    $errors[] = ['step' => $step] + $error;
+                }
+
                 $afterId = $result['last_id'];
             } while (! $result['done']);
         }
+
+        return $errors;
     }
 
     private function seedFossbilling(): void

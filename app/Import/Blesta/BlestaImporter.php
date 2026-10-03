@@ -245,7 +245,7 @@ class BlestaImporter extends ImportSource
             $this->upsert('admin', (int) $row->id, Admin::class, [], [
                 'name' => trim($this->text($row->first_name ?? null).' '.$this->text($row->last_name ?? null)) ?: $email,
                 'email' => $email,
-                'password' => Str::random(40),
+                'password' => $this->placeholderPassword(),
                 'is_active' => false,
             ]);
         }
@@ -269,7 +269,7 @@ class BlestaImporter extends ImportSource
         foreach ($rows as $row) {
             $contact = $contacts->get($row->id);
 
-            if ($contact === null || ($email = $this->clientEmailToImport((int) $row->id, $contact->email ?? null)) === null) {
+            if ($contact === null || ($email = $this->clientEmailToImport((int) $row->id, $contact->email ?? null, $this->currencyCode($settings[$row->id]['default_currency'] ?? null))) === null) {
                 if ($contact === null) {
                     $this->counts['skipped']++;
                 }
@@ -297,7 +297,7 @@ class BlestaImporter extends ImportSource
                 'tax_exempt' => in_array((string) ($settings[$row->id]['tax_exempt'] ?? ''), ['true', '1'], true),
             ], [
                 'email' => $email,
-                'password' => Str::random(40),
+                'password' => $this->placeholderPassword(),
                 'currency' => $this->currencyCode($settings[$row->id]['default_currency'] ?? null),
                 'created_at' => $this->date($contact->date_added ?? null) ?? now(),
             ]);
@@ -641,7 +641,9 @@ class BlestaImporter extends ImportSource
                 default => $this->date($row->date_closed ?? null) !== null || ($total > 0 && $paid >= $total) ? InvoiceStatus::Paid : InvoiceStatus::Unpaid,
             };
             $issued = $this->date($row->date_billed ?? null) ?? today()->toDateString();
-            $isNew = $this->localId('invoice', $row->id) === null;
+            $localId = $this->localId('invoice', $row->id);
+            $isNew = $localId === null;
+            $wasDraft = ! $isNew && Invoice::query()->whereKey($localId)->toBase()->value('status') === InvoiceStatus::Draft->value;
 
             $invoice = $this->upsert('invoice', (int) $row->id, Invoice::class, [
                 'status' => $status->value,
@@ -659,7 +661,14 @@ class BlestaImporter extends ImportSource
                 'number' => $status === InvoiceStatus::Draft ? null : $this->unique(Invoice::class, 'number', $this->invoiceNumber($row)),
             ]);
 
-            if (! $isNew) {
+            // A draft finalized in Blesta since the last run gets its number, and a draft's lines may have changed.
+            if ($wasDraft) {
+                if ($invoice->status !== InvoiceStatus::Draft && $invoice->number === null) {
+                    $invoice->forceFill(['number' => $this->unique(Invoice::class, 'number', $this->invoiceNumber($row))])->save();
+                }
+
+                $invoice->items()->delete();
+            } elseif (! $isNew) {
                 $this->freeBillingKeys($invoice);
 
                 continue;
@@ -751,10 +760,7 @@ class BlestaImporter extends ImportSource
         foreach ($rows as $row) {
             $name = $this->text($row->name ?? null) ?? 'Support';
 
-            if ($this->localId('department', $row->id) === null && ($existing = TicketDepartment::query()->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->first())) {
-                $this->remember('department', (int) $row->id, $existing->id);
-                $this->counts['updated']++;
-
+            if (! $this->departmentToImport((int) $row->id, $name)) {
                 continue;
             }
 
@@ -871,8 +877,7 @@ class BlestaImporter extends ImportSource
         $this->checkCurrencies($report, $this->hasTable('currencies') ? $this->db()->table('currencies')->pluck('code') : collect());
         $this->checkGateways($report, $this->hasTable('gateways') ? $this->db()->table('gateways')->pluck('class') : collect());
 
-        $withCredit = $this->db()->table('clients')->pluck('id')->filter(fn (mixed $id): bool => $this->credit((int) $id, $this->currencyCode(null)) > 0)->count();
-        $report->problem(Preflight::INFO, $withCredit, 'Clients with credit: :count. It becomes their Nuvabill wallet balance.');
+        $report->problem(Preflight::INFO, $this->clientsWithCredit(), 'Clients with credit: :count. It becomes their Nuvabill wallet balance.');
 
         if ($this->hasTable('support_tickets')) {
             $report->problem(Preflight::WARNING, $this->db()->table('support_tickets')->whereNull('client_id')->where('status', '!=', 'trash')->count(), 'Tickets from guests without a client account: :count. They are skipped.');
@@ -885,6 +890,46 @@ class BlestaImporter extends ImportSource
         $this->automationAdvice($report);
 
         return $report;
+    }
+
+    /**
+     * How many clients have money paid but not applied to an invoice, in their own currency (as the clients
+     * step imports it). A few grouped queries, not two per client, so the dry run stays quick.
+     */
+    private function clientsWithCredit(): int
+    {
+        if (! $this->hasTable('transactions')) {
+            return 0;
+        }
+
+        $key = fn (stdClass $row): string => $row->client_id.'|'.strtoupper((string) $row->currency);
+        $paid = $this->db()->table('transactions')->where('status', 'approved')
+            ->groupBy('client_id', 'currency')
+            ->selectRaw('client_id, currency, SUM(amount) as total')
+            ->get();
+        $applied = $this->hasTable('transaction_applied')
+            ? $this->db()->table('transaction_applied')->join('transactions', 'transactions.id', '=', 'transaction_applied.transaction_id')
+                ->where('transactions.status', 'approved')
+                ->groupBy('transactions.client_id', 'transactions.currency')
+                ->selectRaw('transactions.client_id as client_id, transactions.currency as currency, SUM(transaction_applied.amount) as total')
+                ->get()->keyBy($key)
+            : collect();
+        $currencies = $this->hasTable('client_settings')
+            ? $this->db()->table('client_settings')->where('key', 'default_currency')
+                ->when($this->hasColumn('client_settings', 'encrypted'), fn (Builder $query) => $query->where(fn (Builder $query) => $query->whereNull('encrypted')->orWhere('encrypted', 0)))
+                ->pluck('value', 'client_id')
+            : collect();
+
+        return $paid
+            ->filter(fn (stdClass $row): bool => strtoupper((string) $row->currency) === $this->currencyCode($currencies->get($row->client_id))
+                && $this->money($row->total) - $this->money($applied->get($key($row))?->total ?? 0) > 0)
+            ->pluck('client_id')->unique()->count();
+    }
+
+    protected function sourceClients(array $ids): ?array
+    {
+        return $this->keyClients($this->db()->table('contacts')->whereIn('client_id', $ids)->where('contact_type', 'primary')
+            ->get(['client_id as id', 'email', 'date_added as created']));
     }
 
     /**

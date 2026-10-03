@@ -20,6 +20,8 @@ use Throwable;
     {--password= : Database password (or set IMPORT_DB_PASSWORD)}
     {--prefix= : Table prefix, if the tables have one}
     {--key= : The other system\'s encryption key, when it asks for one}
+    {--ssl-ca= : The CA file that signed the certificate of a database on another server, when this server does not know it}
+    {--no-tls : Connect to a database on another server without encryption, when it has no TLS}
     {--check : Only test the connection and count the records}
     {--dry-run : Show what would be imported and any problems, without changing anything}')]
 #[Description('Import clients, products, services, domains, invoices, payments and tickets from another billing system')]
@@ -47,8 +49,13 @@ class ImportFrom extends Command
                 'password' => $this->option('password') ?? (getenv('IMPORT_DB_PASSWORD') ?: (getenv('WHMCS_DB_PASSWORD') ?: ($this->input->isInteractive() ? (string) $this->secret('Database password') : ''))),
                 'prefix' => (string) $this->option('prefix'),
                 'key' => (string) $this->option('key'),
+                'ssl_ca' => (string) $this->option('ssl-ca'),
             ]
-            : ['source' => $source, 'key' => $this->option('key') ?: ($saved['key'] ?? null)] + $saved;
+            : ['source' => $source, 'key' => $this->option('key') ?: ($saved['key'] ?? null)] + array_filter(['ssl_ca' => $this->option('ssl-ca')]) + $saved;
+
+        if ($this->option('no-tls')) {
+            $connection['tls'] = false;
+        }
 
         if (blank($connection['database'] ?? null) || ($saved['source'] ?? $source) !== $source && blank($this->option('database'))) {
             $this->components->error('Give the database details with --database, --username and --password, or save them in Settings → Import.');

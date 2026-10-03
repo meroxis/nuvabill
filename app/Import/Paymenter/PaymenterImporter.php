@@ -176,7 +176,7 @@ class PaymenterImporter extends ImportSource
             $this->upsert('admin', (int) $row->id, Admin::class, [], [
                 'name' => trim($this->text($row->first_name ?? null).' '.$this->text($row->last_name ?? null)) ?: $email,
                 'email' => $email,
-                'password' => Str::random(40),
+                'password' => $this->placeholderPassword(),
                 'is_active' => false,
             ]);
         }
@@ -197,7 +197,7 @@ class PaymenterImporter extends ImportSource
             : collect();
 
         foreach ($rows as $row) {
-            if (($email = $this->clientEmailToImport((int) $row->id, $row->email ?? null)) === null) {
+            if (($email = $this->clientEmailToImport((int) $row->id, $row->email ?? null, $this->currencyCode($currencies[$row->id] ?? null))) === null) {
                 continue;
             }
 
@@ -212,13 +212,14 @@ class PaymenterImporter extends ImportSource
             $details['postcode'] = Str::limit((string) ($details['postcode'] ?? ''), 20, '') ?: null;
             $details['country'] = $this->countryCode($details['country'] ?? null);
 
+            // Paymenter has no client status: new clients start active, and a status staff set in Nuvabill is kept.
             $client = $this->upsert('client', (int) $row->id, Client::class, [
                 'first_name' => $this->text($row->first_name ?? null) ?? '',
                 'last_name' => $this->text($row->last_name ?? null) ?? '',
-                'status' => ClientStatus::Active->value,
             ] + $details, [
+                'status' => ClientStatus::Active->value,
                 'email' => $email,
-                'password' => Str::random(40),
+                'password' => $this->placeholderPassword(),
                 'currency' => $this->currencyCode($currencies[$row->id] ?? null),
                 'created_at' => $this->date($row->created_at ?? null) ?? now(),
             ]);
@@ -350,13 +351,24 @@ class PaymenterImporter extends ImportSource
                 continue;
             }
 
-            $cycle = $this->planCycle($this->plans()[(int) ($row->plan_id ?? 0)] ?? null) ?? ((float) ($row->price ?? 0) > 0 ? BillingCycle::OneTime : BillingCycle::Free);
+            $plan = $this->plans()[(int) ($row->plan_id ?? 0)] ?? null;
+            $cycle = $this->planCycle($plan);
             $status = match ((string) ($row->status ?? '')) {
                 'active' => ServiceStatus::Active,
                 'suspended' => ServiceStatus::Suspended,
                 'cancelled', 'canceled' => ServiceStatus::Cancelled,
                 default => ServiceStatus::Pending,
             };
+
+            // Billed by the hour, day or week: as a one-time service it would never be billed again.
+            if ($cycle === null && $plan !== null && $status !== ServiceStatus::Cancelled) {
+                $this->counts['skipped']++;
+                $this->errors[] = ['id' => (int) $row->id, 'error' => __('Billed every :period, which Nuvabill does not have. Add this service by hand.', ['period' => $plan->billing_period.' '.$plan->billing_unit])];
+
+                continue;
+            }
+
+            $cycle ??= (float) ($row->price ?? 0) > 0 ? BillingCycle::OneTime : BillingCycle::Free;
             $amount = $this->money($row->price ?? 0) * max(1, (int) ($row->quantity ?? 1));
             $domain = strtolower((string) $this->text($properties[$row->id]['domain'] ?? $properties[$row->id]['hostname'] ?? null));
 
@@ -389,6 +401,12 @@ class PaymenterImporter extends ImportSource
         $ids = $rows->pluck('id')->all();
         $items = $this->db()->table('invoice_items')->whereIn('invoice_id', $ids)->orderBy('id')->get()->groupBy('invoice_id');
         $payments = $this->rows('transactions')->whereIn('invoice_id', $ids)->orderBy('id')->get()->groupBy('invoice_id');
+        // Credit already used on an invoice counts as paid: the imported wallet no longer holds it.
+        $applied = $this->hasTable('invoice_transactions')
+            ? $this->db()->table('invoice_transactions')->whereIn('invoice_id', $ids)
+                ->when($this->hasColumn('invoice_transactions', 'status'), fn (Builder $query) => $query->where('status', 'succeeded'))
+                ->get(['invoice_id', 'amount'])->groupBy('invoice_id')
+            : collect();
 
         foreach ($rows as $row) {
             $clientId = $this->localId('client', $row->user_id ?? 0);
@@ -416,7 +434,7 @@ class PaymenterImporter extends ImportSource
                 'subtotal' => $total,
                 'tax' => 0,
                 'total' => $total,
-                'amount_paid' => $status === InvoiceStatus::Paid ? $total : min($total, (int) $paid->sum(fn (stdClass $payment): int => $this->money($payment->amount ?? 0))),
+                'amount_paid' => $status === InvoiceStatus::Paid ? $total : min($total, max(0, (int) $applied->get($row->id, collect())->sum(fn (stdClass $payment): int => $this->money($payment->amount ?? 0)))),
                 'issued_at' => $issued,
                 'due_at' => $this->date($row->due_at ?? null) ?? $issued,
                 'paid_at' => $status === InvoiceStatus::Paid ? ($this->date($paid->last()?->created_at ?? null) ?? $this->date($row->updated_at ?? null) ?? $issued) : null,
@@ -558,6 +576,7 @@ class PaymenterImporter extends ImportSource
 
         $unsupported = collect($this->plans())->filter(fn (stdClass $plan): bool => str_ends_with((string) $plan->priceable_type, 'Product') && $this->planCycle($plan) === null);
         $report->problem(Preflight::WARNING, $unsupported->count(), 'Prices with a billing period Nuvabill does not have: :count. They are not imported.', examples: $unsupported->map(fn (stdClass $plan): string => $plan->billing_period.' '.$plan->billing_unit)->unique()->values()->all());
+        $report->problem(Preflight::WARNING, $unsupported->isEmpty() ? 0 : $this->db()->table('services')->whereIn('plan_id', $unsupported->keys()->all())->whereNotIn('status', ['cancelled', 'canceled'])->count(), 'Services with a billing period Nuvabill does not have: :count. They are not imported; add them by hand.');
 
         $suspendDays = (int) setting('automation.suspend_days');
 
@@ -609,6 +628,11 @@ class PaymenterImporter extends ImportSource
         }
 
         return $values;
+    }
+
+    protected function sourceClients(array $ids): ?array
+    {
+        return $this->keyClients($this->db()->table('users')->whereIn('id', $ids)->get(['id', 'email', 'created_at as created']));
     }
 
     /**

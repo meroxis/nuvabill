@@ -209,7 +209,7 @@ class FossbillingImporter extends ImportSource
             $this->upsert('admin', (int) $row->id, Admin::class, [], [
                 'name' => $this->text($row->name ?? null) ?? $email,
                 'email' => $email,
-                'password' => Str::random(40),
+                'password' => $this->placeholderPassword(),
                 'is_active' => false,
             ]);
         }
@@ -225,7 +225,7 @@ class FossbillingImporter extends ImportSource
             : [];
 
         foreach ($rows as $row) {
-            if (($email = $this->clientEmailToImport((int) $row->id, $row->email ?? null)) === null) {
+            if (($email = $this->clientEmailToImport((int) $row->id, $row->email ?? null, $this->currencyCode($row->currency ?? null))) === null) {
                 continue;
             }
 
@@ -252,7 +252,7 @@ class FossbillingImporter extends ImportSource
                 'tax_id' => $this->text($row->company_vat ?? null),
             ], [
                 'email' => $email,
-                'password' => Str::random(40),
+                'password' => $this->placeholderPassword(),
                 'currency' => $this->currencyCode($row->currency ?? null),
                 'created_at' => $this->date($row->created_at ?? null) ?? now(),
             ]);
@@ -675,10 +675,7 @@ class FossbillingImporter extends ImportSource
         foreach ($rows as $row) {
             $name = $this->text($row->name ?? null) ?? 'Support';
 
-            if ($this->localId('department', $row->id) === null && ($existing = TicketDepartment::query()->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->first())) {
-                $this->remember('department', (int) $row->id, $existing->id);
-                $this->counts['updated']++;
-
+            if (! $this->departmentToImport((int) $row->id, $name)) {
                 continue;
             }
 
@@ -805,6 +802,11 @@ class FossbillingImporter extends ImportSource
         $this->automationAdvice($report);
 
         return $report;
+    }
+
+    protected function sourceClients(array $ids): ?array
+    {
+        return $this->keyClients($this->db()->table('client')->whereIn('id', $ids)->get(['id', 'email', 'created_at as created']));
     }
 
     /**

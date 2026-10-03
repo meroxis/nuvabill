@@ -228,7 +228,7 @@ class WhmcsImporter extends ImportSource
             $this->upsert('admin', (int) $row->id, Admin::class, [], [
                 'name' => trim($this->text($row->firstname ?? null).' '.$this->text($row->lastname ?? null)) ?: $email,
                 'email' => $email,
-                'password' => Str::random(40),
+                'password' => $this->placeholderPassword(),
                 'is_active' => false,
             ]);
         }
@@ -242,18 +242,7 @@ class WhmcsImporter extends ImportSource
         $passwords = $this->ownerPasswords($rows->pluck('id')->all());
 
         foreach ($rows as $row) {
-            $email = strtolower((string) $this->text($row->email ?? null));
-
-            if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                $this->counts['skipped']++;
-
-                continue;
-            }
-
-            if ($this->localId('client', $row->id) === null && ($existing = Client::query()->where('email', $email)->first())) {
-                $this->remember('client', (int) $row->id, $existing->id);
-                $this->counts['updated']++;
-
+            if (($email = $this->clientEmailToImport((int) $row->id, $row->email ?? null, $this->currency($row->currency ?? 0))) === null) {
                 continue;
             }
 
@@ -276,7 +265,7 @@ class WhmcsImporter extends ImportSource
                 'notes' => $this->text($row->notes ?? null),
             ], [
                 'email' => $email,
-                'password' => Str::random(40),
+                'password' => $this->placeholderPassword(),
                 'currency' => $this->currency($row->currency ?? 0),
                 'created_at' => $this->date($row->datecreated ?? null) ?? now(),
             ]);
@@ -661,8 +650,11 @@ class WhmcsImporter extends ImportSource
             $tax = $this->money($row->tax ?? 0) + $this->money($row->tax2 ?? 0);
             $total = $subtotal + $tax;
             $paid = $status === InvoiceStatus::Paid ? $total : min($total, max(0, $this->money($row->credit ?? 0) + $this->money($payments[$row->id] ?? 0)));
-            $isNew = $this->localId('invoice', $row->id) === null;
+            $localId = $this->localId('invoice', $row->id);
+            $isNew = $localId === null;
+            $wasDraft = ! $isNew && Invoice::query()->whereKey($localId)->toBase()->value('status') === InvoiceStatus::Draft->value;
             $issued = $this->date($row->date ?? null) ?? today()->toDateString();
+            $number = fn (): string => $this->unique(Invoice::class, 'number', $this->text($row->invoicenum ?? null) ?? (string) $row->id);
 
             $invoice = $this->upsert('invoice', (int) $row->id, Invoice::class, [
                 'status' => $status->value,
@@ -678,16 +670,26 @@ class WhmcsImporter extends ImportSource
             ], [
                 'client_id' => $clientId,
                 'currency' => $this->clientCurrency($clientId),
-                'number' => $status === InvoiceStatus::Draft ? null : $this->unique(Invoice::class, 'number', $this->text($row->invoicenum ?? null) ?? (string) $row->id),
+                'number' => $status === InvoiceStatus::Draft ? null : $number(),
             ]);
 
-            if ($isNew) {
+            // A draft published in WHMCS since the last run gets its number, and a draft's lines may have changed.
+            if ($wasDraft) {
+                if ($invoice->status !== InvoiceStatus::Draft && $invoice->number === null) {
+                    $invoice->forceFill(['number' => $number()])->save();
+                }
+
+                $invoice->items()->delete();
+            }
+
+            if ($isNew || $wasDraft) {
                 foreach ($items->get($row->id, collect()) as $item) {
                     $this->importInvoiceItem($invoice, $item);
                 }
-            } elseif ($status === InvoiceStatus::Cancelled) {
-                // Cancelled in WHMCS after the first run: its periods may be invoiced again.
-                $invoice->items()->whereNotNull('billing_key')->update(['billing_key' => null]);
+            } else {
+                // Cancelled in WHMCS after the first run: its periods may be invoiced again. One paid in
+                // Nuvabill stays paid (see keepLocalProgress()), so it keeps its periods.
+                $this->freeBillingKeys($invoice);
             }
         }
     }
@@ -791,7 +793,7 @@ class WhmcsImporter extends ImportSource
     }
 
     /**
-     * Departments with the same name as an existing one are linked to it.
+     * Departments with the same name as an existing one are linked to it, and that one is not changed.
      *
      * @param  Collection<int, stdClass>  $rows
      */
@@ -800,10 +802,7 @@ class WhmcsImporter extends ImportSource
         foreach ($rows as $row) {
             $name = $this->text($row->name ?? null) ?? 'Support';
 
-            if ($this->localId('department', $row->id) === null && ($existing = TicketDepartment::query()->whereRaw('LOWER(name) = ?', [mb_strtolower($name)])->first())) {
-                $this->remember('department', (int) $row->id, $existing->id);
-                $this->counts['updated']++;
-
+            if (! $this->departmentToImport((int) $row->id, $name)) {
                 continue;
             }
 
@@ -934,7 +933,7 @@ class WhmcsImporter extends ImportSource
     private function preflightClients(Preflight $report): void
     {
         $clients = $this->db()->table('tblclients')->get(['id', 'email', 'password']);
-        $owners = $this->ownerPasswords($clients->pluck('id')->all());
+        $owners = $this->ownerPasswords();
         $hashes = $clients->map(fn (stdClass $row): string => (string) ($owners[$row->id] ?? $row->password ?? ''));
         $encrypted = $this->secret === null ? collect() : $hashes->filter(fn (string $hash): bool => ! LegacyPassword::isBcrypt($hash) && $this->legacyPassword($hash) === null && (new WhmcsCrypt($this->secret))->decrypt($hash) !== null);
 
@@ -1036,10 +1035,10 @@ class WhmcsImporter extends ImportSource
     /**
      * WHMCS 8 keeps passwords on users (tblusers); the owner of each client account signs in with it.
      *
-     * @param  list<int|string>  $clientIds
+     * @param  list<int|string>|null  $clientIds  Null for every client, without a long list of IDs in the query.
      * @return array<int, string>
      */
-    private function ownerPasswords(array $clientIds): array
+    private function ownerPasswords(?array $clientIds = null): array
     {
         if (! $this->hasTable('tblusers_clients') || ! $this->hasTable('tblusers')) {
             return [];
@@ -1047,10 +1046,15 @@ class WhmcsImporter extends ImportSource
 
         return $this->db()->table('tblusers_clients')
             ->join('tblusers', 'tblusers.id', '=', 'tblusers_clients.auth_user_id')
-            ->whereIn('tblusers_clients.client_id', $clientIds)
+            ->when($clientIds !== null, fn ($query) => $query->whereIn('tblusers_clients.client_id', $clientIds))
             ->where('tblusers_clients.owner', 1)
             ->pluck('tblusers.password', 'tblusers_clients.client_id')
             ->all();
+    }
+
+    protected function sourceClients(array $ids): ?array
+    {
+        return $this->keyClients($this->db()->table('tblclients')->whereIn('id', $ids)->get(['id', 'email', 'datecreated as created']));
     }
 
     /**
