@@ -2,13 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Updates\Backup;
 use App\Updates\Release;
 use App\Updates\Signature;
 use App\Updates\UpdateManager;
+use Illuminate\Database\Events\MigrationsStarted;
+use Illuminate\Database\Events\NoPendingMigrations;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Tests\TestCase;
@@ -33,6 +37,7 @@ class UpdaterTest extends TestCase
         $this->app['files']->deleteDirectory($this->workDir);
         @unlink(storage_path('app/updates/pending.json'));
         @unlink(storage_path('app/updates/installing.json'));
+        @unlink(storage_path('app/updates/restore-failed.json'));
         @unlink(storage_path('app/updates/nuvabill-0.2.0.zip'));
 
         if ($this->app->isDownForMaintenance()) {
@@ -256,6 +261,73 @@ class UpdaterTest extends TestCase
         $this->assertFileExists(storage_path('app/updates/installing.json'));
     }
 
+    public function test_a_finished_update_is_never_rolled_back_by_the_next_scheduler_run(): void
+    {
+        $backup = $this->fakeBackup();
+        file_put_contents($this->workDir.'/before.zip', 'backup');
+        $update = ['from' => '0.1.0', 'to' => '0.2.0', 'backup' => $this->workDir.'/before.zip', 'started_at' => now()->toIso8601String()];
+        // PHP stopped right after the files were copied, before installing.json was removed.
+        $this->writeUpdateFile('pending.json', $update);
+        $this->writeUpdateFile('installing.json', $update);
+        Artisan::call('down');
+
+        $this->assertSame(['from' => '0.1.0', 'to' => '0.2.0'], app(UpdateManager::class)->finish());
+        $this->artisan('nuvabill:update', ['--finish-pending' => true])->assertSuccessful();
+
+        $this->assertSame([], $backup->restored, 'The old files must never go back over a database that is already migrated.');
+        $this->assertFileDoesNotExist(storage_path('app/updates/installing.json'));
+        $this->assertFalse(app(UpdateManager::class)->hasPendingFinish());
+        $this->assertFalse($this->app->isDownForMaintenance());
+        $this->assertDatabaseHas('activity_logs', ['action' => 'update.installed']);
+        $this->assertDatabaseMissing('activity_logs', ['action' => 'update.failed']);
+    }
+
+    public function test_an_update_whose_backup_cannot_be_put_back_stays_down_until_staff_restore_it(): void
+    {
+        $backup = $this->fakeBackup(restoreFails: true);
+        file_put_contents($this->workDir.'/before.zip', 'backup');
+        $this->writeUpdateFile('pending.json', ['from' => '0.1.0', 'to' => '0.2.0', 'backup' => $this->workDir.'/before.zip', 'started_at' => now()->toIso8601String()]);
+        $migration = $this->failingMigration();
+        Artisan::call('down');
+
+        try {
+            app(UpdateManager::class)->finish();
+            $this->fail('A backup that was not put back must not be reported as restored.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('could not be put back', $exception->getMessage());
+            $this->assertStringContainsString($this->workDir.'/before.zip', $exception->getMessage());
+        }
+
+        // The old files are back and have nothing to migrate: the next run must not call that a finished update.
+        unlink($migration);
+        $migrations = 0;
+        Event::listen([MigrationsStarted::class, NoPendingMigrations::class], function () use (&$migrations): void {
+            $migrations++;
+        });
+
+        $this->artisan('nuvabill:update', ['--finish-pending' => true])->assertFailed();
+
+        $this->assertSame(0, $migrations, 'No migration may run over a half-restored database.');
+        $this->assertCount(1, $backup->restored);
+        $this->assertTrue($this->app->isDownForMaintenance());
+        $this->assertTrue(app(UpdateManager::class)->hasPendingFinish(), 'The updates page keeps showing that staff have to act.');
+        $this->assertFileDoesNotExist(storage_path('app/updates/pending.json'));
+        $this->assertDatabaseMissing('activity_logs', ['action' => 'update.installed']);
+        $this->assertSame(1, ActivityLog::where('action', 'update.failed')->count());
+
+        // No new update starts on top of it either.
+        [$updates, $release] = $this->signedRelease('0.3.0');
+
+        try {
+            $updates->install($release);
+            $this->fail('An update must not start before the failed one is restored.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('could not be put back', $exception->getMessage());
+        }
+
+        Http::assertNotSent(fn ($request): bool => str_contains($request->url(), 'downloads.example.test'));
+    }
+
     public function test_restoring_a_large_database_backup_does_not_load_it_into_memory(): void
     {
         DB::statement('create table probe (id integer, body text)');
@@ -381,13 +453,15 @@ class UpdaterTest extends TestCase
     /**
      * A backup that only notes what it was asked to do, so tests never zip or restore the real site.
      */
-    private function fakeBackup(bool $fails = false): Backup
+    private function fakeBackup(bool $fails = false, bool $restoreFails = false): Backup
     {
         $backup = new class($this->workDir, $this->workDir.'/backups') extends Backup
         {
             public ?bool $downWhileBackingUp = null;
 
             public bool $fails = false;
+
+            public bool $restoreFails = false;
 
             /** @var list<array{string, bool}> */
             public array $restored = [];
@@ -406,10 +480,15 @@ class UpdaterTest extends TestCase
             public function restore(string $file, bool $includeDatabase = true): void
             {
                 $this->restored[] = [$file, $includeDatabase];
+
+                if ($this->restoreFails) {
+                    throw new RuntimeException('Lost connection to the database server.');
+                }
             }
         };
 
         $backup->fails = $fails;
+        $backup->restoreFails = $restoreFails;
         $this->app->bind(Backup::class, fn () => $backup);
 
         return $backup;
@@ -425,6 +504,33 @@ class UpdaterTest extends TestCase
         }
 
         file_put_contents(storage_path('app/updates/'.$name), json_encode($data));
+    }
+
+    /**
+     * A migration of the new version that fails half-way, like a column that already exists.
+     */
+    private function failingMigration(): string
+    {
+        mkdir($folder = $this->workDir.'/migrations');
+        $file = $folder.'/2099_01_01_000000_break_the_update.php';
+
+        file_put_contents($file, <<<'PHP'
+            <?php
+
+            use Illuminate\Database\Migrations\Migration;
+
+            return new class extends Migration
+            {
+                public function up(): void
+                {
+                    throw new RuntimeException('Duplicate column name');
+                }
+            };
+            PHP);
+
+        app('migrator')->path($folder);
+
+        return $file;
     }
 
     /**

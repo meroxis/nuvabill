@@ -19,7 +19,8 @@ use ZipArchive;
  *  1. install(): download, verify the signature, maintenance mode, back up, copy files.
  *  2. finish(): in a fresh request or process, migrate, clear caches and go live.
  * If anything fails, the backup is restored. If PHP is stopped half-way through install(),
- * finish() (also run by the scheduler every minute) puts the old files back.
+ * finish() (also run by the scheduler every minute) puts the old files back. If the backup
+ * itself cannot be put back, the site stays in maintenance mode until staff restore it by hand.
  */
 class UpdateManager
 {
@@ -90,6 +91,10 @@ class UpdateManager
 
     private function installUnlocked(Release $release, string $directory): void
     {
+        if (is_file($this->restoreFailedPath())) {
+            throw new RuntimeException($this->restoreFailedMessage());
+        }
+
         if (is_file($this->pendingPath()) || is_file($this->installingPath())) {
             throw new RuntimeException('An update is already half-way done. Finish it first.');
         }
@@ -167,12 +172,13 @@ class UpdateManager
     }
 
     /**
-     * Whether an update waits for finish(): its files are copied, or it stopped half-way and its
-     * old files have to be put back. An install that is still running does not count.
+     * Whether an update waits for finish(): its files are copied, it stopped half-way and its
+     * old files have to be put back, or its backup could not be put back and staff have to act.
+     * An install that is still running does not count.
      */
     public function hasPendingFinish(): bool
     {
-        if (is_file($this->pendingPath())) {
+        if (is_file($this->pendingPath()) || is_file($this->restoreFailedPath())) {
             return true;
         }
 
@@ -213,13 +219,33 @@ class UpdateManager
 
         try {
             // Read only now: a finish that ran meanwhile has already removed these files.
-            if (! is_file($this->pendingPath()) && is_file($this->installingPath())) {
+            if (is_file($this->restoreFailedPath())) {
+                // Never migrate over a half-restored database and call it a success.
+                throw new RuntimeException($this->restoreFailedMessage());
+            }
+
+            if (is_file($this->pendingPath())) {
+                $this->forgetInstalling();
+            } elseif (is_file($this->installingPath())) {
                 $this->rollBackInterruptedInstall();
             }
 
             return $this->finishUnlocked();
         } finally {
             $this->unlock($lock);
+        }
+    }
+
+    /**
+     * The files are all copied, so the note that they were still being copied is out of date.
+     * Left behind, it would make the next finish put the old files back over the migrated database.
+     */
+    private function forgetInstalling(): void
+    {
+        @unlink($this->installingPath());
+
+        if (is_file($this->installingPath())) {
+            throw new RuntimeException('Cannot write to the storage/app/updates folder.');
         }
     }
 
@@ -240,9 +266,7 @@ class UpdateManager
         } catch (Throwable $exception) {
             Log::error('Update failed during migration; restoring backup.', ['exception' => $exception]);
 
-            if (is_file((string) $pending['backup'])) {
-                $this->backup()->restore((string) $pending['backup']);
-            }
+            $this->restoreAfterFailedMigration($pending);
 
             @unlink($this->pendingPath());
             Artisan::call('up');
@@ -259,6 +283,56 @@ class UpdateManager
         Activity::log('update.installed', "Updated Nuvabill from {$pending['from']} to {$pending['to']}");
 
         return ['from' => (string) $pending['from'], 'to' => (string) $pending['to']];
+    }
+
+    /**
+     * Put the files and database from before the update back. If that fails, the site stays in
+     * maintenance mode and pending.json is set aside: run again on the old files, finish() would
+     * find nothing to migrate and bring a half-restored database live as a finished update.
+     *
+     * @param  array<string, mixed>  $pending
+     */
+    private function restoreAfterFailedMigration(array $pending): void
+    {
+        $backup = (string) ($pending['backup'] ?? '');
+
+        try {
+            if ($backup === '' || ! is_file($backup)) {
+                throw new RuntimeException("The backup {$backup} is missing.");
+            }
+
+            $this->backup()->restore($backup);
+        } catch (Throwable $exception) {
+            Log::error('The backup could not be put back after a failed update.', ['exception' => $exception, 'backup' => $backup]);
+
+            if (! @rename($this->pendingPath(), $this->restoreFailedPath())) {
+                @unlink($this->pendingPath());
+            }
+
+            // The database may be half restored, so even the activity log may be gone.
+            rescue(fn () => Activity::log('update.failed', "Update to {$pending['to']} failed and its backup could not be put back: {$exception->getMessage()}"));
+
+            throw new RuntimeException($this->restoreFailedMessage($pending), previous: $exception);
+        }
+    }
+
+    /**
+     * What staff have to do once a failed update could not put its backup back.
+     *
+     * @param  array<string, mixed>|null  $failed  The set-aside pending.json; read from disk when null.
+     */
+    private function restoreFailedMessage(?array $failed = null): string
+    {
+        if ($failed === null) {
+            $decoded = json_decode((string) @file_get_contents($this->restoreFailedPath()), true);
+            $failed = is_array($decoded) ? $decoded : [];
+        }
+
+        $to = (string) ($failed['to'] ?? '?');
+        $backup = (string) ($failed['backup'] ?? '');
+
+        return "The update to {$to} failed and its backup could not be put back, so the site stays in maintenance mode. "
+            ."Restore the backup {$backup} by hand, then delete storage/app/updates/restore-failed.json and run: php artisan up";
     }
 
     /**
@@ -403,5 +477,10 @@ class UpdateManager
     private function installingPath(): string
     {
         return storage_path('app/updates/installing.json');
+    }
+
+    private function restoreFailedPath(): string
+    {
+        return storage_path('app/updates/restore-failed.json');
     }
 }
