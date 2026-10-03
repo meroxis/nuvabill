@@ -5,7 +5,6 @@ namespace App\Billing;
 use App\Enums\InvoiceStatus;
 use App\Enums\ServiceStatus;
 use App\Mail\TemplateMailer;
-use App\Models\ActivityLog;
 use App\Models\Admin;
 use App\Models\CreditNote;
 use App\Models\Invoice;
@@ -487,8 +486,9 @@ class PlanChanges
      * the period that ends now, so it stops: its invoice is cancelled, which puts what was paid on it
      * back into the wallet. One whose invoice was just paid is applied first. One with a card or
      * gateway payment still going through stays open; if that payment lands after the renewal was
-     * billed, the change stops then and the money goes back to the wallet. One whose part payment
-     * cannot go back (the wallet is in another currency with no exchange rate) stays open for staff.
+     * billed, the change stops then and the money goes back to the wallet. A part payment that cannot
+     * go back (the wallet is in another currency with no exchange rate) stays on the cancelled
+     * invoice, and staff are asked once to give it back by hand.
      * Returns true when the service moved to its new plan, so the renewal bills the new plan.
      */
     public function settleBeforeRenewal(Service $service): bool
@@ -505,11 +505,11 @@ class PlanChanges
         }
 
         $returned = 0;
-        $stuck = '';
+        $kept = 0;
 
         // The change and then its invoice are locked (the invoice lock a payment takes), so a payment
         // arriving now either lands first and applies the change, or finds the invoice cancelled.
-        $outcome = DB::transaction(function () use ($change, &$returned, &$stuck): string {
+        $outcome = DB::transaction(function () use ($change, &$returned, &$kept): string {
             $locked = PlanChange::query()->lockForUpdate()->find($change->id);
 
             if ($locked === null || ! $locked->isPending()) {
@@ -533,15 +533,14 @@ class PlanChanges
                     // The one place that gives the money back: what was paid goes into the wallet with
                     // a refund line for each payment. Cancelling the invoice cancels the change with it.
                     $this->invoices->cancel($invoice);
-                } catch (NoExchangeRate $exception) {
-                    // Only the cancel is rolled back (it runs in its own savepoint): the invoice and the
-                    // change stay open, and the renewal bills the current plan.
-                    $stuck = $exception->getMessage();
-
-                    return 'stuck';
+                    $returned = $paid;
+                } catch (NoExchangeRate) {
+                    // The wallet is in another currency with no exchange rate. Only that cancel was
+                    // rolled back (it runs in its own savepoint). The invoice still closes, so it never
+                    // holds the service, gets charged or chased; what was paid stays on it for staff.
+                    $this->invoices->cancelKeepingPayments($invoice);
+                    $kept = $invoice->amount_paid;
                 }
-
-                $returned = $paid;
             }
 
             $locked->update(['status' => PlanChange::STATUS_CANCELLED]);
@@ -553,60 +552,49 @@ class PlanChanges
             'paid' => $this->apply($change),
             // A payment got there first and moved the service already.
             'applied' => true,
-            'stopped' => $this->expired($change, $service, $returned),
-            'stuck' => $this->stuck($change, $service, $stuck),
+            'stopped' => $this->expired($change, $service, $returned, $kept),
             default => false,
         };
     }
 
     /**
-     * Stop the upgrades whose period has passed but which are still waiting: one kept open the night
-     * its renewal was billed, because a payment was going through or its part payment could not go
-     * back. The nightly run calls this, so a stale upgrade invoice does not suspend the service.
-     * One that fails is reported and skipped.
+     * Stop the upgrades whose period has passed but which are still waiting, because a payment was
+     * going through the night their renewal was billed. The nightly run calls this, so a stale
+     * upgrade invoice does not suspend the service. One that fails, or still waits, is skipped and
+     * never stops the others.
      */
     public function settlePassed(): void
     {
-        PlanChange::query()
+        $changes = PlanChange::query()
             ->with('service')
             ->where('status', PlanChange::STATUS_PENDING)
             ->where('mode', PlanChange::MODE_INVOICE)
             ->whereNotNull('invoice_id')
-            ->get()
-            ->filter(fn (PlanChange $change): bool => $change->service !== null && $this->periodPassed($change, $change->service))
-            ->each(fn (PlanChange $change): bool => (bool) rescue(fn (): bool => $this->settleBeforeRenewal($change->service), false));
+            ->orderBy('id')
+            ->get();
+
+        foreach ($changes as $change) {
+            if ($change->service !== null && $this->periodPassed($change, $change->service)) {
+                rescue(fn (): bool => $this->settleBeforeRenewal($change->service), false);
+            }
+        }
     }
 
     /**
-     * Log an upgrade that stopped because it was not paid before the renewal.
+     * Log an upgrade that stopped because it was not paid before the renewal. A part payment that
+     * could not go back into the wallet is left to staff, with one log line that says what to do.
      */
-    private function expired(PlanChange $change, Service $service, int $returned): bool
+    private function expired(PlanChange $change, Service $service, int $returned, int $kept): bool
     {
-        $number = $change->invoice()->first()?->displayNumber() ?? '';
+        $invoice = $change->invoice()->with('client')->first();
+        $number = $invoice?->displayNumber() ?? '';
 
         Activity::log('service.plan_change_expired', "Plan change for service #{$service->id} stopped: its invoice {$number} was not paid before the renewal"
             .($returned > 0 ? '; '.money($returned, $change->currency).' paid on it went back to the wallet' : ''), $service);
 
-        return false;
-    }
-
-    /**
-     * Ask staff once to settle an upgrade that could not stop before the renewal. The nightly run
-     * tries again every night, so it stops by itself once an exchange rate is added.
-     */
-    private function stuck(PlanChange $change, Service $service, string $reason): bool
-    {
-        $reported = ActivityLog::query()
-            ->where('action', 'service.plan_change_stuck')
-            ->where('subject_type', $service->getMorphClass())
-            ->where('subject_id', $service->id)
-            ->where('created_at', '>=', $change->created_at)
-            ->exists();
-
-        if (! $reported) {
-            $number = $change->invoice()->first()?->displayNumber() ?? '';
-
-            Activity::log('service.plan_change_stuck', "Plan change for service #{$service->id} could not stop before the renewal, so its invoice {$number} stays open: {$reason} Or settle the invoice by hand.", $service);
+        if ($kept > 0 && $invoice !== null) {
+            Activity::log('service.plan_change_refund', 'Give '.money($kept, $invoice->currency)." back to the client by hand. It was paid on invoice {$number} for a plan change that stopped,"
+                ." and the client's wallet is in {$invoice->client->currency} with no exchange rate from {$invoice->currency}.", $invoice);
         }
 
         return false;

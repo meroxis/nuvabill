@@ -106,16 +106,40 @@ class InvoiceManager
      */
     public function cancel(Invoice $invoice): Invoice
     {
+        return $this->close($invoice, giveBack: true);
+    }
+
+    /**
+     * Cancel an unpaid invoice whose paid part cannot go back into the client's wallet, because the
+     * wallet is in another currency with no exchange rate. What was paid stays on the cancelled
+     * invoice for staff to give back by hand, the same as a late payment on a closed invoice. The
+     * caller tells staff. Anything that can go back to the wallet uses cancel() instead.
+     */
+    public function cancelKeepingPayments(Invoice $invoice): Invoice
+    {
+        return $this->close($invoice, giveBack: false);
+    }
+
+    /**
+     * @throws NoExchangeRate When the money should go back and cannot; nothing changes then.
+     */
+    private function close(Invoice $invoice, bool $giveBack): Invoice
+    {
         // The row is locked and read again, so a payment that lands at the same time is not overwritten.
-        $cancelled = DB::transaction(function () use ($invoice): bool {
+        $cancelled = DB::transaction(function () use ($invoice, $giveBack): bool {
             $locked = Invoice::query()->with('client')->lockForUpdate()->findOrFail($invoice->id);
 
             if (! in_array($locked->status, [InvoiceStatus::Unpaid, InvoiceStatus::Draft], true)) {
                 return false;
             }
 
-            $this->returnPayments($locked);
-            $locked->update(['status' => InvoiceStatus::Cancelled, 'amount_paid' => 0]);
+            if ($giveBack) {
+                $this->returnPayments($locked);
+                $locked->amount_paid = 0;
+            }
+
+            $locked->status = InvoiceStatus::Cancelled;
+            $locked->save();
             // The periods on it may be invoiced again.
             $locked->items()->whereNotNull('billing_key')->update(['billing_key' => null]);
 

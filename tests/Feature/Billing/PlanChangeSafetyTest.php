@@ -153,14 +153,20 @@ class PlanChangeSafetyTest extends TestCase
         $this->assertStringContainsString('$2.00 paid on it went back to the wallet', ActivityLog::query()->where('action', 'service.plan_change_expired')->sole()->description);
     }
 
-    public function test_a_part_paid_upgrade_the_wallet_cannot_take_back_does_not_stop_the_nightly_run(): void
+    public function test_a_part_paid_upgrade_the_wallet_cannot_take_back_is_closed_and_left_to_staff(): void
     {
+        $this->setSettings(['automation.terminate_days' => 20]);
         // The client's wallet is in euros, the service is billed in dollars, and no rate is set.
         $this->service->client->update(['currency' => 'EUR']);
         $upgrade = $this->requestUpgrade();
         app(PaymentRecorder::class)->record($upgrade, 200, 'banktransfer');
         $raz = Client::factory()->create(['first_name' => 'Raz', 'last_name' => '', 'company_name' => null, 'currency' => 'USD']);
         $overdue = app(InvoiceManager::class)->create($raz, [['description' => 'Hosting', 'amount' => 900]], dueAt: Carbon::parse('2026-10-01'));
+
+        // The rest of the upgrade was not paid in time, so the service is suspended over it.
+        $this->travelTo(Carbon::parse('2026-10-05 01:00'));
+        app(DailyAutomation::class)->run();
+        $this->assertSame(ServiceStatus::Suspended, $this->service->fresh()->status);
 
         $this->travelTo(Carbon::parse('2026-10-09 01:00'));
         $this->assertIsArray(app(DailyAutomation::class)->run());
@@ -171,24 +177,47 @@ class PlanChangeSafetyTest extends TestCase
         $this->assertSame(1000, $renewal->total);
         $this->assertSame($this->starter->id, $this->service->fresh()->product_id);
 
-        // The upgrade stays open with its money on it, and staff are told once.
-        $this->assertSame(InvoiceStatus::Unpaid, $upgrade->fresh()->status);
+        // The upgrade stops and its invoice closes, so nothing charges or chases it. The $2 stays on
+        // it, as it cannot go into the euro wallet, and staff are told once, with the step first.
+        $this->assertSame(InvoiceStatus::Cancelled, $upgrade->fresh()->status);
         $this->assertSame(200, $upgrade->fresh()->amount_paid);
-        $this->assertSame(PlanChange::STATUS_PENDING, PlanChange::query()->sole()->status);
+        $this->assertSame(PlanChange::STATUS_CANCELLED, PlanChange::query()->sole()->status);
         $this->assertSame(0, $this->service->client->fresh()->credit);
+        $this->assertFalse(Transaction::query()->where('invoice_id', $upgrade->id)->where('type', 'refund')->exists());
 
-        $this->travelTo(Carbon::parse('2026-10-10 01:00'));
-        $this->assertIsArray(app(DailyAutomation::class)->run());
-        $this->assertStringContainsString("could not stop before the renewal, so its invoice {$upgrade->number} stays open", ActivityLog::query()->where('action', 'service.plan_change_stuck')->sole()->description);
+        $log = ActivityLog::query()->where('action', 'service.plan_change_refund')->sole();
+        $this->assertSame($upgrade->id, $log->subject_id);
+        $this->assertSame("Give $2.00 back to the client by hand. It was paid on invoice {$upgrade->number} for a plan change that stopped, and the client's wallet is in EUR with no exchange rate from USD.", $log->description);
+        $this->assertFalse(ActivityLog::query()->where('action', 'service.plan_change_expired')->where('description', 'like', '%went back to the wallet%')->exists());
 
-        // Once staff add a rate, the next run stops it and gives the money back, converted.
+        // Paying the renewal lifts the suspension, and the stopped upgrade never ends the service.
+        $this->travelTo(Carbon::parse('2026-10-12 10:00'));
+        app(PaymentRecorder::class)->record($renewal, 1000, 'banktransfer');
+        $this->assertSame(ServiceStatus::Active, $this->service->fresh()->status);
+
+        foreach (['2026-10-13', '2026-10-21', '2026-10-22'] as $night) {
+            $this->travelTo(Carbon::parse("{$night} 01:00"));
+            $this->assertIsArray(app(DailyAutomation::class)->run());
+            $this->assertSame(ServiceStatus::Active, $this->service->fresh()->status, "Still active on {$night}.");
+        }
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'service.plan_change_refund')->count());
+    }
+
+    public function test_a_part_paid_upgrade_goes_back_to_a_wallet_in_another_currency_at_the_rate(): void
+    {
+        $this->service->client->update(['currency' => 'EUR']);
         $this->setSettings(['currency.rates' => ['EUR' => 0.9]]);
-        $this->travelTo(Carbon::parse('2026-10-11 01:00'));
-        app(DailyAutomation::class)->run();
+        $upgrade = $this->requestUpgrade();
+        app(PaymentRecorder::class)->record($upgrade, 200, 'banktransfer');
+
+        app(RenewalGenerator::class)->generate(Carbon::parse('2026-10-09'));
 
         $this->assertSame(InvoiceStatus::Cancelled, $upgrade->fresh()->status);
-        $this->assertSame(PlanChange::STATUS_CANCELLED, PlanChange::query()->sole()->status);
+        $this->assertSame(0, $upgrade->fresh()->amount_paid);
         $this->assertSame(180, $this->service->client->fresh()->credit);
+        $this->assertSame(-200, Transaction::query()->where('invoice_id', $upgrade->id)->where('type', 'refund')->sole()->amount);
+        $this->assertFalse(ActivityLog::query()->where('action', 'service.plan_change_refund')->exists(), 'Staff are not asked to pay it back again.');
     }
 
     public function test_an_upgrade_that_cannot_be_settled_does_not_stop_the_renewals(): void
@@ -232,6 +261,51 @@ class PlanChangeSafetyTest extends TestCase
         }
 
         $this->assertSame(1000, Invoice::query()->whereKeyNot($upgrade->id)->sole()->total);
+    }
+
+    public function test_an_upgrade_that_still_waits_does_not_keep_the_others_from_stopping(): void
+    {
+        // Three services renew on 16 Oct; each asks for an upgrade on 7 Oct.
+        $services = collect([$this->service])->concat(collect(['mail.example.net', 'blog.example.net'])->map(fn (string $domain): Service => Service::factory()->create([
+            'client_id' => $this->service->client_id,
+            'product_id' => $this->starter->id,
+            'recurring_amount' => 1000,
+            'next_due_date' => '2026-10-16',
+            'domain' => $domain,
+        ])));
+
+        $this->travelTo(Carbon::parse('2026-10-07 10:00'));
+        $upgrades = $services->map(function (Service $service): Invoice {
+            $this->actingAs($service->client)
+                ->post(route('client.services.change-plan.store', $service), ['product_id' => $this->business->id])
+                ->assertRedirect();
+
+            return Invoice::query()->latest('id')->firstOrFail();
+        });
+
+        // Gateway payments started for all three on the evening of 8 Oct, so the renewal run keeps
+        // them open. The first client starts another one the next day; the other two never pay.
+        $this->travelTo(Carbon::parse('2026-10-08 20:00'));
+        $upgrades->each(fn (Invoice $upgrade) => PaymentIntent::query()->create(['invoice_id' => $upgrade->id, 'gateway' => 'wayl', 'reference' => "wayl_{$upgrade->id}", 'amount' => $upgrade->total, 'currency' => 'USD', 'status' => PaymentIntent::STATUS_PENDING]));
+
+        $this->travelTo(Carbon::parse('2026-10-09 01:00'));
+        app(DailyAutomation::class)->run();
+        $this->assertSame(3, PlanChange::query()->where('status', PlanChange::STATUS_PENDING)->count());
+
+        $this->travelTo(Carbon::parse('2026-10-09 18:00'));
+        PaymentIntent::query()->create(['invoice_id' => $upgrades[0]->id, 'gateway' => 'wayl', 'reference' => 'wayl_again', 'amount' => $upgrades[0]->total, 'currency' => 'USD', 'status' => PaymentIntent::STATUS_PENDING]);
+
+        $this->travelTo(Carbon::parse('2026-10-10 01:00'));
+        app(DailyAutomation::class)->run();
+
+        // The first still waits for its payment; that does not keep the next ones open.
+        $this->assertSame(InvoiceStatus::Unpaid, $upgrades[0]->fresh()->status);
+
+        foreach ([1, 2] as $i) {
+            $this->assertSame(InvoiceStatus::Cancelled, $upgrades[$i]->fresh()->status);
+            $this->assertSame(PlanChange::STATUS_CANCELLED, PlanChange::query()->where('invoice_id', $upgrades[$i]->id)->sole()->status);
+            $this->assertSame(ServiceStatus::Active, $services[$i]->fresh()->status, 'Not suspended over a stale upgrade.');
+        }
     }
 
     public function test_an_upgrade_with_a_payment_going_through_stays_open_and_is_given_back_when_it_lands(): void
