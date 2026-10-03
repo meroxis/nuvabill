@@ -54,11 +54,11 @@ class OutsideChecks extends CheckGroup
         $host = (string) parse_url($base, PHP_URL_HOST);
 
         $probes = [
-            ['outside.env', 'The .env file cannot be opened', 5, '/.env', fn (string $body): bool => (bool) preg_match('/^(APP_KEY|DB_PASSWORD|APP_ENV)=/m', $body), 'It holds your database password and app key.'],
-            ['outside.git', 'The .git folder cannot be opened', 5, '/.git/HEAD', fn (string $body): bool => str_starts_with(ltrim($body), 'ref:'), 'Anyone could download your code and its history.'],
-            ['outside.logs', 'Log files cannot be opened', 5, '/storage/logs/laravel.log', fn (string $body): bool => (bool) preg_match('/^\[\d{4}-\d{2}-\d{2}/m', $body), 'Logs can show email addresses, errors and parts of requests.'],
-            ['outside.vendor', 'The vendor folder and composer files cannot be opened', 2, '/composer.json', fn (string $body): bool => str_contains($body, '"require"'), 'The list of libraries and their versions helps attackers pick a known weakness.'],
-            ['outside.database', 'The database file cannot be downloaded', 5, '/database/database.sqlite', fn (string $body): bool => str_starts_with($body, 'SQLite format 3'), 'An SQLite database holds every client, invoice and password hash.'],
+            ['outside.env', 'The .env file cannot be opened', 5, '/.env', fn (string $body): bool => (bool) preg_match('/^(APP_KEY|DB_PASSWORD|APP_ENV)=/m', $body), 'It holds your database password and app key. Point your website folder at Nuvabill\'s "public" folder, or keep Nuvabill\'s own .htaccess in the Nuvabill folder, which blocks it.'],
+            ['outside.git', 'The .git folder cannot be opened', 5, '/.git/HEAD', fn (string $body): bool => str_starts_with(ltrim($body), 'ref:'), 'Anyone could download your code and its history. Point your website folder at Nuvabill\'s "public" folder, or keep Nuvabill\'s own .htaccess in the Nuvabill folder, which blocks it.'],
+            ['outside.logs', 'Log files cannot be opened', 5, '/storage/logs/laravel.log', fn (string $body): bool => (bool) preg_match('/^\[\d{4}-\d{2}-\d{2}/m', $body), 'Logs can show email addresses, errors and parts of requests. Point your website folder at Nuvabill\'s "public" folder, or keep Nuvabill\'s own .htaccess in the Nuvabill folder, which blocks it.'],
+            ['outside.vendor', 'The vendor folder and composer files cannot be opened', 2, '/composer.json', fn (string $body): bool => str_contains($body, '"require"'), 'The list of libraries and their versions helps attackers pick a known weakness. Point your website folder at Nuvabill\'s "public" folder, or keep Nuvabill\'s own .htaccess in the Nuvabill folder, which blocks it.'],
+            ['outside.database', 'The database file cannot be downloaded', 5, '/database/database.sqlite', fn (string $body): bool => str_starts_with($body, 'SQLite format 3'), 'An SQLite database holds every client, invoice and password hash. Point your website folder at Nuvabill\'s "public" folder, or keep Nuvabill\'s own .htaccess in the Nuvabill folder, which blocks it.'],
         ];
 
         if (! setting('health.outside_check')) {
@@ -71,8 +71,8 @@ class OutsideChecks extends CheckGroup
 
         $results = [];
 
-        foreach ($probes as [$id, $title, $weight, $path, $exposed, $why]) {
-            $results[] = $this->probe($id, $title, $weight, $base, $path, $exposed, $why);
+        foreach ($probes as [$id, $title, $weight, $path, $exposed, $advice]) {
+            $results[] = $this->probe($id, $title, $weight, $base, $path, $exposed, $advice);
         }
 
         $results[] = $this->listing($base);
@@ -84,8 +84,9 @@ class OutsideChecks extends CheckGroup
 
     /**
      * @param  callable(string): bool  $exposed
+     * @param  string  $advice  One whole text, so it can be translated when shown.
      */
-    private function probe(string $id, string $title, int $weight, string $base, string $path, callable $exposed, string $why): CheckResult
+    private function probe(string $id, string $title, int $weight, string $base, string $path, callable $exposed, string $advice): CheckResult
     {
         $check = $this->check($id, $title, $weight);
         $response = $this->get($base.$path);
@@ -98,7 +99,7 @@ class OutsideChecks extends CheckGroup
 
         if ($response->successful() && $exposed((string) substr($response->body(), 0, 65536))) {
             return $check->failed($weight >= 5, 'Anyone can open :path', ['path' => $path],
-                advice: $why.' Point your website folder at Nuvabill\'s "public" folder, or keep Nuvabill\'s own .htaccess in the Nuvabill folder, which blocks it.',
+                advice: $advice,
                 items: [['label' => $base.$path, 'value' => __('Opened (:status)', ['status' => $status]), 'mono' => true, 'status' => $weight >= 5 ? 'urgent' : 'warning']],
             );
         }
