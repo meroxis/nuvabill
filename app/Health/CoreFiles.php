@@ -56,15 +56,17 @@ class CoreFiles
      * Whether a server settings file makes the server run code: it adds a file to every request
      * (auto_prepend_file, auto_append_file), or it lets PHP or CGI run files that are not PHP files.
      * The handler lines hosting panels write for .php files (for example cPanel's PHP version) are fine.
+     * When in doubt a line counts as running code: staff can mark a file as theirs, but a missed
+     * backdoor runs on every request.
      */
     public static function runsCode(string $contents): bool
     {
         $runner = '/php|cgi|x-httpd|lsapi|proxy:/i';
         $phpFile = '/^\.?(php\d*|phtml|phar)$/i';
-        // Whether a <Files> or <FilesMatch> pattern only names PHP files, for example "\.(php|phtml)$".
-        $onlyPhp = fn (string $pattern): bool => collect(preg_split('/[^a-z0-9]+/i', $pattern, -1, PREG_SPLIT_NO_EMPTY) ?: ['*'])
-            ->every(fn (string $word): bool => (bool) preg_match($phpFile, $word));
-        $block = null;
+        $onlyPhp = false;
+
+        // Apache reads a line that ends in a backslash together with the next one.
+        $contents = (string) preg_replace('/\\\\\R/', ' ', $contents);
 
         foreach (preg_split('/\R/', $contents) ?: [] as $line) {
             $line = trim($line);
@@ -73,34 +75,60 @@ class CoreFiles
                 continue;
             }
 
-            if (preg_match('/^(php_(admin_)?value\s+)?auto_(prepend|append)_file\s*=?\s*["\']?([^"\'\s;]*)/i', $line, $match)) {
-                if ($match[4] !== '' && strtolower($match[4]) !== 'none') {
-                    return true;
-                }
+            // A file added to every request, written in any form: a .user.ini line, php_value with or
+            // without quotes, or PHP_VALUE for PHP-FPM. Only an empty value or a plain "none" is off.
+            if (preg_match('/auto_(prepend|append)_file(.*)$/i', $line, $match) && ! preg_match('/^\s*=?\s*(none|""|\'\')?(\s+;.*)?$/i', $match[2])) {
+                return true;
+            }
 
-                continue;
+            // PHP settings for PHP-FPM that are put together while the request runs cannot be read here.
+            if (preg_match('/\bPHP_(ADMIN_)?VALUE\b/', $line) && preg_match('/[%$]/', $line)) {
+                return true;
             }
 
             if (preg_match('/^<(Files|FilesMatch)\b(.*)>$/i', $line, $match)) {
-                $block = $match[2];
-            } elseif (preg_match('#^</Files(Match)?>#i', $line)) {
-                $block = null;
+                $onlyPhp = self::namesOnlyPhpFiles($match[1], $match[2]);
+            } elseif (preg_match('#^</Files(Match)?\s*>#i', $line)) {
+                $onlyPhp = false;
             } elseif (preg_match('/^(AddType|AddHandler)\s+(\S+)\s+(.+)$/i', $line, $match) && preg_match($runner, $match[2])) {
                 foreach (preg_split('/\s+/', $match[3]) ?: [] as $extension) {
                     if (! preg_match($phpFile, $extension)) {
                         return true;
                     }
                 }
-            } elseif (preg_match('/^(SetHandler|ForceType|Action)\s+(.+)$/i', $line, $match) && preg_match($runner, $match[2])
-                && ($block === null || ! $onlyPhp($block))) {
+            } elseif (preg_match('/^(SetHandler|ForceType|Action)\s+(.+)$/i', $line, $match) && preg_match($runner, $match[2]) && ! $onlyPhp) {
                 return true;
-            } elseif (preg_match('/^RewriteRule\s.*\bH=[^,\]\s]*(php|cgi|x-httpd|lsapi)/i', $line)) {
-                // A rewrite rule can hand any file to PHP with the H= flag.
+            } elseif (preg_match('/^RewriteRule\s.*[\[,]\s*(H|handler|T|type)=[^,\]\s]*(php|cgi|x-httpd|lsapi|proxy:)/i', $line)) {
+                // A rewrite rule can hand any file to PHP with the handler or type flag.
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Whether a <Files> or <FilesMatch> block only covers PHP files. Only the plain forms count:
+     * "\.php$", "^.*\.php$", "\.(php|phtml)$" or "[.](?:php|phar)$" (a real dot, the end anchored),
+     * and "*.php" or "index.php" for <Files>. "\.php" (which also covers logo.php.png), ".php$" or
+     * "php|." cover other files too.
+     */
+    private static function namesOnlyPhpFiles(string $tag, string $pattern): bool
+    {
+        $pattern = trim($pattern);
+        $isRegex = strcasecmp($tag, 'FilesMatch') === 0;
+
+        if (! $isRegex && str_starts_with($pattern, '~')) {
+            $isRegex = true;
+            $pattern = ltrim(substr($pattern, 1));
+        }
+
+        $pattern = trim($pattern, '"\'');
+        $extension = '(php\d*|phtml|phar)';
+
+        return (bool) ($isRegex
+            ? preg_match('/^\^?(\.[*+])?(\\\\\.|\[\.\])('.$extension.'|\((\?:)?'.$extension.'(\|'.$extension.')*\))\$$/i', $pattern)
+            : preg_match('/^(\*|[\w.-]*)\.'.$extension.'$/i', $pattern));
     }
 
     public function __construct(

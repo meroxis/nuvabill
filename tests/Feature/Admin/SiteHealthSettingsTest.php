@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Mockery\MockInterface;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RequiresFunction;
@@ -73,6 +74,28 @@ class SiteHealthSettingsTest extends TestCase
         $this->assertSame('GRANT ALL PRIVILEGES ON *.* TO `root`@`localhost`', $label);
         $this->assertStringNotContainsString('USING', $label);
         $this->assertStringNotContainsString('81F5E21E', $label);
+    }
+
+    public function test_results_saved_before_lose_the_database_password_hash(): void
+    {
+        $grant = "GRANT ALL PRIVILEGES ON *.* TO `root`@`localhost` IDENTIFIED VIA mysql_native_password USING '*81F5E21E35407D884A6CD4A731AEBFB6AF209E1B' OR unix_socket WITH GRANT OPTION";
+        $check = fn (string $id, array $items): array => ['id' => $id, 'section' => 'database', 'group' => 'database-safety', 'title' => 'A check', 'status' => 'warning', 'items' => $items];
+        $usage = ['label' => 'GRANT USAGE ON *.* TO `nuvabill`@`localhost`', 'mono' => true, 'status' => 'warning'];
+        $planted = $check('core.planted', [['label' => 'public/IDENTIFIED VIA me.php', 'mono' => true]]);
+
+        $old = HealthRun::query()->create(['trigger' => 'cron', 'results' => [
+            $check('db.scope', [['label' => Str::limit($grant, 140), 'mono' => true, 'status' => 'warning'], $usage]),
+            $planted,
+        ]]);
+        $other = HealthRun::query()->create(['trigger' => 'cron', 'results' => [$planted]]);
+        $otherJson = DB::table('health_runs')->where('id', $other->id)->value('results');
+
+        (require database_path('migrations/2027_07_02_000002_health_remove_saved_database_password_hashes.php'))->up();
+
+        $this->assertStringNotContainsString('81F5E21E', (string) DB::table('health_runs')->where('id', $old->id)->value('results'));
+        $this->assertSame(['GRANT ALL PRIVILEGES ON *.* TO `root`@`localhost`', $usage['label']], array_column($old->fresh()->check('db.scope')->items, 'label'));
+        $this->assertSame('public/IDENTIFIED VIA me.php', $old->fresh()->check('core.planted')->items[0]['label']);
+        $this->assertSame($otherJson, DB::table('health_runs')->where('id', $other->id)->value('results'));
     }
 
     public function test_the_proxy_check_needs_cloudflare_ranges_to_be_trusted(): void
@@ -161,14 +184,31 @@ class SiteHealthSettingsTest extends TestCase
     {
         return [
             'Laravel rewrite rules' => [(string) file_get_contents(dirname(__DIR__, 3).'/public/.htaccess'), false],
+            'Rewrite into the public folder' => [(string) file_get_contents(dirname(__DIR__, 3).'/.htaccess'), false],
             'cPanel PHP version' => ["<IfModule mime_module>\n  AddHandler application/x-httpd-ea-php84 .php .php8 .phtml\n</IfModule>", false],
-            'LiteSpeed PHP files' => ["<FilesMatch \"\\.(php4|php5|php3|php2|php|phtml)$\">\nSetHandler application/x-lsphp74\n</FilesMatch>", false],
+            'LiteSpeed PHP files' => ["<FilesMatch \"\\.(php4|php5|php3|php2|php|phtml)\$\">\nSetHandler application/x-lsphp74\n</FilesMatch>", false],
+            'PHP-FPM for PHP files' => ["<FilesMatch \\.php\$>\nSetHandler \"proxy:unix:/run/php/php8.4-fpm.sock|fcgi://localhost\"\n</FilesMatch>", false],
+            'PHP files by name' => ["<Files \"*.php\">\nSetHandler application/x-httpd-php\n</Files>", false],
             'PHP settings' => ["memory_limit = 256M\nauto_prepend_file = none", false],
+            'Prepend turned off' => ["php_value auto_prepend_file none\nauto_append_file =", false],
             'Prepended file' => ['php_value auto_prepend_file /home/someone/public_html/images/logo.png', true],
+            'Prepended file with a quoted name' => ['php_value "auto_prepend_file" /home/someone/public_html/images/logo.png', true],
+            'Prepended file for PHP-FPM' => ['SetEnv PHP_VALUE "auto_prepend_file=/home/someone/public_html/images/logo.png"', true],
+            'Prepended file named "none"' => ['auto_prepend_file = "none"', true],
+            'Prepended file on a carried-on line' => ["php_value auto_prepend_file \\\n  /home/someone/public_html/images/logo.png", true],
+            'PHP-FPM settings put together per request' => ['RewriteRule ^ - [E=PHP_VALUE:auto_%{ENV:PART}_file=/home/someone/public_html/images/logo.png]', true],
             'Images run as PHP' => ['AddType application/x-httpd-php .png .jpg', true],
-            'Handler for images' => ["<FilesMatch \"\\.(png|php)$\">\nSetHandler application/x-httpd-php\n</FilesMatch>", true],
+            'Images run as PHP after a setting name' => ['AddHandler application/x-httpd-php .png auto_prepend_file', true],
+            'Handler for images' => ["<FilesMatch \"\\.(png|php)\$\">\nSetHandler application/x-httpd-php\n</FilesMatch>", true],
+            'Handler for names with .php anywhere' => ["<FilesMatch \"\\.php\">\nSetHandler application/x-httpd-php\n</FilesMatch>", true],
+            'Handler for names ending in php' => ["<FilesMatch \".php\$\">\nSetHandler application/x-httpd-php\n</FilesMatch>", true],
+            'Handler for every file' => ["<FilesMatch \"php|.\">\nSetHandler application/x-httpd-php\n</FilesMatch>", true],
+            'Handler for a choice without brackets' => ["<FilesMatch \"\\.php|phtml\$\">\nSetHandler application/x-httpd-php\n</FilesMatch>", true],
+            'Handler for files starting like PHP' => ["<Files \"*.php*\">\nSetHandler application/x-httpd-php\n</Files>", true],
             'Handler for the whole folder' => ['SetHandler application/x-httpd-php', true],
             'Rewrite into PHP' => ['RewriteRule ^logo$ images/logo.png [H=application/x-httpd-php,L]', true],
+            'Rewrite with the long handler flag' => ['RewriteRule ^logo$ images/logo.png [handler=application/x-httpd-php]', true],
+            'Rewrite with a PHP type' => ['RewriteRule ^logo$ images/logo.png [T=application/x-httpd-php,L]', true],
         ];
     }
 
