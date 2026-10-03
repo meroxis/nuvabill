@@ -147,6 +147,9 @@ Then a line-by-line review of all the code found more problems, and they are fix
 - *Mark as mine* only accepts files that did not change after the check.
 - MySQL and MariaDB backups are written straight to a file, so big databases no longer run out of memory.
 - An update that stopped halfway finishes by itself, and a finished update is never rolled back.
+- On MySQL and MariaDB, putting the database back after a failed update is much faster: 39 seconds instead of 18
+  minutes for 100,000 rows, so PHP no longer stops it halfway. Tables the failed update made are removed, so the
+  update can be tried again.
 
 **Marketplace**
 
