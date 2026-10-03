@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Billing\ExchangeRates;
 use App\Extensions\ExtensionManager;
 use App\Extensions\ExtensionManifest;
+use App\Extensions\Gateways\Gateway;
 use App\Http\Controllers\Controller;
 use App\Support\Activity;
 use Illuminate\Http\RedirectResponse;
@@ -29,6 +30,8 @@ class CurrencyController extends Controller
             ->map(fn ($gateway): array => [
                 'name' => $gateway->name(),
                 'ready' => $gateway->chargeCurrencyFor($base) !== null,
+                // A rate only helps a gateway that charges the converted amount.
+                'converts' => ! $gateway instanceof Gateway || $gateway->convertsCurrency(),
             ]);
 
         return view('admin.settings.currencies', [

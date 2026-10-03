@@ -3,6 +3,7 @@
 namespace Nuvabill\Extensions\PayPal;
 
 use App\Contracts\ChecksSavedCharges;
+use App\Contracts\RepeatsUnclearCharges;
 use App\Contracts\SavesPaymentMethods;
 use App\Extensions\Gateways\ChargeResult;
 use App\Extensions\Gateways\Gateway;
@@ -31,7 +32,7 @@ use RuntimeException;
  * their PayPal account for automatic renewals (PayPal calls it vaulting; the PayPal business account
  * must allow it). An automatic payment PayPal is still processing is checked by the next nightly run.
  */
-class PayPalGateway extends Gateway implements ChecksSavedCharges, SavesPaymentMethods
+class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclearCharges, SavesPaymentMethods
 {
     /**
      * Currencies PayPal accepts with two decimal places.
@@ -39,6 +40,11 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
     private const SUPPORTED_CURRENCIES = [
         'AUD', 'BRL', 'CAD', 'CNY', 'CZK', 'DKK', 'EUR', 'HKD', 'ILS', 'MXN', 'NZD', 'NOK', 'PHP', 'PLN', 'GBP', 'SGD', 'SEK', 'CHF', 'THB', 'USD',
     ];
+
+    /**
+     * Marks an unclear automatic payment kept by its PayPal order, when PayPal did not send the capture.
+     */
+    private const ORDER_REFERENCE = 'order:';
 
     public function settingsFields(): array
     {
@@ -82,11 +88,9 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
      * PayPal charges the invoice in its own currency and never converts it, so an exchange rate
      * does not make another currency payable.
      */
-    public function chargeCurrencyFor(string $currency): ?string
+    public function convertsCurrency(): bool
     {
-        $currency = strtoupper($currency);
-
-        return $this->supportsCurrency($currency) ? $currency : null;
+        return false;
     }
 
     public function startPayment(Invoice $invoice, string $returnUrl, string $cancelUrl): PaymentStart
@@ -323,17 +327,18 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
         }
 
         $api = $this->api();
+        $attempt = $this->attemptId($attemptKey);
         $send = fn (): Response => $api
             // The same attempt sent twice creates one payment. PayPal keeps this key for a few hours
             // only, so the attempt is also the invoice ID: a PayPal account that blocks repeated
             // invoice IDs refuses a later copy of the same attempt too.
-            ->withHeaders(['PayPal-Request-Id' => 'nuvabill-'.$attemptKey, 'Prefer' => 'return=representation'])
+            ->withHeaders(['PayPal-Request-Id' => $attempt, 'Prefer' => 'return=representation'])
             ->post($this->baseUrl().'/v2/checkout/orders', [
                 'intent' => 'CAPTURE',
                 'purchase_units' => [[
                     'reference_id' => (string) $invoice->id,
                     'custom_id' => (string) $invoice->id,
-                    'invoice_id' => 'nuvabill-'.$attemptKey,
+                    'invoice_id' => $attempt,
                     'description' => __('Invoice :number', ['number' => $invoice->displayNumber()]),
                     'amount' => ['currency_code' => $invoice->currency, 'value' => Money::toDecimal($invoice->balance())],
                 ]],
@@ -359,13 +364,21 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
             return $this->savedChargeResult($capture, $invoice);
         }
 
-        // A finished order without the capture in the answer: the money may have been taken.
+        // A finished order without the capture in the answer: the money may have been taken, so the
+        // order is looked up before the next try.
         if ($response->successful() && $response->json('status') === 'COMPLETED') {
-            return ChargeResult::pending(__('PayPal did not say whether it took the payment. The payment is checked before the next try.'));
+            $order = $response->json('id');
+
+            return ChargeResult::pending(
+                __('PayPal did not say whether it took the payment. The payment is checked before the next try.'),
+                is_string($order) && preg_match('/^[A-Z0-9]+$/', $order) ? self::ORDER_REFERENCE.$order : null,
+            );
         }
 
+        // Only this try uses this invoice ID, so PayPal already has a payment for it. The same try is
+        // refused again every time, so staff settle the invoice by hand.
         if ($response->json('details.0.issue') === 'DUPLICATE_INVOICE_ID') {
-            return ChargeResult::pending(__('PayPal says this payment was sent before. Check it in PayPal before you charge the invoice again.'));
+            return ChargeResult::pending(__('PayPal says this payment was sent before. Check it in PayPal and record it here, or ask the client to pay the invoice.'));
         }
 
         if (in_array($response->json('details.0.issue'), ['PAYER_ACTION_REQUIRED', 'PAYEE_ACCOUNT_RESTRICTED'], true) || $response->json('status') === 'PAYER_ACTION_REQUIRED') {
@@ -377,8 +390,13 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
 
     public function checkSavedCharge(Invoice $invoice, string $attemptKey, ?string $reference, ?string $customer): ?ChargeResult
     {
-        // Without PayPal's ID the payment cannot be looked up. The next nightly try has the same key
-        // and invoice ID, so a PayPal account that blocks repeated invoice IDs refuses a second payment.
+        if ($reference !== null && str_starts_with($reference, self::ORDER_REFERENCE)) {
+            return $this->checkSavedOrder($invoice, substr($reference, strlen(self::ORDER_REFERENCE)));
+        }
+
+        // Without PayPal's ID the payment cannot be looked up. Nuvabill sends the same try again
+        // (RepeatsUnclearCharges): PayPal gives back the first payment for a few hours, and after
+        // that a PayPal account that blocks repeated invoice IDs refuses a second payment.
         if ($reference === null || ! preg_match('/^[A-Z0-9]+$/', $reference)) {
             return null;
         }
@@ -400,6 +418,54 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
         }
 
         return $this->savedChargeResult($capture, $invoice);
+    }
+
+    /**
+     * What became of an automatic payment PayPal finished without saying which capture took it.
+     */
+    private function checkSavedOrder(Invoice $invoice, string $orderId): ?ChargeResult
+    {
+        if (! preg_match('/^[A-Z0-9]+$/', $orderId)) {
+            return null;
+        }
+
+        $response = $this->api()->get($this->baseUrl().'/v2/checkout/orders/'.$orderId);
+
+        if ($response->status() === 404) {
+            return null;
+        }
+
+        if ($response->failed()) {
+            throw new RuntimeException('PayPal could not be asked about the payment: '.($response->json('details.0.description') ?? $response->json('message') ?? $response->status()));
+        }
+
+        $unit = (array) $response->json('purchase_units.0', []);
+        $capture = $unit['payments']['captures'][0] ?? null;
+
+        if ((string) ($unit['custom_id'] ?? $capture['custom_id'] ?? '') !== (string) $invoice->id) {
+            return null;
+        }
+
+        if (is_array($capture)) {
+            return $this->savedChargeResult($capture, $invoice);
+        }
+
+        return $response->json('status') === 'COMPLETED'
+            ? ChargeResult::pending(__('PayPal did not say whether it took the payment. The payment is checked before the next try.'), self::ORDER_REFERENCE.$orderId)
+            : ChargeResult::failed(__('PayPal could not take the payment.'));
+    }
+
+    /**
+     * The ID PayPal gets for one try of an automatic payment, the same every time that try is sent.
+     * It is sent as PayPal-Request-Id (at most 108 characters) and as the invoice ID (127). The site
+     * part keeps two Nuvabill sites on one PayPal account apart, as both number invoices from 1.
+     */
+    private function attemptId(string $attemptKey): string
+    {
+        $site = substr(hash_hmac('sha256', 'nuvabill-paypal-attempt', (string) config('app.key')), 0, 12);
+        $id = 'nuvabill-'.$site.'-'.$attemptKey;
+
+        return strlen($id) <= 108 ? $id : 'nuvabill-'.$site.'-'.hash('sha256', $attemptKey);
     }
 
     /**

@@ -17,7 +17,7 @@ interface ChecksSavedCharges
     /**
      * The payment's result now, or null when the gateway has no payment for this attempt: it never
      * arrived, so charging again is safe. Return null only when that is so, or when the gateway
-     * still refuses a second payment for the same attempt.
+     * also implements RepeatsUnclearCharges and still refuses a second payment for the same attempt.
      *
      * @param  string  $attemptKey  The key the payment was sent with.
      * @param  string|null  $reference  The gateway's ID for the payment, when it sent one.

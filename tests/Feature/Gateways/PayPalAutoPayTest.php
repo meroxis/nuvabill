@@ -3,8 +3,10 @@
 namespace Tests\Feature\Gateways;
 
 use App\Automation\DailyAutomation;
+use App\Billing\AutoPay;
 use App\Billing\InvoiceManager;
 use App\Enums\InvoiceStatus;
+use App\Extensions\ExtensionManager;
 use App\Mail\TemplatedMessage;
 use App\Models\Client;
 use App\Models\Invoice;
@@ -131,15 +133,49 @@ class PayPalAutoPayTest extends TestCase
         // Every try was the same attempt: PayPal gives back the first payment instead of a second one.
         $requests = $this->orderRequests();
         $this->assertCount(3, $requests);
-        $this->assertSame(['nuvabill-invoice-1-1299-try-0'], array_values(array_unique(array_map(fn (Request $request): string => $request->header('PayPal-Request-Id')[0], $requests))));
-        $this->assertSame(['nuvabill-invoice-1-1299-try-0'], array_values(array_unique(array_map(fn (Request $request): string => $request['purchase_units'][0]['invoice_id'], $requests))));
+        $this->assertSame([$this->attemptId('invoice-1-1299-try-0')], array_values(array_unique(array_map(fn (Request $request): string => $request->header('PayPal-Request-Id')[0], $requests))));
+        $this->assertSame([$this->attemptId('invoice-1-1299-try-0')], array_values(array_unique(array_map(fn (Request $request): string => $request['purchase_units'][0]['invoice_id'], $requests))));
+    }
+
+    public function test_staff_charging_after_paypal_did_not_answer_sends_that_same_try_again(): void
+    {
+        $sent = [];
+        $answers = [Http::failedConnection('Operation timed out'), fn (): mixed => Http::response($this->order('COMPLETED'), 201)];
+        Http::fake([
+            self::API.'/v1/oauth2/token' => Http::response(['access_token' => 'token']),
+            self::API.'/v2/checkout/orders' => function (Request $request) use (&$answers, &$sent) {
+                $sent[] = [$request->header('PayPal-Request-Id')[0], $request['purchase_units'][0]['invoice_id']];
+
+                return array_shift($answers)($request);
+            },
+        ]);
+        $invoice = $this->renewalInvoice($this->clientWithPayPal());
+
+        // The nightly charge gets no answer at all, so PayPal may have taken the money.
+        app(DailyAutomation::class)->run();
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->fresh()->status);
+        $this->assertArrayNotHasKey('reference', $invoice->fresh()->autopay_pending);
+
+        // An hour later staff press "Charge now". It is the same try again, so PayPal can give back
+        // the first payment, or refuse the repeated invoice ID, instead of taking the money twice.
+        Carbon::setTestNow('2026-10-12 01:15:00');
+        $result = app(AutoPay::class)->charge($invoice, by: 'Mer Las');
+
+        $this->assertTrue($result->isPaid());
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertCount(2, $sent);
+        $this->assertSame([[$this->attemptId('invoice-1-1299-try-0'), $this->attemptId('invoice-1-1299-try-0')]], array_values(array_unique($sent, SORT_REGULAR)));
     }
 
     public function test_a_finished_order_without_its_capture_is_checked_and_not_failed(): void
     {
+        $order = ['id' => 'ORDER1', 'status' => 'COMPLETED'];
         Http::fake([
             self::API.'/v1/oauth2/token' => Http::response(['access_token' => 'token']),
-            self::API.'/v2/checkout/orders' => Http::response(['id' => 'ORDER1', 'status' => 'COMPLETED'], 201),
+            self::API.'/v2/checkout/orders' => Http::response($order, 201),
+            self::API.'/v2/checkout/orders/ORDER1' => function () use (&$order) {
+                return Http::response($order);
+            },
         ]);
         $invoice = $this->renewalInvoice($this->clientWithPayPal());
 
@@ -149,7 +185,45 @@ class PayPalAutoPayTest extends TestCase
         $this->assertSame(InvoiceStatus::Unpaid, $invoice->status);
         $this->assertSame(0, $invoice->autopay_attempts);
         $this->assertSame('invoice-1-1299-try-0', $invoice->autopay_pending['key']);
+        $this->assertSame('order:ORDER1', $invoice->autopay_pending['reference']);
         Mail::assertNotSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => str_contains($mail->subjectLine, 'We could not charge'));
+
+        // The next night the order is looked up, and it shows the capture that took the money.
+        $order = $this->order('COMPLETED');
+        Carbon::setTestNow('2026-10-13 00:15:00');
+        app(DailyAutomation::class)->run();
+
+        $invoice->refresh();
+        $this->assertSame(InvoiceStatus::Paid, $invoice->status);
+        $this->assertSame(['CAP1'], $invoice->transactions()->pluck('reference')->all());
+        $this->assertNull($invoice->autopay_pending);
+        $this->assertCount(1, $this->orderRequests());
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'GET' && $request->url() === self::API.'/v2/checkout/orders/ORDER1');
+    }
+
+    public function test_two_sites_on_one_paypal_account_never_send_the_same_attempt(): void
+    {
+        Http::fake([
+            self::API.'/v1/oauth2/token' => Http::response(['access_token' => 'token']),
+            self::API.'/v2/checkout/orders' => Http::response($this->order('COMPLETED'), 201),
+        ]);
+        $client = $this->clientWithPayPal();
+        $invoice = $this->renewalInvoice($client);
+        $method = $client->paymentMethods()->firstOrFail();
+        $gateway = app(ExtensionManager::class)->gateway('paypal');
+
+        // Both sites number their invoices from 1, so both have an "invoice-1-1299-try-0".
+        $gateway->chargeSaved($method, $invoice, 'invoice-1-1299-try-0');
+        config(['app.key' => 'base64:'.base64_encode(str_repeat('b', 32))]);
+        $gateway->chargeSaved($method, $invoice, 'invoice-1-1299-try-0');
+        $gateway->chargeSaved($method, $invoice, 'invoice-1-'.str_repeat('9', 120).'-try-0');
+
+        [$siteA, $siteB, $long] = $this->orderRequests();
+        $this->assertNotSame($siteA->header('PayPal-Request-Id')[0], $siteB->header('PayPal-Request-Id')[0]);
+        $this->assertNotSame($siteA['purchase_units'][0]['invoice_id'], $siteB['purchase_units'][0]['invoice_id']);
+        $this->assertStringEndsWith('-invoice-1-1299-try-0', $siteB['purchase_units'][0]['invoice_id']);
+        $this->assertLessThanOrEqual(108, strlen($long->header('PayPal-Request-Id')[0]));
+        $this->assertSame($long->header('PayPal-Request-Id')[0], $long['purchase_units'][0]['invoice_id']);
     }
 
     public function test_paypal_refusing_a_repeated_attempt_is_not_a_failed_payment(): void
@@ -166,8 +240,16 @@ class PayPalAutoPayTest extends TestCase
         $this->assertSame(InvoiceStatus::Unpaid, $invoice->status);
         $this->assertSame(0, $invoice->autopay_attempts);
         $this->assertNotNull($invoice->autopay_pending);
-        $this->assertSame('PayPal says this payment was sent before. Check it in PayPal before you charge the invoice again.', $invoice->autopay_error);
+        $this->assertSame('PayPal says this payment was sent before. Check it in PayPal and record it here, or ask the client to pay the invoice.', $invoice->autopay_error);
         Mail::assertNotSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => str_contains($mail->subjectLine, 'We could not charge'));
+    }
+
+    /**
+     * The ID this site sends PayPal for one try of an automatic payment.
+     */
+    private function attemptId(string $attemptKey): string
+    {
+        return 'nuvabill-'.substr(hash_hmac('sha256', 'nuvabill-paypal-attempt', (string) config('app.key')), 0, 12).'-'.$attemptKey;
     }
 
     /**

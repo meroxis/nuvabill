@@ -59,7 +59,11 @@ Every gateway has a **Name shown to clients** field, so you can call it, for exa
 FIB, FastPay and Wayl only take Iraqi dinar. Set a US dollar to dinar rate in **Settings → Currencies**: the invoice
 stays in dollars, the client pays the converted amount in dinar, and the invoice is marked paid in full.
 
+Stripe and PayPal never convert: they always charge the invoice's own currency. A rate does not make them work for a
+currency they do not take (PayPal does not take dinar, for example), so clients do not see them on those invoices.
+
 ## Not listed here?
 
 Other gateways can be added as extensions (gateways extend `App\Extensions\Gateways\Gateway`); see the
-[developer guide](https://nuvabill.com/docs/developers/).
+[developer guide](https://nuvabill.com/docs/developers/). A gateway that always charges the invoice's own currency
+returns `false` from `convertsCurrency()`, so an exchange rate never offers it for other currencies.

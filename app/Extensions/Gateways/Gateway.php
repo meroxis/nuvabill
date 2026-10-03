@@ -66,6 +66,10 @@ abstract class Gateway implements PaymentGateway
             return $currency;
         }
 
+        if (! $this->convertsCurrency()) {
+            return null;
+        }
+
         $rates = app(ExchangeRates::class);
 
         foreach ($rates->currencies() as $other) {
@@ -75,6 +79,16 @@ abstract class Gateway implements PaymentGateway
         }
 
         return null;
+    }
+
+    /**
+     * Whether the gateway charges a converted amount (see quote()) for an invoice in a currency it
+     * does not take, at the rate staff set. A gateway that always sends the invoice's own currency
+     * and amount returns false, so an exchange rate never offers it for other currencies.
+     */
+    public function convertsCurrency(): bool
+    {
+        return true;
     }
 
     /**

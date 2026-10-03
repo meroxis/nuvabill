@@ -76,11 +76,9 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
      * Stripe charges the invoice in its own currency and never converts it, so an exchange rate
      * does not make another currency payable.
      */
-    public function chargeCurrencyFor(string $currency): ?string
+    public function convertsCurrency(): bool
     {
-        $currency = strtoupper($currency);
-
-        return $this->supportsCurrency($currency) ? $currency : null;
+        return false;
     }
 
     public function startPayment(Invoice $invoice, string $returnUrl, string $cancelUrl): PaymentStart

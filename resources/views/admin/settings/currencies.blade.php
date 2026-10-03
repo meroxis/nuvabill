@@ -6,7 +6,15 @@
 
             @foreach ($needs as $gateway)
                 <div class="flash" data-tone="{{ $gateway['ready'] ? 'info' : 'warn' }}">
-                    <span>{{ $gateway['ready'] ? __(':gateway is ready: it charges the converted amount.', ['gateway' => $gateway['name']]) : __(':gateway does not take :base. Add a rate for a currency it takes, or clients will not see it.', ['gateway' => $gateway['name'], 'base' => $base]) }}</span>
+                    <span>
+                        @if ($gateway['ready'])
+                            {{ __(':gateway is ready: it charges the converted amount.', ['gateway' => $gateway['name']]) }}
+                        @elseif ($gateway['converts'])
+                            {{ __(':gateway does not take :base. Add a rate for a currency it takes, or clients will not see it.', ['gateway' => $gateway['name'], 'base' => $base]) }}
+                        @else
+                            {{ __(':gateway does not take :base, so clients will not see it.', ['gateway' => $gateway['name'], 'base' => $base]) }}
+                        @endif
+                    </span>
                 </div>
             @endforeach
 

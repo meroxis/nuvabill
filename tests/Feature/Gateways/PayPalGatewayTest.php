@@ -101,6 +101,28 @@ class PayPalGatewayTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_the_currencies_page_does_not_tell_staff_a_rate_makes_paypal_work(): void
+    {
+        $this->signInAdmin();
+        $this->setSettings(['billing.currency' => 'IQD', 'currency.rates' => ['USD' => 0.00076]]);
+
+        $this->get(route('admin.settings.currencies.edit'))
+            ->assertOk()
+            ->assertSee('PayPal does not take IQD, so clients will not see it.')
+            ->assertDontSee('PayPal is ready')
+            ->assertDontSee('Add a rate for a currency it takes');
+
+        // A gateway that does convert is still told to get a rate, and is ready once it has one.
+        $this->enableGateway('wayl', ['api_token' => 'wayl-token', 'mode' => 'live']);
+        $this->setSettings(['billing.currency' => 'USD', 'currency.rates' => []]);
+        $this->get(route('admin.settings.currencies.edit'))->assertOk()
+            ->assertSee('Wayl does not take USD. Add a rate for a currency it takes, or clients will not see it.');
+
+        $this->setSettings(['currency.rates' => ['IQD' => 1310]]);
+        $this->get(route('admin.settings.currencies.edit'))->assertOk()
+            ->assertSee('Wayl is ready: it charges the converted amount.');
+    }
+
     public function test_an_unverified_paypal_webhook_is_rejected(): void
     {
         Http::fake(['*' => Http::response(['access_token' => 'token-1'])]);

@@ -3,6 +3,7 @@
 namespace App\Billing;
 
 use App\Contracts\ChecksSavedCharges;
+use App\Contracts\RepeatsUnclearCharges;
 use App\Enums\InvoiceStatus;
 use App\Extensions\Gateways\ChargeResult;
 use App\Mail\TemplateMailer;
@@ -159,9 +160,12 @@ class AutoPay
                 return ChargeResult::failed(__('No saved card or PayPal account can pay this invoice.'));
             }
 
-            // One key per try: the same try sent twice is charged once at the gateway. A gateway that
-            // cannot be asked about an unclear try gets that try again, with the same key.
-            $attemptKey = $pending !== null && ($pending['gateway'] ?? null) === $method->gateway && ! $gateway instanceof ChecksSavedCharges
+            // One key per try: the same try sent twice is charged once at the gateway. An unclear try
+            // is sent again with its own key when the gateway cannot be asked about it, or can only
+            // be asked with the ID that try never brought back.
+            $repeat = $pending !== null && ($pending['gateway'] ?? null) === $method->gateway
+                && (! $gateway instanceof ChecksSavedCharges || ($gateway instanceof RepeatsUnclearCharges && ! isset($pending['reference'])));
+            $attemptKey = $repeat
                 ? (string) $pending['key']
                 : 'invoice-'.$invoice->id.'-'.$invoice->balance().'-'.($by === null ? 'try-'.$invoice->autopay_attempts : 'staff-'.now()->getTimestampMs());
 

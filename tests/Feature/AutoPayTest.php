@@ -281,7 +281,7 @@ class AutoPayTest extends TestCase
         $this->assertSame(InvoiceStatus::Paid, $second->fresh()->status);
         Http::assertSent(fn (Request $request): bool => $request->url() === 'https://api-m.sandbox.paypal.com/v2/checkout/orders'
             && ($request['payment_source']['paypal']['vault_id'] ?? null) === 'VAULT1'
-            && str_starts_with($request->header('PayPal-Request-Id')[0] ?? '', 'nuvabill-invoice-'.$second->id));
+            && preg_match('/^nuvabill-[0-9a-f]{12}-invoice-'.$second->id.'-/', $request->header('PayPal-Request-Id')[0] ?? '') === 1);
     }
 
     public function test_staff_set_the_schedule(): void

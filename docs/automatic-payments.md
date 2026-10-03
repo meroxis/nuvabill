@@ -71,9 +71,11 @@ saved to a Stripe customer, and charges use the card the client saved.
 **PayPal.** Saving PayPal accounts needs PayPal's vault. In **developer.paypal.com → Apps & Credentials**, open your
 app and turn on **Save payment methods** (under Features). Without it, PayPal still takes normal payments, and saving
 shows an error. A payment PayPal is still processing (for example an eCheck) is checked with PayPal every night, and
-the account is not charged again meanwhile. Also turn on **Block accidental payments** (block more than one payment per
-invoice ID) in your PayPal account's payment settings: when PayPal did not answer a charge, the next try then cannot
-take the money twice.
+the account is not charged again meanwhile. When PayPal did not answer a charge, the next try (also **Charge now**)
+sends that same charge again, and for a few hours PayPal gives back the first payment instead of taking a second one.
+After that only **Block accidental payments** (block more than one payment per invoice ID) in your PayPal account's
+payment settings stops a second payment, so turn it on. If PayPal then says the payment was sent before, check it in
+PayPal and record it on the invoice, or ask the client to pay the invoice.
 
 ## Demo
 
