@@ -3,20 +3,22 @@
 namespace App\Marketplace\Store;
 
 use App\Billing\Taxes;
+use App\Enums\InvoiceStatus;
 use App\Models\CreditNote;
 use App\Models\DeveloperEarning;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
 use App\Models\License;
 use App\Support\Activity;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
  * When an invoice with marketplace purchases is paid, each item's developer gets their share
  * (83% by default) of what the client paid for it without tax, including yearly update renewals.
- * When a credit note gives money back, the same share of it is taken back, and a refunded
- * purchase also cancels its license key.
+ * When a credit note gives money back, the same share of it is taken back. A refunded
+ * purchase also cancels its license key, and a refunded renewal takes back its extra time.
  */
 class EarningsRecorder
 {
@@ -114,24 +116,58 @@ class EarningsRecorder
         });
 
         if ($credited >= $invoice->total) {
-            $this->revokePurchasedKeys($invoice, $creditNote);
+            $this->takeBackKeys($invoice, $creditNote);
         }
     }
 
     /**
      * Keys bought with this invoice stop working once it is refunded in full. A refunded
-     * renewal leaves the key alone: the client still owns what the first payment bought.
+     * renewal leaves the key alone, because the client still owns what the first payment
+     * bought, but the time the renewal added is taken back.
      */
-    private function revokePurchasedKeys(Invoice $invoice, CreditNote $creditNote): void
+    private function takeBackKeys(Invoice $invoice, CreditNote $creditNote): void
     {
         $services = InvoiceItem::query()->where('invoice_id', $invoice->id)->whereNotNull('service_id')->distinct()->pluck('service_id');
 
-        License::query()->whereIn('service_id', $services)->where('status', License::STATUS_ACTIVE)->get()
-            ->filter(fn (License $license): bool => (int) InvoiceItem::query()->where('service_id', $license->service_id)->min('invoice_id') === $invoice->id)
-            ->each(function (License $license) use ($creditNote): void {
+        foreach (License::query()->whereIn('service_id', $services)->get() as $license) {
+            if ((int) InvoiceItem::query()->where('service_id', $license->service_id)->min('invoice_id') !== $invoice->id) {
+                $this->takeBackRenewal($license, $invoice, $creditNote);
+            } elseif ($license->status === License::STATUS_ACTIVE) {
                 $license->update(['status' => License::STATUS_REVOKED, 'revoked_reason' => "Refunded (credit note {$creditNote->number})"]);
                 Activity::log('license.revoked', "License {$license->publicId()} revoked: the purchase was refunded", $license->service, $license->client);
-            });
+            }
+        }
+    }
+
+    /**
+     * Updates (and a license's end date) go back to the start of the refunded period, unless
+     * another paid period still covers the time after it.
+     */
+    private function takeBackRenewal(License $license, Invoice $invoice, CreditNote $creditNote): void
+    {
+        $line = InvoiceItem::query()->where('invoice_id', $invoice->id)->where('service_id', $license->service_id)->whereNotNull('period_start')->orderBy('period_start')->first();
+        $until = $license->updates_until;
+
+        // A line without a period never moved the due date, so the renewal added no time.
+        if ($line === null || $until === null || ! $until->gt($line->period_start)) {
+            return;
+        }
+
+        $covered = InvoiceItem::query()
+            ->where('service_id', $license->service_id)
+            ->where('invoice_id', '!=', $invoice->id)
+            ->whereNotNull('period_end')
+            ->whereHas('invoice', fn ($query) => $query->where('status', InvoiceStatus::Paid))
+            ->max('period_end');
+        $paidUntil = $covered !== null ? CarbonImmutable::parse($covered)->addDay() : null;
+        $back = $paidUntil !== null && $paidUntil->gt($line->period_start) ? $paidUntil : $line->period_start;
+
+        if ($back->gte($until)) {
+            return;
+        }
+
+        $license->update(['updates_until' => $back]);
+        Activity::log('license.shortened', "License {$license->publicId()} now ends updates on {$back->format('d M Y')}: the renewal was refunded (credit note {$creditNote->number})", $license->service, $license->client);
     }
 
     /**

@@ -61,6 +61,7 @@ Route::middleware('web')->group(function (): void {
             Route::get('items/{item}/edit', [AdminItemController::class, 'edit'])->name('items.edit');
             Route::put('items/{item}', [AdminItemController::class, 'update'])->name('items.update');
             Route::post('items/{item}/listing', [AdminItemController::class, 'listing'])->name('items.listing');
+            Route::get('items/{item}/media/{file}', [AdminItemController::class, 'media'])->where('file', '[A-Za-z0-9_.-]+')->name('items.media');
 
             Route::get('developers', [AdminDeveloperController::class, 'index'])->name('developers.index');
             Route::get('developers/{developer}/edit', [AdminDeveloperController::class, 'edit'])->name('developers.edit');

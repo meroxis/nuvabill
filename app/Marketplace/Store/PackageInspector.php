@@ -39,6 +39,12 @@ class PackageInspector
     private const OTHER_FILE_INCLUDE = '/(?<![\w$>:@\\\\])(include|require)(?:_once)?\b[^;]*?[\'"][^\'"]*\.(?!php[\'"])[a-z0-9]+[\'"]/i';
 
     /**
+     * A PHP short open tag. XML declarations such as <?xml version="1.0"?> are left out: they
+     * look the same, but PHP cannot parse them, so they never run.
+     */
+    private const SHORT_TAG = '/<\?(?!(?:xml|xml-stylesheet|xpacket)\s+[a-z][\w-]*\s*=)/i';
+
+    /**
      * File types that can run as PHP (or are programs), so they are not allowed in a package.
      *
      * @var list<string>
@@ -233,12 +239,13 @@ class PackageInspector
     }
 
     /**
-     * Whether a file holds PHP code. "<?=" only counts in text, where it cannot appear by chance.
+     * Whether a file holds PHP code. Short tags ("<?=", and "<?" followed by anything, which runs
+     * where short_open_tag is on) only count in text, where they cannot appear by chance.
      */
     private function hasPhp(string $contents): bool
     {
         return stripos($contents, '<?php') !== false
-            || (! str_contains(substr($contents, 0, 8000), "\0") && str_contains($contents, '<?='));
+            || (! str_contains(substr($contents, 0, 8000), "\0") && preg_match(self::SHORT_TAG, $contents) === 1);
     }
 
     /**

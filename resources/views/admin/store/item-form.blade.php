@@ -12,8 +12,9 @@
         {{-- Listing changes on an approved item wait here, so a reviewed item cannot change what buyers read on its own. --}}
         @php
             $labels = ['name' => __('Name'), 'summary' => __('Short description'), 'description' => __('Full description'), 'demo_url' => __('Demo link'), 'docs_url' => __('Help page link'), 'screenshots' => __('Screenshots')];
-            $show = fn (string $field, mixed $value) => $field === 'screenshots'
-                ? collect((array) $value)->map(fn ($file) => '<a href="'.e(route('marketplace.media', [$item->slug, basename((string) $file)])).'" target="_blank" rel="noopener">'.e(basename((string) $file)).'</a>')->implode(', ')
+            // New screenshots are not public yet, so staff open them through a staff-only link.
+            $show = fn (string $field, mixed $value, bool $waiting = false) => $field === 'screenshots'
+                ? collect((array) $value)->map(fn ($file) => '<a href="'.e($waiting ? route('admin.store.items.media', [$item, basename((string) $file)]) : route('marketplace.media', [$item->slug, basename((string) $file)])).'" target="_blank" rel="noopener">'.e(basename((string) $file)).'</a>')->implode(', ')
                 : e((string) $value);
         @endphp
         <section class="card" style="display:grid;gap:.8rem;max-width:760px;margin-bottom:16px">
@@ -26,7 +27,7 @@
                     <tr>
                         <td>{{ $labels[$field] }}</td>
                         <td class="muted" style="overflow-wrap:anywhere">{!! $show($field, $item->getAttribute($field)) !!}</td>
-                        <td style="overflow-wrap:anywhere"><b>{!! $show($field, $value) !!}</b></td>
+                        <td style="overflow-wrap:anywhere"><b>{!! $show($field, $value, true) !!}</b></td>
                     </tr>
                 @endforeach
                 </tbody>

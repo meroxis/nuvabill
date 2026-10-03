@@ -330,6 +330,33 @@ class StoreTest extends TestCase
         $this->assertSame(0, Payout::query()->count());
     }
 
+    public function test_a_refunded_renewal_takes_back_its_extra_year(): void
+    {
+        $item = $this->liveItem('swift', 'orderform', 3900, 1500);
+        $invoice = $this->buy($item);
+        app(PaymentRecorder::class)->record($invoice, 3900, 'banktransfer', 'wire-1');
+        $license = License::query()->sole();
+        $firstYear = $license->updates_until;
+
+        $this->travelTo($license->service->next_due_date);
+        $this->assertSame(1, app(RenewalGenerator::class)->generate());
+        $renewal = Invoice::query()->whereKeyNot($invoice->id)->sole();
+        app(PaymentRecorder::class)->record($renewal, $renewal->total, 'banktransfer', 'wire-2');
+        $this->assertTrue($license->fresh()->updates_until->isSameDay($firstYear->addYear()));
+        $this->assertSame(3237 + 1245, $item->developer->balance('USD'));
+
+        $refund = app(CreditNotes::class)->issue($renewal->fresh(), $renewal->total, CreditNote::METHOD_REFUND, 'Refund', null, false);
+        $this->assertSame(InvoiceStatus::Refunded, $renewal->fresh()->status);
+        $this->assertSame(3237, $item->developer->balance('USD'));
+        $this->assertTrue($license->fresh()->isActive(), 'The first year was paid for, so the key keeps working.');
+        $this->assertTrue($license->fresh()->updates_until->isSameDay($firstYear), 'The refunded year of updates is taken back.');
+
+        // The same credit note again changes nothing.
+        app(EarningsRecorder::class)->reverse($refund);
+        $this->assertTrue($license->fresh()->updates_until->isSameDay($firstYear));
+        $this->assertSame(3237, $item->developer->balance('USD'));
+    }
+
     public function test_the_developer_share_leaves_out_included_tax(): void
     {
         $this->setSettings(['tax.enabled' => true, 'tax.inclusive' => true]);
@@ -440,10 +467,20 @@ class StoreTest extends TestCase
         $this->assertNull($item->fresh()->pending_listing);
         $this->assertSame('Glow', $item->fresh()->name);
 
-        $this->put(route('developer.items.update', $item), ['name' => 'Glow Pro', 'summary' => 'Test item.']);
+        $this->put(route('developer.items.update', $item), ['name' => 'Glow Pro', 'summary' => 'Test item.', 'screenshots' => [UploadedFile::fake()->image('shot.png', 800, 500)]]);
+        $shot = $item->fresh()->pending_listing['screenshots'][0];
+
+        // A new screenshot is not public before review, but staff can open it to check it.
+        $this->get(route('marketplace.media', ['glow', $shot]))->assertNotFound();
+        $this->get(route('admin.store.items.edit', $item))->assertOk()->assertSee(route('admin.store.items.media', [$item, $shot]), false);
+        $this->get(route('admin.store.items.media', [$item, $shot]))->assertOk()->assertHeader('Content-Type', 'image/png')->assertHeader('X-Content-Type-Options', 'nosniff');
+        $this->get(route('admin.store.items.media', [$item, 'app.blade.php']))->assertNotFound();
+
         $this->post(route('admin.store.items.listing', $item), ['decision' => 'approve', 'seen' => ItemController::fingerprint($item->fresh())])->assertSessionHas('status');
         $this->getJson(route('marketplace.api.catalog'))->assertJsonPath('items.0.name', 'Glow Pro');
         $this->assertNull($item->fresh()->pending_listing);
+        $this->get(route('marketplace.media', ['glow', $shot]))->assertOk();
+        $this->get(route('admin.store.items.media', [$item, $shot]))->assertNotFound();
     }
 
     public function test_a_free_renewal_still_gives_a_year_of_updates(): void
@@ -522,6 +559,10 @@ class StoreTest extends TestCase
             'src/data.txt' => "<?php eval(gzinflate(base64_decode('AAAA')));\n",
             'src/x.phtml' => "<?php shell_exec(\$_GET['c']);\n",
             'README.md' => "Example:\n\n    <?php echo 'hello';\n",
+            // Short open tags run as PHP on hosts with short_open_tag on, with or without a space.
+            'src/short.txt' => "<? eval(gzinflate(base64_decode('AAAA'))); ?>\n",
+            'src/tight.txt' => "<?shell_exec(\$_GET['c']);?>\n",
+            'assets/logo.svg' => "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<?xpacket begin=\"\" id=\"W5M0\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>\n",
         ]));
 
         $this->assertSame(MarketplaceVersion::STATUS_CHANGES, $version->status);
@@ -530,8 +571,12 @@ class StoreTest extends TestCase
         $this->assertStringContainsString('src/x.phtml', $checks['files']['text']);
         $this->assertSame('fail', $checks['hidden']['level']);
         $this->assertStringContainsString('src/data.txt', $checks['hidden']['text']);
+        $this->assertStringContainsString('src/short.txt', $checks['hidden']['text']);
+        $this->assertStringContainsString('src/tight.txt', $checks['hidden']['text']);
         $this->assertStringNotContainsString('README.md', $checks['hidden']['text'], 'Documentation may show PHP.');
+        $this->assertStringNotContainsString('logo.svg', $checks['hidden']['text'], 'An XML declaration is not PHP.');
         $this->assertStringContainsString('src/data.txt', $checks['encoded']['text']);
+        $this->assertStringContainsString('src/short.txt', $checks['encoded']['text']);
         $this->assertStringContainsString('src/Addon.php:2 require()', $checks['functions']['text']);
 
         $version = app(VersionUploader::class)->upload($item, $this->zip('sneaky', '1.0.1', 'extension.json', $manifest, [

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Marketplace\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Marketplace\MediaController;
 use App\Marketplace\Store\ItemPublisher;
 use App\Models\MarketplaceItem;
 use App\Support\Activity;
@@ -11,6 +12,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
  * Staff manage listings: put items live or hide them, feature them, set prices, and check the
@@ -90,6 +92,18 @@ class ItemController extends Controller
         $publisher->discardListing($item, $request->user('admin'));
 
         return back()->with('status', __('The listing changes were turned down.'));
+    }
+
+    /**
+     * Staff open the new screenshots that wait for review. They stay off the public media
+     * link until staff approve them, and are not cached on the way.
+     */
+    public function media(MarketplaceItem $item, string $file): BinaryFileResponse
+    {
+        $waiting = array_map(fn (mixed $name): string => basename((string) $name), (array) ($item->pending_listing['screenshots'] ?? []));
+        abort_unless(in_array($file, $waiting, true), 404);
+
+        return MediaController::send($item->slug, $file, 'private, no-store');
     }
 
     /**
