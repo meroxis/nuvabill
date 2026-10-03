@@ -146,6 +146,9 @@ class ProxmoxModule extends Module implements HasClientPanel
      * Stops the VM and waits until it is off. Start on boot is turned off first, so a node
      * restart does not bring a suspended VM back. A stop that fails (for example while a backup
      * holds a lock) fails the suspension, so the service stays active and is tried again.
+     *
+     * The nightly run also calls this for services that are already suspended, to finish
+     * suspensions from before this worked (see Provisioner::recheckSuspensions()).
      */
     public function suspend(Service $service, string $reason): ModuleResult
     {
@@ -160,8 +163,10 @@ class ProxmoxModule extends Module implements HasClientPanel
                     $this->waitFor($server, $node, $this->call($server, 'post', "nodes/{$node}/qemu/{$vmId}/status/stop"));
                 }
             } catch (RuntimeException $exception) {
-                // The service stays active, so it should start on boot again.
-                rescue(fn () => $this->call($server, 'put', "nodes/{$node}/qemu/{$vmId}/config", ['onboot' => 1]), report: false);
+                // An active service stays active, so it should start on boot again. A suspended one stays off.
+                if ($service->status !== ServiceStatus::Suspended) {
+                    rescue(fn () => $this->call($server, 'put', "nodes/{$node}/qemu/{$vmId}/config", ['onboot' => 1]), report: false);
+                }
 
                 throw $exception;
             }

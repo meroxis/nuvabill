@@ -125,6 +125,9 @@ class DailyAutomation
             }
         }
 
+        // Older suspensions the server module should finish, for example Proxmox VPSs that still start on boot.
+        $this->provisioner->recheckSuspensions();
+
         return $summary;
     }
 

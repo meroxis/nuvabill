@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Servers;
 
+use App\Automation\DailyAutomation;
 use App\Enums\ServiceStatus;
 use App\Extensions\ExtensionManager;
 use App\Jobs\ProvisionService;
@@ -301,6 +302,63 @@ class ServerModulesTest extends TestCase
         $this->assertFalse($result->success);
         $this->assertSame(ServiceStatus::Suspended, $service->fresh()->status);
         $this->assertSame(['PUT config onboot=1', 'GET qemu/105/status/current', 'POST qemu/105/status/start', 'PUT config onboot=0'], $this->calls($node));
+    }
+
+    public function test_the_nightly_run_finishes_proxmox_suspensions_from_before_the_update(): void
+    {
+        Sleep::fake();
+        $node = $this->fakeProxmox(running: true, exitStatus: 'OK');
+
+        $old = $this->service('proxmox', 'pve.example.test', ['node' => 'pve1'], ['status' => ServiceStatus::Suspended, 'suspension_reason' => 'Overdue', 'module_data' => ['vmid' => 105, 'node' => 'pve1']], ['port' => 8006]);
+        $active = Service::factory()->create(['product_id' => $old->product_id, 'server_id' => $old->server_id, 'module_data' => ['vmid' => 106, 'node' => 'pve1']]);
+        $notMade = Service::factory()->create(['product_id' => $old->product_id, 'server_id' => $old->server_id, 'status' => ServiceStatus::Suspended, 'module_data' => null]);
+        $otherModule = $this->service('virtualizor', 'vps.example.test', [], ['status' => ServiceStatus::Suspended, 'module_data' => ['vmid' => 7]]);
+
+        (require database_path('migrations/2027_07_02_000001_servers_domains_recheck_proxmox_suspensions.php'))->up();
+
+        $this->assertSame(7, $old->fresh()->module_data[Provisioner::RECHECK_SUSPENSION] ?? null);
+        $this->assertSame(['vmid' => 106, 'node' => 'pve1'], $active->fresh()->module_data);
+        $this->assertNull($notMade->fresh()->module_data);
+        $this->assertSame(['vmid' => 7], $otherModule->fresh()->module_data);
+
+        app(DailyAutomation::class)->run();
+
+        $this->assertSame(['PUT config onboot=0', 'GET qemu/105/status/current', 'POST qemu/105/status/stop'], $this->calls($node));
+        $this->assertSame(ServiceStatus::Suspended, $old->fresh()->status);
+        $this->assertSame(['vmid' => 105, 'node' => 'pve1'], $old->fresh()->module_data);
+        $this->assertDatabaseHas('activity_logs', ['action' => 'service.suspension_checked', 'subject_id' => $old->id]);
+
+        // Done once: the next night leaves it alone.
+        $node->log = [];
+        app(DailyAutomation::class)->run();
+
+        $this->assertSame([], $node->log);
+    }
+
+    public function test_a_nightly_recheck_that_cannot_stop_the_vm_keeps_it_off_on_boot_and_gives_up_after_its_tries(): void
+    {
+        Sleep::fake();
+        $node = $this->fakeProxmox(running: true, exitStatus: 'VM is locked (backup)');
+
+        $service = $this->service('proxmox', 'pve.example.test', ['node' => 'pve1'], ['status' => ServiceStatus::Suspended, 'module_data' => ['vmid' => 105, 'node' => 'pve1', Provisioner::RECHECK_SUSPENSION => 2]], ['port' => 8006]);
+
+        $this->assertSame(0, app(Provisioner::class)->recheckSuspensions());
+
+        // Start on boot stays off: the service is still suspended.
+        $this->assertSame(['PUT config onboot=0', 'GET qemu/105/status/current', 'POST qemu/105/status/stop'], $this->calls($node));
+        $this->assertSame(ServiceStatus::Suspended, $service->fresh()->status);
+        $this->assertSame(1, $service->fresh()->module_data[Provisioner::RECHECK_SUSPENSION] ?? null);
+        $this->assertStringContainsString('VM is locked (backup)', (string) ActivityLog::query()->where('action', 'service.module_failed')->latest('id')->value('description'));
+
+        app(Provisioner::class)->recheckSuspensions();
+
+        $this->assertSame(['vmid' => 105, 'node' => 'pve1'], $service->fresh()->module_data);
+        $this->assertStringContainsString('last try', (string) ActivityLog::query()->where('action', 'service.module_failed')->latest('id')->value('description'));
+
+        $node->log = [];
+        app(Provisioner::class)->recheckSuspensions();
+
+        $this->assertSame([], $node->log);
     }
 
     public function test_a_stopped_setup_job_is_logged_for_staff(): void

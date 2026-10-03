@@ -19,6 +19,7 @@ use App\Support\Activity;
 use App\Support\Locales;
 use Closure;
 use Illuminate\Contracts\Cache\Lock;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Throwable;
 
@@ -32,6 +33,13 @@ class Provisioner
      * Cache lock name, followed by the service ID.
      */
     public const LOCK_PREFIX = 'nuvabill:provision:service:';
+
+    /**
+     * Module data key: run the module's suspend once more for this suspended service. The value is
+     * how many nightly runs may still try. Set for Proxmox VPSs suspended before suspending also
+     * turned off start on boot and waited for the stop.
+     */
+    public const RECHECK_SUSPENSION = 'recheck_suspension';
 
     public function __construct(
         private ExtensionManager $extensions,
@@ -180,6 +188,43 @@ class Provisioner
         $this->mailer->send('service.unsuspended', $service->client, TemplateMailer::serviceContext($service));
 
         return $result;
+    }
+
+    /**
+     * For the nightly run: run the module's suspend once more for suspended services flagged with
+     * RECHECK_SUSPENSION, at most $limit per run. The flag goes when that works, or after its last
+     * try. A service that failed waits behind the others. Returns how many were done.
+     */
+    public function recheckSuspensions(int $limit = 25): int
+    {
+        $done = 0;
+
+        $services = Service::query()
+            ->with('product', 'client', 'server')
+            ->where('status', ServiceStatus::Suspended)
+            ->whereNotNull('module_data->'.self::RECHECK_SUSPENSION)
+            ->orderBy('updated_at')
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+
+        foreach ($services as $service) {
+            $result = $this->runModule($service, fn (ServerModule $module): ModuleResult => $module->suspend($service, (string) $service->suspension_reason));
+            $data = (array) $service->module_data;
+            $triesLeft = $result->success ? 0 : (int) ($data[self::RECHECK_SUSPENSION] ?? 0) - 1;
+
+            if ($result->success) {
+                Activity::log('service.suspension_checked', "Suspension of service #{$service->id} ({$service->label()}) checked again on the server: {$result->message}", $service);
+                $done++;
+            } else {
+                Activity::log('service.module_failed', "Could not recheck the suspension of service #{$service->id} ({$service->label()}): {$result->message}".($triesLeft > 0 ? '' : ' That was the last try, so check it on the server.'), $service);
+            }
+
+            $service->module_data = $triesLeft > 0 ? array_merge($data, [self::RECHECK_SUSPENSION => $triesLeft]) : Arr::except($data, self::RECHECK_SUSPENSION);
+            $service->save();
+        }
+
+        return $done;
     }
 
     public function terminate(Service $service): ModuleResult
