@@ -6,6 +6,7 @@ use App\Enums\DomainStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\OrderStatus;
 use App\Enums\ServiceStatus;
+use App\Models\ActivityLog;
 use App\Models\Domain;
 use App\Models\HealthRun;
 use App\Models\Invoice;
@@ -80,6 +81,29 @@ final class AttentionList
                 'tone' => 'crit',
                 'text' => trans_choice(':count paid domain is still waiting to be registered.|:count paid domains are still waiting to be registered.', $waitingDomains, ['count' => $waitingDomains]),
                 'url' => route('admin.domains.index', ['status' => 'pending']),
+                'action' => __('Review'),
+            ];
+        }
+
+        // A gateway said these invoices were paid, but the payment was held because it may be a
+        // test payment. Each one stays here until the invoice is paid, for at most 30 days.
+        $toCheck = ! $may('billing.view') ? [] : ActivityLog::query()
+            ->where('action', ActivityLog::PAYMENT_REVIEW)
+            ->where('subject_type', (new Invoice)->getMorphClass())
+            ->where('created_at', '>=', now()->subDays(30))
+            ->whereIn('subject_id', Invoice::query()->select('id')->where('status', InvoiceStatus::Unpaid))
+            ->latest('id')
+            ->pluck('subject_id')
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($toCheck !== []) {
+            $items[] = [
+                'key' => 'payments.review',
+                'tone' => 'crit',
+                'text' => trans_choice(':count payment was not counted because it may be a test payment. Check in the gateway that the money arrived, then add it by hand.|:count payments were not counted because they may be test payments. Check in the gateway that the money arrived, then add them by hand.', count($toCheck), ['count' => count($toCheck)]),
+                'url' => route('admin.invoices.show', $toCheck[0]),
                 'action' => __('Review'),
             ];
         }

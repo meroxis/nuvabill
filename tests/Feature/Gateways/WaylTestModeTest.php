@@ -2,12 +2,17 @@
 
 namespace Tests\Feature\Gateways;
 
+use App\Billing\PaymentRecorder;
 use App\Enums\InvoiceStatus;
 use App\Models\ActivityLog;
+use App\Models\Admin;
 use App\Models\Client;
 use App\Models\CreditTransaction;
 use App\Models\Invoice;
 use App\Models\PaymentIntent;
+use App\Models\PushSubscription;
+use App\Push\WebPush;
+use App\Support\AttentionList;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
@@ -115,15 +120,7 @@ class WaylTestModeTest extends TestCase
 
     public function test_older_open_links_go_to_staff_instead_of_paying_the_invoice_when_wayl_is_live(): void
     {
-        // Wayl ran in Test mode for the first week, then went live, and then the update came.
-        $this->enableGateway('wayl', ['api_token' => 'wayl-token', 'mode' => 'test']);
-        [$client, $invoice] = $this->invoice();
-        $this->travel(1)->minutes();
-        $open = $this->olderIntent($invoice, 'NB-1-open', PaymentIntent::STATUS_PENDING);
-        $this->travel(7)->days();
-        $this->enableGateway('wayl', ['api_token' => 'wayl-token', 'mode' => 'live']);
-
-        $this->runMigration();
+        [$client, $invoice, $open] = $this->linkFromTheTestWeekAfterTheUpdate();
 
         $this->assertSame('unknown', $open->fresh()->meta['env']);
 
@@ -142,6 +139,75 @@ class WaylTestModeTest extends TestCase
         $this->assertSame([$invoice->getMorphClass(), $invoice->id, $client->id], [$entry->subject_type, $entry->subject_id, $entry->client_id]);
         $this->assertStringContainsString('NB-1-open', $entry->description);
         $this->assertStringContainsString('add the payment by hand', $entry->description);
+    }
+
+    public function test_a_held_payment_alerts_billing_staff_and_stays_on_their_dashboard_until_the_invoice_is_paid(): void
+    {
+        Http::fake(['fcm.googleapis.com/*' => Http::response('', 201)]);
+        $billing = Admin::factory()->withPermissions(['clients.view', 'billing.view', 'billing.manage'])->create(['name' => 'Mer Las']);
+        $support = Admin::factory()->withPermissions(['clients.view', 'support.manage'])->create(['name' => 'Raz']);
+        $this->subscribe($billing, 'billing');
+        $this->subscribe($support, 'support');
+        [, $invoice] = $this->linkFromTheTestWeekAfterTheUpdate();
+
+        // Paid on the old link: the webhook arrives twice, the phones of billing staff ring once.
+        $this->postWebhook('NB-1-open')->assertOk();
+        $this->postWebhook('NB-1-open')->assertOk();
+
+        $phone = fn (string $name): int => Http::recorded(fn (Request $request): bool => $request->url() === 'https://fcm.googleapis.com/fcm/send/'.$name)->count();
+        $this->assertSame(1, $phone('billing'));
+        $this->assertSame(0, $phone('support'));
+        $this->assertSame(InvoiceStatus::Unpaid, $invoice->fresh()->status);
+
+        $this->signInAdmin($support);
+        $this->assertNotContains('payments.review', array_column(AttentionList::items(), 'key'));
+        $this->get(route('admin.dashboard'))->assertOk()->assertDontSee('may be a test payment');
+
+        $this->signInAdmin($billing);
+        $item = collect(AttentionList::items())->firstWhere('key', 'payments.review');
+        $this->assertSame(['crit', route('admin.invoices.show', $invoice)], [$item['tone'], $item['url']]);
+        $this->get(route('admin.dashboard'))->assertOk()->assertSee('1 payment was not counted because it may be a test payment.');
+
+        // Staff find the money in Wayl and add the payment by hand.
+        app(PaymentRecorder::class)->record($invoice->fresh(), 3000000, 'banktransfer', 'wayl-checked-by-staff');
+
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertNotContains('payments.review', array_column(AttentionList::items(), 'key'));
+    }
+
+    /**
+     * Wayl ran in Test mode for the first week, then went live, and then the update came. The
+     * client still has an open link from the test week.
+     *
+     * @return array{0: Client, 1: Invoice, 2: PaymentIntent}
+     */
+    private function linkFromTheTestWeekAfterTheUpdate(): array
+    {
+        $this->enableGateway('wayl', ['api_token' => 'wayl-token', 'mode' => 'test']);
+        [$client, $invoice] = $this->invoice();
+        $this->travel(1)->minutes();
+        $open = $this->olderIntent($invoice, 'NB-1-open', PaymentIntent::STATUS_PENDING);
+        $this->travel(7)->days();
+        $this->enableGateway('wayl', ['api_token' => 'wayl-token', 'mode' => 'live']);
+
+        $this->runMigration();
+
+        return [$client, $invoice, $open];
+    }
+
+    private function subscribe(Admin $admin, string $name): void
+    {
+        $options = ['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC];
+        $key = openssl_pkey_new($options) ?: openssl_pkey_new($options + ['config' => resource_path('openssl.cnf')]);
+        $endpoint = 'https://fcm.googleapis.com/fcm/send/'.$name;
+
+        PushSubscription::query()->create([
+            'admin_id' => $admin->id,
+            'endpoint' => $endpoint,
+            'endpoint_hash' => PushSubscription::hashOf($endpoint),
+            'public_key' => WebPush::encode(WebPush::rawPublicKey($key)),
+            'auth_token' => WebPush::encode(random_bytes(16)),
+        ]);
     }
 
     /**

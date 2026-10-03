@@ -214,6 +214,33 @@ class StaffBillingVisibilityTest extends TestCase
             ->assertSee('waiting for payment or review');
     }
 
+    public function test_the_attention_list_shows_payments_held_for_a_check_to_billing_staff_for_30_days(): void
+    {
+        $client = $this->client();
+        $older = app(InvoiceManager::class)->create($client, [['description' => 'Hosting', 'amount' => 999]]);
+        $newer = app(InvoiceManager::class)->create($client, [['description' => 'Domain', 'amount' => 1999]]);
+        Activity::log(ActivityLog::PAYMENT_REVIEW, 'Wayl says link NB-1 is paid.', $older);
+        $this->travel(5)->days();
+        Activity::log(ActivityLog::PAYMENT_REVIEW, 'Wayl says link NB-2 is paid.', $newer);
+        Activity::log(ActivityLog::PAYMENT_REVIEW, 'Wayl says link NB-3 is paid.', $newer);
+
+        $item = fn (): ?array => collect(AttentionList::items())->firstWhere('key', 'payments.review');
+
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.view', 'support.manage'])->create(['name' => 'Raz']));
+        $this->assertNull($item());
+
+        // Two invoices to check; the newest one opens first.
+        $this->signInAdmin(Admin::factory()->withPermissions(['billing.view'])->create(['name' => 'Mer Las']));
+        $this->assertStringStartsWith('2 payments were not counted', $item()['text']);
+        $this->assertSame(route('admin.invoices.show', $newer), $item()['url']);
+
+        $this->travel(27)->days();
+        $this->assertStringStartsWith('1 payment was not counted', $item()['text']);
+
+        $this->travel(4)->days();
+        $this->assertNull($item());
+    }
+
     public function test_the_api_gives_the_wallet_balance_only_to_keys_that_may_see_billing(): void
     {
         $client = $this->client(['credit' => 5000]);

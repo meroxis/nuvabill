@@ -13,9 +13,9 @@ use Closure;
 use Illuminate\Support\Str;
 
 /**
- * Push alerts on staff phones: new orders, payments, new tickets and client replies. Each staff
- * member chooses which they want, and only gets what their role may see. The alert text is
- * written in each staff member's own language when it is sent.
+ * Push alerts on staff phones: new orders, payments (also those held for a check), new tickets
+ * and client replies. Each staff member chooses which they want, and only gets what their role
+ * may see. The alert text is written in each staff member's own language when it is sent.
  */
 class StaffAlerts
 {
@@ -45,6 +45,22 @@ class StaffAlerts
             'url' => route('admin.invoices.show', $invoice),
             'tag' => 'invoice-'.$invoice->id,
         ], fn (Admin $admin): bool => $currency !== (string) setting('billing.currency') || $total >= $admin->pushAlerts()['payments_over']);
+    }
+
+    /**
+     * A gateway says the invoice was paid, but the payment was held for staff because it may be a
+     * test payment. Goes to staff who get payment alerts, whatever the amount, as nothing was counted.
+     */
+    public function paymentToCheck(Invoice $invoice): void
+    {
+        $invoice->loadMissing('client');
+
+        $this->notify('payment_check', [
+            'number' => $invoice->displayNumber(),
+            'client' => (string) $invoice->client?->name,
+            'url' => route('admin.invoices.show', $invoice),
+            'tag' => 'invoice-'.$invoice->id,
+        ], alert: 'payments');
     }
 
     public function ticketOpened(Ticket $ticket): void
@@ -85,6 +101,7 @@ class StaffAlerts
         [$title, $body] = match ($kind) {
             'orders' => [__('New order #:number', $data, $locale), $data['client'].' · '.$data['total']],
             'payments' => [__('Payment received: :total', $data, $locale), __('Invoice :number', $data, $locale).' · '.$data['client']],
+            'payment_check' => [__('Check a payment: invoice :number', $data, $locale), __('It may be a test payment, so it was not counted. Check that the money arrived, then add it by hand.', [], $locale)],
             'tickets' => [__('New ticket #:number', $data, $locale), $data['client'].': '.$data['text']],
             'replies' => [__('Reply on ticket #:number', $data, $locale), $data['client'].': '.$data['text']],
             default => [(string) setting('company.name'), __('Alerts work on this device.', [], $locale)],
@@ -96,9 +113,12 @@ class StaffAlerts
     /**
      * @param  array<string, string>  $data
      * @param  (Closure(Admin): bool)|null  $filter
+     * @param  string|null  $alert  The alert staff turn on for it, when it is not the kind itself.
      */
-    private function notify(string $kind, array $data, ?Closure $filter = null): void
+    private function notify(string $kind, array $data, ?Closure $filter = null, ?string $alert = null): void
     {
+        $alert ??= $kind;
+
         // The demo never calls other servers.
         if (Demo::isEnabled()) {
             return;
@@ -109,7 +129,7 @@ class StaffAlerts
             ->whereHas('pushSubscriptions')
             ->with('role')
             ->get()
-            ->filter(fn (Admin $admin): bool => $admin->pushAlerts()[$kind] && ($filter === null || $filter($admin)));
+            ->filter(fn (Admin $admin): bool => $admin->pushAlerts()[$alert] && ($filter === null || $filter($admin)));
 
         if ($admins->isNotEmpty()) {
             SendStaffPush::dispatch($admins->modelKeys(), $kind, $data)->afterCommit();

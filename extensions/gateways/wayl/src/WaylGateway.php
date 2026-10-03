@@ -6,8 +6,10 @@ use App\Extensions\Gateways\Gateway;
 use App\Extensions\Gateways\PaymentResult;
 use App\Extensions\Gateways\PaymentStart;
 use App\Extensions\Gateways\WebhookResult;
+use App\Models\ActivityLog;
 use App\Models\Invoice;
 use App\Models\PaymentIntent;
+use App\Push\StaffAlerts;
 use App\Support\Activity;
 use App\Support\Money;
 use Illuminate\Http\Client\PendingRequest;
@@ -186,6 +188,7 @@ class WaylGateway extends Gateway
      * A link made before Wayl links kept their mode reports paid. It may be a test link paid with
      * a test card, so the invoice is not marked paid: staff check the payment in Wayl and add it
      * by hand. Claimed in one update, so the webhook and the return page never both report it.
+     * Staff are told on the dashboard (until the invoice is paid) and on their phones.
      */
     private function holdForStaff(PaymentIntent $intent): void
     {
@@ -202,7 +205,11 @@ class WaylGateway extends Gateway
         $number = $invoice?->displayNumber() ?? '#'.$intent->invoice_id;
 
         Log::warning("Wayl link {$intent->reference} reports paid, but it was made before Wayl links kept their mode, so it was not counted.");
-        Activity::log('payment.review', "Wayl says link {$intent->reference} for invoice {$number} is paid. The link is from before links noted Test or Live, so it may be a test payment. Check in Wayl that the money arrived, then add the payment by hand.", $invoice);
+        Activity::log(ActivityLog::PAYMENT_REVIEW, "Wayl says link {$intent->reference} for invoice {$number} is paid. The link is from before links noted Test or Live, so it may be a test payment. Check in Wayl that the money arrived, then add the payment by hand.", $invoice);
+
+        if ($invoice !== null) {
+            rescue(fn () => app(StaffAlerts::class)->paymentToCheck($invoice), report: false);
+        }
     }
 
     /**

@@ -26,6 +26,12 @@ class ActivityLog extends Model
      */
     public const BILLING_SUBJECTS = ['invoice', 'transaction', 'quote', 'payment_method'];
 
+    /**
+     * A gateway says an invoice was paid, but the payment was not counted because it may be a test
+     * payment. Logged on the invoice; the dashboard lists these invoices until they are paid.
+     */
+    public const PAYMENT_REVIEW = 'payment.review';
+
     protected $fillable = ['actor_type', 'actor_id', 'subject_type', 'subject_id', 'client_id', 'action', 'description', 'ip_address'];
 
     protected function casts(): array
