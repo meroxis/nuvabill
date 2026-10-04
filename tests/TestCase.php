@@ -146,8 +146,14 @@ abstract class TestCase extends BaseTestCase
         }
 
         $pdo = DB::connection()->getPdo();
-        $this->assertInstanceOf(Sqlite::class, $pdo);
-        $pdo->createCollation('like_mysql', fn (string $first, string $second): int => strcmp($fold($first), $fold($second)));
+        $compare = fn (string $first, string $second): int => strcmp($fold($first), $fold($second));
+
+        // PHP 8.4 gives SQLite its own connection class with createCollation(); PHP 8.3 has the older name.
+        if ($pdo instanceof Sqlite) {
+            $pdo->createCollation('like_mysql', $compare);
+        } else {
+            $pdo->sqliteCreateCollation('like_mysql', $compare);
+        }
 
         foreach ($tables as $table) {
             Schema::table($table, fn (Blueprint $blueprint) => $blueprint->string('email')->collation('like_mysql')->change());
