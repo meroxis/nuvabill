@@ -29,7 +29,7 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.6.9 | Choose the order clients see payment methods in |
 | 0.6.10 | Webhooks for add-ons |
 | 0.6.11 | Sign in from an order and come back to it; themes and order forms bring their own translations |
-| 0.6.12 | Fixes from a full code review: Stripe automatic payments, wallet, renewals, stock and security |
+| 0.6.12 | Fixes from a full line-by-line review: sign-in security, payments, wallet, renewals, imports and site health |
 
 ## Next
 
