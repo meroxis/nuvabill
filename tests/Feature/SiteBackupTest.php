@@ -190,7 +190,7 @@ class SiteBackupTest extends TestCase
         $site = $this->folder.DIRECTORY_SEPARATOR.'site';
         $updates = $this->folder.DIRECTORY_SEPARATOR.'updates';
         File::ensureDirectoryExists($site);
-        $tables = Schema::getTableListing(schemaQualified: false);
+        $tables = Schema::getTableListing(Schema::getCurrentSchemaListing(), schemaQualified: false);
 
         try {
             $before = (new Backup($site, $updates))->create('before-test');
@@ -203,7 +203,7 @@ class SiteBackupTest extends TestCase
             (new Backup($site, $updates))->restore($before);
 
             $this->assertFalse(Schema::hasTable('made_by_failed_update'));
-            $this->assertEqualsCanonicalizing($tables, Schema::getTableListing(schemaQualified: false), 'Every table of the backup is back.');
+            $this->assertEqualsCanonicalizing($tables, Schema::getTableListing(Schema::getCurrentSchemaListing(), schemaQualified: false), 'Every table of the backup is back.');
         } finally {
             Schema::dropIfExists('made_by_failed_update');
         }

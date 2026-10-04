@@ -35,7 +35,41 @@ abstract class TestCase extends BaseTestCase
 
         if ($this->refreshesMysqlDatabase()) {
             $this->restartMysqlIds();
+
+            // Runs after the test's transaction is rolled back.
+            $this->beforeApplicationDestroyed(fn () => $this->rebuildMysqlDatabaseIfChanged());
         }
+    }
+
+    /**
+     * Checksums of every table of the MySQL or MariaDB test database right after it was built.
+     */
+    private static ?string $mysqlBaseline = null;
+
+    /**
+     * MySQL and MariaDB save the open test transaction for good when a table is created, changed or
+     * checked (CHECK TABLE), so a test's rows can stay behind after the rollback. Then the database is
+     * built again before the next test, which reads settings while it starts.
+     */
+    private function rebuildMysqlDatabaseIfChanged(): void
+    {
+        // The rollback before this closed the connection.
+        $pdo = DB::reconnect()->getPdo();
+
+        if (self::$mysqlBaseline !== null && $this->mysqlFingerprint($pdo) === self::$mysqlBaseline) {
+            return;
+        }
+
+        Artisan::call('migrate:fresh', method_exists($this, 'migrateFreshUsing') ? $this->migrateFreshUsing() : []);
+        self::$mysqlBaseline = $this->mysqlFingerprint(DB::connection()->getPdo());
+    }
+
+    private function mysqlFingerprint(PDO $pdo): string
+    {
+        $tables = $pdo->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME")->fetchAll(PDO::FETCH_COLUMN);
+        $quoted = implode(', ', array_map(fn (string $table): string => '`'.str_replace('`', '``', $table).'`', $tables));
+
+        return md5(json_encode($pdo->query("CHECKSUM TABLE {$quoted}")->fetchAll(PDO::FETCH_KEY_PAIR)) ?: '');
     }
 
     /**
@@ -52,6 +86,7 @@ abstract class TestCase extends BaseTestCase
         }
 
         $pdo->rollBack();
+        self::$mysqlBaseline ??= $this->mysqlFingerprint($pdo);
 
         try {
             // MySQL 8 shows cached counters unless told not to; MariaDB always shows the live ones.
@@ -81,18 +116,6 @@ abstract class TestCase extends BaseTestCase
     {
         return in_array(RefreshDatabase::class, class_uses_recursive($this), true)
             && in_array(DB::getDriverName(), ['mysql', 'mariadb'], true);
-    }
-
-    protected function tearDown(): void
-    {
-        // MySQL and MariaDB save the open test transaction for good when a table is created, changed or
-        // checked (CHECK TABLE). The rows of this test then stay behind, so the database is built again
-        // now: the next test reads settings while it starts, before it could clean up itself.
-        if (isset($this->app) && $this->refreshesMysqlDatabase() && ! DB::connection()->getPdo()->inTransaction()) {
-            Artisan::call('migrate:fresh', method_exists($this, 'migrateFreshUsing') ? $this->migrateFreshUsing() : []);
-        }
-
-        parent::tearDown();
     }
 
     protected function signInAdmin(?Admin $admin = null): Admin

@@ -126,7 +126,7 @@ class ServerModulesTest extends TestCase
         $created = app(Provisioner::class)->create($service);
         $this->assertTrue($created->success, $created->message);
         $service->refresh();
-        $this->assertSame(['client_id' => 12, 'domain_id' => 34], $service->module_data);
+        $this->assertSameModuleData(['client_id' => 12, 'domain_id' => 34], $service->module_data);
         Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/api/v2/domains')
             && $request['owner_client'] === ['id' => 12]
             && $request['plan'] === ['name' => 'Default Domain']
@@ -181,7 +181,7 @@ class ServerModulesTest extends TestCase
         $result = app(Provisioner::class)->create($service);
 
         $this->assertTrue($result->success, $result->message);
-        $this->assertSame(['vmid' => 105, 'node' => 'pve1', 'ip_config' => 'ip=203.0.113.20/24,gw=203.0.113.1', 'ip' => '203.0.113.20'], $service->fresh()->module_data);
+        $this->assertSameModuleData(['vmid' => 105, 'node' => 'pve1', 'ip_config' => 'ip=203.0.113.20/24,gw=203.0.113.1', 'ip' => '203.0.113.20'], $service->fresh()->module_data);
         Sleep::assertSleptTimes(1);
         Http::assertSent(fn (Request $request): bool => str_ends_with($request->url(), '/qemu/9000/clone') && $request['newid'] === 105 && $request['name'] === 'vps.example.com'
             && $request->hasHeader('Authorization', 'PVEAPIToken=root@pam!nuvabill=TESTTOKEN123'));
@@ -237,7 +237,7 @@ class ServerModulesTest extends TestCase
 
         Http::assertSent(fn (Request $request): bool => $request->method() === 'PUT' && str_ends_with($request->url(), '/api/v2/domains/34/status') && $request['status'] === 'suspended');
         Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), '/domains/33'));
-        $this->assertSame(['domain_id' => 34], $service->fresh()->module_data);
+        $this->assertSameModuleData(['domain_id' => 34], $service->fresh()->module_data);
         $this->assertSame(ServiceStatus::Suspended, $service->fresh()->status);
     }
 
@@ -317,15 +317,15 @@ class ServerModulesTest extends TestCase
         (require database_path('migrations/2027_07_02_000001_servers_domains_recheck_proxmox_suspensions.php'))->up();
 
         $this->assertSame(7, $old->fresh()->module_data[Provisioner::RECHECK_SUSPENSION] ?? null);
-        $this->assertSame(['vmid' => 106, 'node' => 'pve1'], $active->fresh()->module_data);
+        $this->assertSameModuleData(['vmid' => 106, 'node' => 'pve1'], $active->fresh()->module_data);
         $this->assertNull($notMade->fresh()->module_data);
-        $this->assertSame(['vmid' => 7], $otherModule->fresh()->module_data);
+        $this->assertSameModuleData(['vmid' => 7], $otherModule->fresh()->module_data);
 
         app(DailyAutomation::class)->run();
 
         $this->assertSame(['PUT config onboot=0', 'GET qemu/105/status/current', 'POST qemu/105/status/stop'], $this->calls($node));
         $this->assertSame(ServiceStatus::Suspended, $old->fresh()->status);
-        $this->assertSame(['vmid' => 105, 'node' => 'pve1'], $old->fresh()->module_data);
+        $this->assertSameModuleData(['vmid' => 105, 'node' => 'pve1'], $old->fresh()->module_data);
         $this->assertDatabaseHas('activity_logs', ['action' => 'service.suspension_checked', 'subject_id' => $old->id]);
 
         // Done once: the next night leaves it alone.
@@ -352,7 +352,7 @@ class ServerModulesTest extends TestCase
 
         app(Provisioner::class)->recheckSuspensions();
 
-        $this->assertSame(['vmid' => 105, 'node' => 'pve1'], $service->fresh()->module_data);
+        $this->assertSameModuleData(['vmid' => 105, 'node' => 'pve1'], $service->fresh()->module_data);
         $this->assertStringContainsString('last try', (string) ActivityLog::query()->where('action', 'service.module_failed')->latest('id')->value('description'));
 
         $node->log = [];
@@ -398,7 +398,7 @@ class ServerModulesTest extends TestCase
         $this->assertFalse($running[105]);
         $this->assertNotContains('PUT qemu/106/config onboot=0', $log);
         $this->assertNotContains('POST qemu/106/status/stop', $log);
-        $this->assertSame(['vmid' => 106, 'node' => 'pve1'], $paid->fresh()->module_data, 'An unsuspended VPS is not checked again.');
+        $this->assertSameModuleData(['vmid' => 106, 'node' => 'pve1'], $paid->fresh()->module_data, 'An unsuspended VPS is not checked again.');
         $this->assertSame(ServiceStatus::Suspended, $first->fresh()->status);
     }
 
@@ -423,7 +423,7 @@ class ServerModulesTest extends TestCase
 
         $this->assertTrue($result->success, $result->message);
         $this->assertSame(ServiceStatus::Active, $service->fresh()->status);
-        $this->assertSame(['vmid' => 105, 'node' => 'pve1', 'ip_config' => 'ip=dhcp'], $service->fresh()->module_data);
+        $this->assertSameModuleData(['vmid' => 105, 'node' => 'pve1', 'ip_config' => 'ip=dhcp'], $service->fresh()->module_data);
 
         // A task that really failed still fails.
         $node->exitStatus = 'unable to remove disk';
@@ -617,5 +617,18 @@ class ServerModulesTest extends TestCase
         $product = Product::factory()->create(['server_module' => $module, 'server_id' => $server->id, 'module_config' => $config]);
 
         return Service::factory()->create($attributes + ['product_id' => $product->id, 'server_id' => $server->id]);
+    }
+
+    /**
+     * MySQL 8 keeps JSON objects with their keys in its own order, so only the keys and values are compared.
+     *
+     * @param  array<string, mixed>  $expected
+     */
+    private function assertSameModuleData(array $expected, mixed $actual, string $message = ''): void
+    {
+        $this->assertIsArray($actual, $message);
+        ksort($expected);
+        ksort($actual);
+        $this->assertSame($expected, $actual, $message);
     }
 }
