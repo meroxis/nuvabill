@@ -6,6 +6,7 @@ import { showCopied } from './copy-button';
 import { kbSuggest } from './kb-suggest';
 import { passkeySubmitButton } from './passkey-form';
 import { phoneApp, registerAdminApp } from './phone-app';
+import { vpsPanel } from './vps-panel';
 
 /**
  * Light / dark mode. "system" follows the device; the choice is remembered on this device only.
@@ -221,6 +222,7 @@ Alpine.data('productAi', productAi);
 Alpine.data('whatsappConnect', whatsappConnect);
 Alpine.data('phoneApp', phoneApp);
 Alpine.data('kbSuggest', kbSuggest);
+Alpine.data('vpsPanel', vpsPanel);
 
 // Admin pages: the service worker that shows phone alerts, and the install button.
 if (document.body) {

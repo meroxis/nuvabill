@@ -25,7 +25,7 @@ class ServerModulesTest extends TestCase
 
     public function test_virtualizor_creates_a_vps_and_remembers_its_id(): void
     {
-        Http::fake(['vz.example.test:4085/*' => Http::response(['done' => 1, 'vs_info' => ['vpsid' => 77, 'ips' => ['203.0.113.7']]])]);
+        Http::fake(['vz.example.test:4085/*' => Http::response(['done' => 1, 'vs_info' => ['vpsid' => 77, 'uid' => '58', 'ips' => ['203.0.113.7']]])]);
 
         $service = $this->service('virtualizor', 'vz.example.test', ['virt' => 'kvm', 'os_id' => '100', 'plan_id' => '3'], ['status' => ServiceStatus::Pending, 'domain' => 'vps1.example.com']);
 
@@ -35,24 +35,36 @@ class ServerModulesTest extends TestCase
         $service->refresh();
         $this->assertSame(ServiceStatus::Active, $service->status);
         $this->assertSame('77', $service->module_data['vpsid']);
+        $this->assertSame('58', $service->module_data['uid']);
         $this->assertSame('root', $service->username);
-        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'act=addvs')
+        // Without the new product options the request is the same as before.
+        Http::assertSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://vz.example.test:4085/index.php?act=addvs&')
             && str_contains($request->url(), 'adminapikey=TESTTOKEN123')
             && $request['virt'] === 'kvm'
             && $request['osid'] === 100
             && $request['plid'] === 3
-            && $request['hostname'] === 'vps1.example.com');
+            && $request['num_ips'] === 1
+            && $request['node_select'] === 1
+            && $request['hostname'] === 'vps1.example.com'
+            && collect(array_keys($request->data()))->sort()->values()->all() === ['addvps', 'hostname', 'node_select', 'num_ips', 'osid', 'plid', 'rootpass', 'user_email', 'user_pass', 'virt']);
     }
 
     public function test_clients_manage_their_virtualizor_vps_inside_the_client_area(): void
     {
-        Http::fake([
-            '*act=ostemplates*' => Http::response(['ostemplates' => ['100' => ['osid' => 100, 'type' => 'kvm', 'name' => 'Ubuntu 24.04'], '200' => ['osid' => 200, 'type' => 'openvz', 'name' => 'CentOS 7']]]),
-            '*vs_status*' => Http::response(['status' => ['77' => ['status' => 1, 'used_cpu' => 12.5, 'used_ram' => 512, 'ram' => 2048, 'used_disk' => 8, 'disk' => 40, 'used_bandwidth' => 3, 'bandwidth' => 1000]]]),
-            '*act=vs&action=restart*' => Http::response(['done' => 1]),
-            '*act=vs&vpsid=77*' => Http::response(['vs' => ['77' => ['hostname' => 'vps1.example.com', 'os_name' => 'Ubuntu 24.04', 'virt' => 'kvm', 'ips' => ['203.0.113.7']]]]),
-            '*act=rebuild*' => Http::response(['done' => 1]),
-        ]);
+        // Each answer is only given to the exact query Virtualizor's API expects.
+        Http::fake(function (Request $request) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+            unset($query['api'], $query['adminapikey'], $query['adminapipass']);
+
+            return match ($query) {
+                ['act' => 'ostemplates'] => Http::response(['ostemplates' => ['100' => ['osid' => 100, 'type' => 'kvm', 'name' => 'Ubuntu 24.04'], '200' => ['osid' => 200, 'type' => 'openvz', 'name' => 'CentOS 7']]]),
+                ['act' => 'vs', 'vs_status' => '77'] => Http::response(['status' => ['77' => ['status' => 1, 'used_cpu' => 12.5, 'used_ram' => 512, 'ram' => 2048, 'used_disk' => 8, 'disk' => 40, 'used_bandwidth' => 3, 'bandwidth' => 1000, 'net_in' => 2048, 'net_out' => 512]]]),
+                ['act' => 'vs', 'action' => 'restart', 'vpsid' => '77'] => Http::response(['done' => true, 'done_msg' => 'Restarted', 'vsop' => ['action' => 'restart', 'id' => '77', 'status' => ['77' => 1]]]),
+                ['act' => 'vs', 'search' => '1', 'vpsid' => '77', 'page' => '1', 'reslen' => '1'] => Http::response(['vs' => ['77' => ['vpsid' => '77', 'uid' => '58', 'hostname' => 'vps1.example.com', 'os_name' => 'Ubuntu 24.04', 'virt' => 'kvm', 'suspended' => '0', 'ips' => ['2' => '203.0.113.7', '3' => '2001:db8::7']]]]),
+                ['act' => 'rebuild'] => Http::response(['done' => 1]),
+                default => Http::response(['error' => ['Unexpected request']]),
+            };
+        });
 
         $service = $this->service('virtualizor', 'vz.example.test', ['virt' => 'kvm', 'os_id' => '100'], ['module_data' => ['vpsid' => '77'], 'username' => 'root']);
         $this->actingAs($service->client, 'web');
@@ -62,15 +74,24 @@ class ServerModulesTest extends TestCase
             ->assertSee('Manage your server')
             ->assertSee('Running')
             ->assertSee('203.0.113.7')
+            ->assertSee('2001:db8::7')
+            ->assertSee('2.0 KB/s')
             ->assertSee('Ubuntu 24.04')
+            ->assertSee('Show VNC details')
             ->assertDontSee('CentOS 7')
-            ->assertDontSee('Open control panel');
+            ->assertDontSee('Open control panel')
+            ->assertDontSee('Open Virtualizor panel')
+            ->assertDontSee('Run the setup script of your plan again');
+        Http::assertSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://vz.example.test:4085/index.php?act=vs&vs_status=77&api=json&'));
+        Http::assertSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://vz.example.test:4085/index.php?act=vs&search=1&vpsid=77&page=1&reslen=1&api=json&'));
+        Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'vs_status%5B'));
 
         $this->from(route('client.services.show', $service))
             ->post(route('client.services.panel', [$service, 'restart']))
             ->assertRedirect(route('client.services.show', $service))
-            ->assertSessionHas('status', 'The VPS is restarting.');
-        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'action=restart') && str_contains($request->url(), 'vpsid=77'));
+            ->assertSessionHas('status', 'The VPS is restarting.')
+            ->assertSessionHas('panel_result', ['pending' => 'restart', 'state' => 'running']);
+        Http::assertSent(fn (Request $request): bool => str_starts_with($request->url(), 'https://vz.example.test:4085/index.php?act=vs&action=restart&vpsid=77&api=json&') && $request->method() === 'GET');
 
         $this->post(route('client.services.panel', [$service, 'reinstall']), ['os_id' => '200', 'password' => 'Secret12345'])
             ->assertSessionHas('error', 'Choose an operating system from the list.');

@@ -39,7 +39,11 @@ class SecurityHeaders
         $headers = $response->headers;
         $headers->set('X-Content-Type-Options', 'nosniff');
         $headers->set('X-Frame-Options', 'SAMEORIGIN');
-        $headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
+        // A response that sends no referrer at all, such as a one-time panel sign-in link, keeps that.
+        if ($headers->get('Referrer-Policy') !== 'no-referrer') {
+            $headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
+        }
+
         $headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), browsing-topics=()');
         // A page opened as a window by another site keeps its link back to that site only without isolation.
         $headers->set('Cross-Origin-Opener-Policy', $request->attributes->get(self::OPENER_POLICY, 'same-origin-allow-popups'));

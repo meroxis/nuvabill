@@ -141,11 +141,13 @@ Route::middleware(['auth:web', 'auth.session', 'client.active', 'client.two-fact
 
     Route::get('services', [ServiceController::class, 'index'])->name('services.index');
     Route::get('services/{service}', [ServiceController::class, 'show'])->name('services.show');
-    Route::post('services/{service}/login', [ServiceController::class, 'login'])->name('services.login');
+    // Each click makes a new one-time panel link, so clicks are limited.
+    Route::post('services/{service}/login', [ServiceController::class, 'login'])->middleware('throttle:10,1')->name('services.login');
     Route::get('services/{service}/change-plan', [PlanChangeController::class, 'show'])->name('services.change-plan');
     Route::post('services/{service}/change-plan', [PlanChangeController::class, 'store'])->middleware('throttle:10,1')->name('services.change-plan.store');
     Route::delete('services/{service}/change-plan', [PlanChangeController::class, 'destroy'])->name('services.change-plan.destroy');
     Route::post('services/{service}/panel/{action}', [ServiceController::class, 'panel'])->where('action', '[a-z0-9-]+')->middleware('throttle:20,1')->name('services.panel');
+    Route::get('services/{service}/panel-status', [ServiceController::class, 'panelStatus'])->middleware('throttle:30,1')->name('services.panel-status');
 
     Route::get('domains', [DomainController::class, 'index'])->name('domains.index');
     Route::get('domains/{domain}', [DomainController::class, 'show'])->name('domains.show');

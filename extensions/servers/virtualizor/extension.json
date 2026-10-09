@@ -2,10 +2,10 @@
     "slug": "virtualizor",
     "type": "server",
     "name": "Virtualizor",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "namespace": "Nuvabill\\Extensions\\Virtualizor\\",
     "class": "Nuvabill\\Extensions\\Virtualizor\\VirtualizorModule",
-    "description": "Virtualizor VPS: create, suspend and remove VPS. Clients manage their VPS inside the client area.",
+    "description": "Virtualizor VPS: create, suspend and remove VPS, with resource add-ons. Clients manage their VPS inside the client area and can open their own Virtualizor panel.",
     "author": "Nuvabill",
     "requires": ">=0.2.0"
 }
