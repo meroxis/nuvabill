@@ -4,6 +4,8 @@ namespace App\Provisioning;
 
 use App\Contracts\HasClientPanel;
 use App\Contracts\HasLoginForm;
+use App\Contracts\HasPanelState;
+use App\Contracts\KeepsCreateServer;
 use App\Contracts\ServerModule;
 use App\Enums\ServiceStatus;
 use App\Events\ServiceActivated;
@@ -99,8 +101,11 @@ class Provisioner
         }
 
         // A new account goes only to a server that is on and has room: the one picked at order time,
-        // or another server for the same module when that one was turned off or is full.
-        if ($module !== null && ($service->server === null || ! $this->takesNewAccount($service->server, $service))) {
+        // or another server for the same module when that one was turned off or is full. A create
+        // that may already have made an account stays on its server, where the module looks for it.
+        $keepsServer = $service->server !== null && $module instanceof KeepsCreateServer && $module->keepsServer($service);
+
+        if ($module !== null && ! $keepsServer && ($service->server === null || ! $this->takesNewAccount($service->server, $service))) {
             $server = $this->pickServer($service);
 
             if ($server === null) {
@@ -410,6 +415,36 @@ class Provisioner
         }
 
         return ['view' => $module->clientPanelView(), 'data' => $data, 'actions' => $module->clientActions()];
+    }
+
+    /**
+     * The live state of the module's client panel (running, stopped, suspended or unknown), for the
+     * panel's checks after a power action, or null when the service has no panel. A module that can
+     * read just the state does so; others build the whole panel. The panel checks every few seconds,
+     * so a failure is reported at most once in five minutes for each service.
+     */
+    public function clientPanelState(Service $service): ?string
+    {
+        $service->loadMissing('product', 'server');
+        $module = $this->moduleFor($service);
+
+        if (! $module instanceof HasClientPanel || $service->status !== ServiceStatus::Active || $service->server === null) {
+            return null;
+        }
+
+        try {
+            $data = $module instanceof HasPanelState ? ['state' => $module->clientPanelState($service)] : $module->clientPanel($service);
+        } catch (Throwable $exception) {
+            if (Cache::add('nuvabill:panel-state-failed:service:'.$service->id, true, 300)) {
+                report($exception);
+            }
+
+            return 'unknown';
+        }
+
+        $state = empty($data['error']) ? ($data['state'] ?? null) : null;
+
+        return in_array($state, ['running', 'stopped', 'suspended'], true) ? $state : 'unknown';
     }
 
     /**

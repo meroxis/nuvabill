@@ -3,6 +3,8 @@
 namespace Nuvabill\Extensions\Virtualizor;
 
 use App\Contracts\HasClientPanel;
+use App\Contracts\HasPanelState;
+use App\Contracts\KeepsCreateServer;
 use App\Enums\ServiceStatus;
 use App\Extensions\Servers\Module;
 use App\Extensions\Servers\ModuleResult;
@@ -22,7 +24,7 @@ use Throwable;
  * power, usage, IP addresses, OS reinstall, hostname and root password. A product can also let
  * clients open their own VPS in Virtualizor's end-user panel with one click.
  */
-class VirtualizorModule extends Module implements HasClientPanel
+class VirtualizorModule extends Module implements HasClientPanel, HasPanelState, KeepsCreateServer
 {
     /**
      * Exception code: Virtualizor answered and refused the request, so it did nothing. Any other
@@ -133,7 +135,7 @@ class VirtualizorModule extends Module implements HasClientPanel
             'resource_addons' => [
                 'label' => 'Resource add-ons (JSON)',
                 'type' => 'textarea',
-                'help' => 'Optional. Add-ons that give a VPS more resources, as compact JSON: {"version":1,"ids":{"cpu":5,"ram":6,"disk":7,"ipv4":8}} with your add-on IDs. Each adds 1 core, 2048 MB RAM, 40 GB disk or 1 IPv4; "steps":{"ram":1024} changes an amount. Other add-ons are left alone. A new VPS gets its extras only when its order invoice is paid.',
+                'help' => 'Optional. Add-ons that give a VPS more resources, as compact JSON: {"version":1,"ids":{"cpu":5,"ram":6,"disk":7,"ipv4":8}} with your add-on IDs. Each adds 1 core, 2048 MB RAM, 40 GB disk or 1 IPv4; "steps":{"ram":1024} changes an amount. Other add-ons are left alone. A new VPS gets its extras only when its order invoice is paid, so with setup "as soon as the order is placed" such a VPS is made once that invoice is paid.',
             ],
         ];
     }
@@ -171,9 +173,19 @@ class VirtualizorModule extends Module implements HasClientPanel
         return $this->attempt(function () use ($service): ModuleResult {
             $record = ResourceAddons::record($service);
 
+            // The VPS of an earlier create request is only looked for on the server it was sent to.
+            if ($record !== null && $record['server_id'] !== null && $record['server_id'] !== (int) $service->server_id) {
+                return ModuleResult::fail(__('The create request for this VPS was sent to server #:id, so a VPS it made is only looked for there. Move the service back to that server and try again. No VPS is made on another server.', ['id' => $record['server_id']]));
+            }
+
             // A create with resource add-ons was sent before: never send another one for this service.
             if ($record !== null && $record['state'] === ResourceAddons::REQUESTED) {
                 $record = $this->reconcile($service, $record);
+
+                // The service stayed on this server only to look for that VPS (see keepsServer).
+                if ($record === null && ! $service->server->is_active) {
+                    return ModuleResult::fail(__('Virtualizor shows the earlier create request made no VPS, and this server is turned off. Try again: the next try makes the VPS on a server that is on.'));
+                }
             }
 
             if ($record !== null && $record['vpsid'] !== null) {
@@ -230,6 +242,15 @@ class VirtualizorModule extends Module implements HasClientPanel
                 ], fn (mixed $value): bool => $value !== null),
             ]);
         });
+    }
+
+    /**
+     * A create with add-on extras that was sent stays on its server: the VPS it may have made is
+     * looked for there, also when that server was turned off or is full since.
+     */
+    public function keepsServer(Service $service): bool
+    {
+        return ResourceAddons::record($service) !== null;
     }
 
     public function suspend(Service $service, string $reason): ModuleResult
@@ -365,6 +386,23 @@ class VirtualizorModule extends Module implements HasClientPanel
             'login' => $signIn ? __('Open Virtualizor panel') : null,
             'console' => $signIn ? 'panel' : 'vnc',
         ];
+    }
+
+    /**
+     * Only the state, for the panel's checks after a power action: one status call. The search for
+     * the VPS runs only when the status is unclear, to see whether Virtualizor suspended it.
+     */
+    public function clientPanelState(Service $service): string
+    {
+        $vpsId = $this->vpsId($service);
+        $status = (array) ($this->call($service->server, ['act' => 'vs', 'vs_status' => $vpsId])['status'][$vpsId] ?? []);
+        $state = $this->stateFrom($status['status'] ?? null);
+
+        if ($state === 'unknown' && (int) ($this->vpsInfo($service->server, $vpsId)['suspended'] ?? 0) === 1) {
+            $state = 'suspended';
+        }
+
+        return $state;
     }
 
     public function clientAction(Service $service, string $action, array $input): ModuleResult
@@ -752,6 +790,7 @@ class VirtualizorModule extends Module implements HasClientPanel
         $record = ResourceAddons::remember($service, [
             'state' => ResourceAddons::REQUESTED,
             'vpsid' => null,
+            'server_id' => (int) $service->server_id,
             'hostname' => $hostname,
             'email' => strtolower((string) $post['user_email']),
             'totals' => $resources['totals'],

@@ -82,7 +82,7 @@ class QuoteController extends Controller
         try {
             $quotes->save($quote, $client, $data, $items);
         } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
+            return back()->with('error', $this->refusalMessage($exception));
         }
 
         return $this->afterSave($request, $quote, $quotes, __('Quote saved.'));
@@ -93,7 +93,7 @@ class QuoteController extends Controller
         try {
             $quotes->send($quote);
         } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
+            return back()->with('error', $this->refusalMessage($exception));
         }
 
         return back()->with('status', __('Quote sent to :email.', ['email' => $quote->client->email]));

@@ -2,6 +2,8 @@
 
 namespace Tests\Feature\Servers;
 
+use App\Billing\PaymentRecorder;
+use App\Enums\AutoSetup;
 use App\Enums\InvoiceStatus;
 use App\Enums\OrderStatus;
 use App\Enums\ServiceStatus;
@@ -281,6 +283,97 @@ class VirtualizorResourceAddonsTest extends TestCase
 
         $this->assertTrue($result->success, $result->message);
         $this->assertSame(['byname', 'plans', 'addvs', 'vps'], array_column($api->calls, 'kind'));
+    }
+
+    public function test_an_unclear_create_stays_on_its_server_when_that_server_is_turned_off(): void
+    {
+        $this->fakeVirtualizor(['addvs' => fn () => throw new ConnectionException('cURL error 28: timed out')]);
+        $service = $this->orderedVps($this->policy(), ['cpu']);
+        $this->assertFalse(app(Provisioner::class)->create($service)->success);
+        $this->assertSame($this->server->id, $service->fresh()->module_data[ResourceAddons::KEY]['server_id']);
+
+        // Staff turn the server off and add another one.
+        $this->server->update(['is_active' => false]);
+        $other = Server::factory()->create(['module' => 'virtualizor', 'hostname' => 'vz2.example.test', 'port' => 4085]);
+        $this->travel(11)->minutes();
+
+        // The VPS the request made is found on the first server, and taken.
+        $api = $this->fakeVirtualizor([
+            'byname' => ['vs' => ['90' => ['vpsid' => '90', 'hostname' => 'vps1.example.com', 'email' => 'mer.las@example.com']]],
+            'vps' => $this->vps(['cores' => '3']),
+        ]);
+        $result = app(Provisioner::class)->create($service->fresh());
+
+        $this->assertTrue($result->success, $result->message);
+        $this->assertSame(['byname', 'vps'], array_column($api->calls, 'kind'));
+        $this->assertSame($this->server->id, $service->fresh()->server_id);
+        $this->assertNotSame($other->id, $service->fresh()->server_id);
+        Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'vz2.example.test'));
+    }
+
+    public function test_a_create_that_made_no_vps_on_a_server_turned_off_moves_on_only_at_the_next_try(): void
+    {
+        $this->fakeVirtualizor(['addvs' => fn () => throw new ConnectionException('cURL error 28: timed out')]);
+        $service = $this->orderedVps($this->policy(), ['cpu']);
+        $this->assertFalse(app(Provisioner::class)->create($service)->success);
+        $this->server->update(['is_active' => false]);
+        $other = Server::factory()->create(['module' => 'virtualizor', 'hostname' => 'vz2.example.test', 'port' => 4085]);
+        $this->travel(11)->minutes();
+
+        // Virtualizor shows none was made on the first server: no new VPS is sent to it.
+        $api = $this->fakeVirtualizor(['byname' => ['vs' => []]]);
+        $result = app(Provisioner::class)->create($service->fresh());
+
+        $this->assertSame('Virtualizor shows the earlier create request made no VPS, and this server is turned off. Try again: the next try makes the VPS on a server that is on.', $result->message);
+        $this->assertSame(['byname'], array_column($api->calls, 'kind'));
+        $this->assertArrayNotHasKey(ResourceAddons::KEY, (array) $service->fresh()->module_data);
+
+        // The next try picks the server that is on.
+        $api = $this->fakeVirtualizor(['vps' => $this->vps(['cores' => '3'])]);
+        $result = app(Provisioner::class)->create($service->fresh());
+
+        $this->assertTrue($result->success, $result->message);
+        $this->assertSame(['plans', 'addvs', 'vps'], array_column($api->calls, 'kind'));
+        $this->assertSame($other->id, $service->fresh()->server_id);
+        $this->assertStringContainsString('vz2.example.test', $api->calls[1]['url']);
+    }
+
+    public function test_an_unclear_create_is_not_sent_again_after_the_service_was_moved_by_hand(): void
+    {
+        $this->fakeVirtualizor(['addvs' => fn () => throw new ConnectionException('cURL error 28: timed out')]);
+        $service = $this->orderedVps($this->policy(), ['cpu']);
+        $this->assertFalse(app(Provisioner::class)->create($service)->success);
+
+        $other = Server::factory()->create(['module' => 'virtualizor', 'hostname' => 'vz2.example.test', 'port' => 4085]);
+        $service->update(['server_id' => $other->id]);
+        $this->travel(11)->minutes();
+        $api = $this->fakeVirtualizor(['byname' => ['vs' => []]]);
+
+        $result = app(Provisioner::class)->create($service->fresh());
+
+        $this->assertFalse($result->success);
+        $this->assertSame("The create request for this VPS was sent to server #{$this->server->id}, so a VPS it made is only looked for there. Move the service back to that server and try again. No VPS is made on another server.", $result->message);
+        $this->assertSame([], $api->calls);
+        $this->assertSame('requested', $service->fresh()->module_data[ResourceAddons::KEY]['state']);
+    }
+
+    public function test_a_vps_set_up_as_soon_as_the_order_is_placed_is_made_once_its_order_invoice_is_paid(): void
+    {
+        $api = $this->fakeVirtualizor(['vps' => $this->vps(['cores' => '3'])]);
+        $service = $this->orderedVps($this->policy(), ['cpu'], paid: false);
+        $service->product->update(['auto_setup' => AutoSetup::OnOrder]);
+        $invoice = $service->order->invoice;
+        InvoiceItem::query()->create(['invoice_id' => $invoice->id, 'service_id' => $service->id, 'type' => InvoiceItem::TYPE_SERVICE, 'description' => 'VPS - vps1.example.com', 'amount' => 2500, 'period_start' => today(), 'period_end' => today()->addMonth()->subDay()]);
+
+        // The setup when the order was placed could not make the VPS yet.
+        $this->assertSame('The order invoice with the resource add-ons is not paid yet, so no VPS was made.', app(Provisioner::class)->create($service)->message);
+        $this->assertSame([], $api->calls);
+
+        app(PaymentRecorder::class)->record($invoice->fresh(), 3000, 'banktransfer', 'BANK-1');
+
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertSame(ServiceStatus::Active, $service->fresh()->status);
+        $this->assertSame(['plans', 'addvs', 'vps'], array_column($api->calls, 'kind'));
     }
 
     public function test_a_create_virtualizor_refused_may_be_tried_again(): void
@@ -564,7 +657,7 @@ class VirtualizorResourceAddonsTest extends TestCase
                     isset($query['vpsid']) => 'vps',
                     default => 'vs',
                 };
-                $this->api->calls[] = ['kind' => $kind, 'query' => $query, 'data' => $request->data()];
+                $this->api->calls[] = ['kind' => $kind, 'query' => $query, 'data' => $request->data(), 'url' => $request->url()];
                 $answer = $this->api->answers[$kind] ?? ['error' => ['Unexpected request: '.$kind]];
                 $answer = $answer instanceof Closure ? $answer($query, $request->data()) : $answer;
 

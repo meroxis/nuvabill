@@ -14,6 +14,7 @@ use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use stdClass;
 use Tests\TestCase;
@@ -145,6 +146,87 @@ class VirtualizorModuleTest extends TestCase
         $this->getJson(route('client.services.panel-status', $service))->assertNotFound();
 
         $this->assertContains('throttle:30,1', app('router')->getRoutes()->getByName('client.services.panel-status')->gatherMiddleware());
+    }
+
+    public function test_a_status_check_asks_virtualizor_only_for_the_status(): void
+    {
+        $api = $this->fakeVirtualizor(['status' => ['status' => ['77' => ['status' => 1]]]]);
+        $service = $this->service();
+        $this->actingAs($service->client, 'web');
+
+        $this->getJson(route('client.services.panel-status', $service))->assertExactJson(['state' => 'running']);
+        $this->assertSame(['status'], array_column($api->calls, 'kind'));
+
+        // Only an unclear status pays for the search, which shows a VPS Virtualizor suspended.
+        $api = $this->fakeVirtualizor([
+            'status' => ['status' => []],
+            'vps' => fn (array $query): array => ['vs' => [$query['vpsid'] => ['vpsid' => $query['vpsid'], 'uid' => '58', 'suspended' => '1']]],
+        ]);
+        $this->getJson(route('client.services.panel-status', $service))->assertExactJson(['state' => 'suspended']);
+        $this->assertSame(['status', 'vps'], array_column($api->calls, 'kind'));
+    }
+
+    public function test_failed_status_checks_are_reported_once_in_five_minutes(): void
+    {
+        Exceptions::fake();
+        $this->fakeVirtualizor(['status' => fn () => throw new ConnectionException('cURL error 28: timed out')]);
+        $service = $this->service();
+        $this->actingAs($service->client, 'web');
+
+        foreach (range(1, 3) as $check) {
+            $this->getJson(route('client.services.panel-status', $service))->assertOk()->assertExactJson(['state' => 'unknown']);
+        }
+
+        Exceptions::assertReportedCount(1);
+
+        $this->travel(6)->minutes();
+        $this->getJson(route('client.services.panel-status', $service))->assertExactJson(['state' => 'unknown']);
+        Exceptions::assertReportedCount(2);
+    }
+
+    public function test_a_failed_panel_sign_in_goes_back_to_the_service_page_after_status_checks(): void
+    {
+        // Without panel sign-in on the product, there is no link to give.
+        $this->fakeVirtualizor([]);
+        $service = $this->service();
+        $this->actingAs($service->client, 'web');
+
+        $this->get(route('client.services.show', $service))->assertOk();
+        $this->getJson(route('client.services.panel-status', $service))->assertOk();
+
+        // The panel's button opens a new tab without a Referer.
+        $this->post(route('client.services.login', $service))
+            ->assertRedirect(route('client.services.show', $service))
+            ->assertSessionHas('error', 'The control panel link is not available right now. Try again in a minute or open a ticket.');
+    }
+
+    public function test_a_suspended_vps_shows_no_empty_power_bar(): void
+    {
+        $this->fakeVirtualizor(['status' => ['status' => ['77' => ['status' => 2]]]]);
+        $service = $this->service();
+        $this->actingAs($service->client, 'web');
+
+        $suspended = $this->get(route('client.services.show', $service))->assertSee('This server is suspended.')->getContent();
+        $this->assertMatchesRegularExpression('/<form[^>]*x-show="state !== \'suspended\'"[^>]*style="display: none"/', $suspended);
+
+        $this->fakeVirtualizor(['status' => ['status' => ['77' => ['status' => 1]]]]);
+        $running = $this->get(route('client.services.show', $service))->getContent();
+        $this->assertMatchesRegularExpression('/<form[^>]*x-show="state !== \'suspended\'"[^>]*>/', $running);
+        $this->assertDoesNotMatchRegularExpression('/<form[^>]*x-show="state !== \'suspended\'"[^>]*style="display: none"/', $running);
+    }
+
+    public function test_power_buttons_on_the_demo_get_the_demo_message_as_json(): void
+    {
+        $api = $this->fakeVirtualizor([]);
+        $service = $this->service();
+        config(['nuvabill.demo' => true]);
+
+        $this->actingAs($service->client, 'web')
+            ->postJson(route('client.services.panel', [$service, 'restart']))
+            ->assertForbidden()
+            ->assertExactJson(['message' => 'This is turned off in the demo, so it keeps working for every visitor.']);
+
+        $this->assertSame([], $api->calls);
     }
 
     public function test_the_api_key_and_password_never_reach_a_message_or_the_activity_log(): void

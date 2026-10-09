@@ -102,7 +102,7 @@ class ClientController extends Controller
         try {
             $wallet->change($client, $amount, $data['reason'], admin: $request->user('admin'));
         } catch (RuntimeException $exception) {
-            return back()->withErrors(['amount' => $exception->getMessage()])->withInput();
+            return back()->withErrors(['amount' => $this->refusalMessage($exception)])->withInput();
         }
 
         Activity::log('wallet.changed', (($amount > 0 ? 'Added ' : 'Removed ').money(abs($amount), $client->currency))." (wallet): {$data['reason']}", $client, $client);

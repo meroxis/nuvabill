@@ -205,9 +205,10 @@ class InvoiceController extends Controller
         try {
             $creditNote = $creditNotes->issue($invoice, $invoice->creditableAmount(), CreditNote::METHOD_REFUND, __('Refund'), $request->user('admin'), $request->boolean('through_gateway'));
         } catch (RuntimeException|InvalidArgumentException $exception) {
+            $reason = $this->refusalMessage($exception);
             report($exception);
 
-            return back()->with('error', __('The refund did not finish: :reason', ['reason' => $exception->getMessage()]));
+            return back()->with('error', __('The refund did not finish: :reason', ['reason' => $reason]));
         }
 
         return back()->with('status', __('Invoice refunded. Credit note :number was made.', ['number' => $creditNote->number]));
@@ -230,9 +231,10 @@ class InvoiceController extends Controller
         } catch (InvalidArgumentException $exception) {
             throw ValidationException::withMessages(['amount' => $exception->getMessage()]);
         } catch (RuntimeException $exception) {
+            $reason = $this->refusalMessage($exception);
             report($exception);
 
-            return back()->with('error', __('The refund did not finish: :reason', ['reason' => $exception->getMessage()]));
+            return back()->with('error', __('The refund did not finish: :reason', ['reason' => $reason]));
         }
 
         return back()->with('status', __('Credit note :number was made.', ['number' => $creditNote->number]));
@@ -260,7 +262,7 @@ class InvoiceController extends Controller
         try {
             $invoices->cancel($invoice);
         } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
+            return back()->with('error', $this->refusalMessage($exception));
         }
 
         // It was paid or closed in the meantime, for example by a payment that just arrived.

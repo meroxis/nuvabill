@@ -134,7 +134,7 @@ class ExtensionController extends Controller
         try {
             $where = Quarantine::move($manifest->path, 'extensions/'.$manifest->type.'s/'.$manifest->slug);
         } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
+            return back()->with('error', $this->refusalMessage($exception));
         }
 
         $extensions->refresh();

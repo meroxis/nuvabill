@@ -208,8 +208,9 @@ final class ResourceAddons
     /**
      * The note of a create with add-on extras, or null when there is none or nothing was sent yet.
      * Notes from before version 1.1.0 keep their state next to a signed "snapshot"; they are read too.
+     * "server_id" is the Nuvabill server the request went to; older notes have none.
      *
-     * @return array{state: string, vpsid: string|null, hostname: string|null, email: string|null, totals: array<string, int>, addons: list<int>, pool: int|null, requested_at: int|null}|null
+     * @return array{state: string, vpsid: string|null, server_id: int|null, hostname: string|null, email: string|null, totals: array<string, int>, addons: list<int>, pool: int|null, requested_at: int|null}|null
      */
     public static function record(Service $service): ?array
     {
@@ -243,6 +244,7 @@ final class ResourceAddons
             // A VPS that was made but has no ID is as unclear as a request without an answer.
             'state' => $vpsId === null ? self::REQUESTED : $state,
             'vpsid' => $vpsId,
+            'server_id' => ! $old && is_numeric($raw['server_id'] ?? null) && (int) $raw['server_id'] > 0 ? (int) $raw['server_id'] : null,
             'hostname' => is_string($note['hostname'] ?? null) ? $note['hostname'] : null,
             'email' => ! $old && is_string($raw['email'] ?? null) && $raw['email'] !== '' ? $raw['email'] : null,
             'totals' => array_map('intval', array_intersect_key(array_filter($totals, 'is_numeric'), self::MAXIMUMS)),
@@ -259,12 +261,12 @@ final class ResourceAddons
      * A made VPS's ID goes into the module data at once, so staff can always find it.
      *
      * @param  array<string, mixed>  $record
-     * @return array{state: string, vpsid: string|null, hostname: string|null, email: string|null, totals: array<string, int>, addons: list<int>, pool: int|null, requested_at: int|null}
+     * @return array{state: string, vpsid: string|null, server_id: int|null, hostname: string|null, email: string|null, totals: array<string, int>, addons: list<int>, pool: int|null, requested_at: int|null}
      */
     public static function remember(Service $service, array $record, ?string $password = null): array
     {
         $data = (array) $service->module_data;
-        $note = Arr::only($record, ['state', 'vpsid', 'hostname', 'email', 'totals', 'addons', 'pool', 'requested_at']);
+        $note = Arr::only($record, ['state', 'vpsid', 'server_id', 'hostname', 'email', 'totals', 'addons', 'pool', 'requested_at']);
         $secret = $password !== null ? Crypt::encryptString($password) : (is_array($data[self::KEY] ?? null) ? ($data[self::KEY]['secret'] ?? null) : null);
 
         if (is_string($secret) && ($note['state'] ?? null) !== self::VERIFIED) {

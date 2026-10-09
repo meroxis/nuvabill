@@ -29,6 +29,8 @@ export function vpsPanel(config) {
         message: '',
         timer: null,
         tries: 0,
+        // Counts the waits for a new state, so a check from an older wait stops once a new one began.
+        run: 0,
 
         init() {
             if (this.pending) {
@@ -63,19 +65,33 @@ export function vpsPanel(config) {
             return action === 'start' ? this.state === 'stopped' : this.state === 'running';
         },
 
+        /**
+         * Whether a power button is locked: all of them while an action runs, except Power off while
+         * a shutdown is awaited, as the shutdown message tells the client to use it when the server
+         * does not stop.
+         */
+        locked(action) {
+            return this.busy && !(action === 'poweroff' && this.pending === 'stop');
+        },
+
         async power(event) {
             const button = event.submitter;
+            const action = button?.dataset.action;
 
-            if (!button || !EXPECTED[button.dataset.action]) {
+            if (!button || !EXPECTED[action]) {
                 return;
             }
 
             event.preventDefault();
 
-            if (this.busy || (button.dataset.confirm && !window.confirm(button.dataset.confirm))) {
+            if (this.locked(action) || (button.dataset.confirm && !window.confirm(button.dataset.confirm))) {
                 return;
             }
 
+            // A Power off during a shutdown ends the wait for that shutdown.
+            clearTimeout(this.timer);
+            this.run += 1;
+            this.pending = null;
             this.busy = true;
             this.message = '';
 
@@ -95,7 +111,11 @@ export function vpsPanel(config) {
                 response = null;
             }
 
-            if (!response || (!response.ok && response.status !== 422) || typeof data.message !== 'string') {
+            // A refusal (422) and a locked action (403, as on the demo) come with a message for the
+            // client. Other answers, such as an expired session (419), get the general message.
+            const readable = response && (response.ok || response.status === 403 || response.status === 422);
+
+            if (!readable || typeof data.message !== 'string') {
                 this.busy = false;
                 this.message = config.messages.failed;
 
@@ -110,7 +130,7 @@ export function vpsPanel(config) {
                 return;
             }
 
-            this.pending = button.dataset.action;
+            this.pending = action;
 
             if (data.state === EXPECTED[this.pending]) {
                 this.finish(data.state, false);
@@ -120,14 +140,21 @@ export function vpsPanel(config) {
         },
 
         wait() {
+            const run = ++this.run;
+
             this.busy = true;
             this.tries = 0;
             clearTimeout(this.timer);
-            this.timer = setTimeout(() => this.check(), interval);
+            this.timer = setTimeout(() => this.check(run), interval);
         },
 
-        async check() {
+        async check(run) {
             const state = await this.fetchState();
+
+            // Another action began while this check waited for its answer.
+            if (run !== this.run) {
+                return;
+            }
 
             if (state !== null && state === EXPECTED[this.pending]) {
                 this.finish(state, true);
@@ -138,7 +165,7 @@ export function vpsPanel(config) {
             this.tries += 1;
 
             if (this.tries < maxTries) {
-                this.timer = setTimeout(() => this.check(), interval);
+                this.timer = setTimeout(() => this.check(run), interval);
 
                 return;
             }
@@ -153,6 +180,7 @@ export function vpsPanel(config) {
 
         finish(state, announce) {
             clearTimeout(this.timer);
+            this.run += 1;
             this.state = state;
             this.pending = null;
             this.busy = false;
@@ -186,10 +214,14 @@ export function vpsPanel(config) {
             });
         },
 
+        /**
+         * The server's state, or null when it cannot be read. It is sent as a background request,
+         * so the session does not keep the status address as the page to go back to.
+         */
         async fetchState() {
             try {
                 const response = await fetch(config.statusUrl, {
-                    headers: { Accept: 'application/json' },
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                     credentials: 'same-origin',
                     redirect: 'error',
                 });

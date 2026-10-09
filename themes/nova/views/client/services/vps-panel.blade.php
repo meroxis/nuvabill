@@ -95,7 +95,8 @@
     @else
         @if ($power !== [])
             <div class="vps-power">
-                <form method="POST" action="{{ $post($power[0]) }}" x-on:submit="power($event)">
+                {{-- A suspended server has no power button to show, so the whole bar is hidden. --}}
+                <form method="POST" action="{{ $post($power[0]) }}" x-on:submit="power($event)" x-show="state !== 'suspended'" @if ($state === 'suspended') style="display: none" @endif>
                     @csrf
                     <div class="vps-power-group" role="group" aria-label="{{ __('Power') }}">
                         @foreach ($power as $action)
@@ -106,7 +107,7 @@
                                 @isset($confirm[$action]) data-confirm="{{ $confirm[$action] }}" @endisset
                                 class="btn btn-sm @if ($action === 'start') btn-primary @elseif ($action === 'poweroff') btn-danger @endif"
                                 x-show="shows('{{ $action }}')"
-                                :disabled="busy"
+                                :disabled="locked('{{ $action }}')"
                                 @unless ($shows($action)) style="display: none" @endunless
                             ><x-icon :name="$action === 'restart' ? 'refresh' : 'power'" />{{ $actions[$action] }}</button>
                         @endforeach

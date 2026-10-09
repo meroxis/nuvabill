@@ -11,7 +11,6 @@ use App\Models\Service;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
-use PDOException;
 use RuntimeException;
 
 /**
@@ -50,13 +49,8 @@ class PlanChangeController extends Controller
 
         try {
             $change = $changes->start($service->load('product', 'client'), $product);
-        } catch (PDOException $exception) {
-            // A database error (a lock that waited too long, say) goes to the error page and the log,
-            // never into the message: it names the database server and the query. PDOException also
-            // covers the one Laravel throws when the database stops a transaction inside another.
-            throw $exception;
         } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
+            return back()->with('error', $this->refusalMessage($exception));
         }
 
         return match (true) {
@@ -79,13 +73,12 @@ class PlanChangeController extends Controller
         if ($pending !== null) {
             try {
                 $changes->cancel($pending);
-            } catch (PDOException $exception) {
-                throw $exception;
             } catch (RuntimeException $exception) {
+                $message = $this->refusalMessage($exception);
                 // Money on the invoice that cannot go back to the wallet by itself needs staff.
                 $stuck = $pending->invoice?->refresh()->status === InvoiceStatus::Unpaid && $pending->invoice->amount_paid > 0;
 
-                return back()->with('error', $stuck ? __('Part of the invoice for this change is already paid. Contact us to stop the change.') : $exception->getMessage());
+                return back()->with('error', $stuck ? __('Part of the invoice for this change is already paid. Contact us to stop the change.') : $message);
             }
         }
 

@@ -75,7 +75,12 @@ class InvoicePaidHandler
             $service->save();
         }
 
-        if ($service->status === ServiceStatus::Pending && $service->product->auto_setup === AutoSetup::OnPayment) {
+        // A service set up "as soon as the order is placed" is tried once more when its order invoice
+        // is paid: a setup that needs the payment (a VPS with paid extras, say) could not finish then.
+        $orderInvoicePaid = $service->order !== null && (int) $service->order->invoice_id === (int) $item->invoice_id;
+
+        if ($service->status === ServiceStatus::Pending
+            && ($service->product->auto_setup === AutoSetup::OnPayment || ($service->product->auto_setup === AutoSetup::OnOrder && $orderInvoicePaid))) {
             if ($service->order?->needs_review !== true) {
                 ProvisionService::dispatch($service);
             }

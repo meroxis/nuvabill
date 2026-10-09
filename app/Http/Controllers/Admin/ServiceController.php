@@ -17,7 +17,6 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
-use PDOException;
 use RuntimeException;
 
 class ServiceController extends Controller
@@ -99,13 +98,8 @@ class ServiceController extends Controller
 
         try {
             $change = $changes->start($service->load('product', 'client'), Product::query()->findOrFail($data['product_id']), $request->user('admin'), (bool) $data['charge']);
-        } catch (PDOException $exception) {
-            // A database error (a lock that waited too long, say) goes to the error page and the log,
-            // never into the message: it names the database server and the query. PDOException also
-            // covers the one Laravel throws when the database stops a transaction inside another.
-            throw $exception;
         } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
+            return back()->with('error', $this->refusalMessage($exception));
         }
 
         return back()->with('status', match (true) {
@@ -123,10 +117,8 @@ class ServiceController extends Controller
             if ($pending !== null) {
                 $changes->cancel($pending);
             }
-        } catch (PDOException $exception) {
-            throw $exception;
         } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
+            return back()->with('error', $this->refusalMessage($exception));
         }
 
         return back()->with('status', __('The plan change was stopped.'));

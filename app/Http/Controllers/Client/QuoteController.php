@@ -39,7 +39,7 @@ class QuoteController extends Controller
         try {
             $invoice = $quotes->accept($quote);
         } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
+            return back()->with('error', $this->refusalMessage($exception));
         }
 
         return redirect()->route('client.invoices.show', $invoice)->with('status', __('Thank you! Your invoice is ready.'));
@@ -52,7 +52,7 @@ class QuoteController extends Controller
         try {
             $quotes->decline($quote);
         } catch (RuntimeException $exception) {
-            return back()->with('error', $exception->getMessage());
+            return back()->with('error', $this->refusalMessage($exception));
         }
 
         return back()->with('status', __('Quote declined. Thank you for letting us know.'));

@@ -63,14 +63,12 @@ class ServiceController extends Controller
 
             return $form !== null
                 ? response()->view('theme::client.services.panel-login', ['form' => $form, 'service' => $service])->withHeaders(self::PRIVATE_HEADERS)
-                : back()->with('error', __('The control panel link is not available right now. Try again in a minute or open a ticket.'));
+                : $this->loginUnavailable($service);
         }
 
         $url = $provisioner->loginUrl($service);
 
-        $response = $url !== null
-            ? redirect()->away($url)
-            : back()->with('error', __('The control panel link is not available right now. Try again in a minute or open a ticket.'));
+        $response = $url !== null ? redirect()->away($url) : $this->loginUnavailable($service);
 
         return $response->withHeaders(self::PRIVATE_HEADERS);
     }
@@ -107,13 +105,11 @@ class ServiceController extends Controller
     {
         $this->authorizeOwner($request, $service);
 
-        $panel = $provisioner->clientPanel($service);
+        $state = $provisioner->clientPanelState($service);
 
-        abort_if($panel === null, 404);
+        abort_if($state === null, 404);
 
-        return response()->json([
-            'state' => empty($panel['data']['error']) ? $this->panelState($panel['data']['state'] ?? null) : 'unknown',
-        ])->withHeaders(self::PRIVATE_HEADERS);
+        return response()->json(['state' => $this->panelState($state)])->withHeaders(self::PRIVATE_HEADERS);
     }
 
     /**
@@ -122,6 +118,16 @@ class ServiceController extends Controller
     private function panelState(mixed $state): string
     {
         return in_array($state, ['running', 'stopped', 'suspended'], true) ? $state : 'unknown';
+    }
+
+    /**
+     * Back to the service page with the reason. The sign-in opens in a new tab without a Referer,
+     * so "back" could be any page the session saw last, even a background status check.
+     */
+    private function loginUnavailable(Service $service): RedirectResponse
+    {
+        return redirect()->route('client.services.show', $service)
+            ->with('error', __('The control panel link is not available right now. Try again in a minute or open a ticket.'));
     }
 
     private function authorizeOwner(Request $request, Service $service): void

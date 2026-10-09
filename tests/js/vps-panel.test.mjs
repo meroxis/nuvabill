@@ -172,6 +172,69 @@ test('a shutdown that does not finish suggests a power off', async () => {
     assert.equal(panel.message, 'Still running.');
 });
 
+test('a locked action shows the server\'s message, as on the demo', async () => {
+    const panel = vpsPanel(config({ state: 'running' }));
+
+    panel.power(click('restart'));
+    await settle();
+    requests[0].answer({ message: 'This is turned off in the demo, so it keeps working for every visitor.' }, 403);
+    await settle();
+
+    assert.equal(panel.message, 'This is turned off in the demo, so it keeps working for every visitor.');
+    assert.equal(panel.busy, false);
+    assert.equal(panel.pending, null);
+});
+
+test('power off can be used while a shutdown is awaited, and ends that wait', async () => {
+    const panel = vpsPanel(config({ state: 'running' }));
+
+    panel.power(click('stop'));
+    await settle();
+    requests[0].answer({ ok: true, message: 'A shutdown signal was sent.', pending: 'stop', state: 'running' });
+    await settle();
+
+    assert.equal(panel.pending, 'stop');
+    assert.equal(panel.locked('poweroff'), false);
+    assert.equal(panel.locked('restart'), true);
+
+    // A status check is on its way when the client clicks Power off.
+    mock.timers.tick(4000);
+    await settle();
+    assert.equal(requests[1].url, '/client/services/5/panel-status');
+
+    panel.power(click('poweroff', 'Power off?'));
+    await settle();
+    assert.equal(requests[2].url, '/client/services/5/panel/poweroff');
+    assert.equal(panel.locked('poweroff'), true, 'A second click waits for the answer.');
+
+    // The old check answers late: it changes nothing and checks no more.
+    requests[1].answer({ state: 'running' });
+    await settle();
+    assert.equal(panel.busy, true);
+
+    requests[2].answer({ ok: true, message: 'The VPS is powered off.', pending: 'poweroff', state: 'stopped' });
+    await settle();
+
+    assert.equal(panel.state, 'stopped');
+    assert.equal(panel.pending, null);
+    assert.equal(panel.busy, false);
+    assert.equal(panel.message, 'The VPS is powered off.');
+    mock.timers.tick(10000);
+    await settle();
+    assert.equal(requests.length, 3);
+});
+
+test('status checks are sent as background requests', async () => {
+    const panel = vpsPanel(config({ state: 'unknown' }));
+
+    panel.refresh();
+    await settle();
+
+    // Laravel does not keep a background request as the page to go back to.
+    assert.equal(requests[0].options.headers['X-Requested-With'], 'XMLHttpRequest');
+    assert.equal(requests[0].options.headers.Accept, 'application/json');
+});
+
 test('every power button shows while the state is unknown, and the right ones otherwise', () => {
     const panel = vpsPanel(config({ state: 'unknown' }));
 

@@ -117,7 +117,7 @@ class OrderController extends Controller
                     $order->update(['status' => OrderStatus::Cancelled]);
                 });
             } catch (RuntimeException $exception) {
-                return back()->with('error', $exception->getMessage());
+                return back()->with('error', $this->refusalMessage($exception));
             }
 
             Activity::log('order.cancelled', "Order #{$order->number} cancelled", $order);

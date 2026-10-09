@@ -98,7 +98,7 @@ class MarketplaceController extends Controller
             $download = $this->client->download($slug, $key);
             $installed = $installer->install($download, $key);
         } catch (RuntimeException $exception) {
-            return back()->withInput()->with('error', $exception->getMessage());
+            return back()->withInput()->with('error', $this->refusalMessage($exception));
         }
 
         $this->client->catalog(fresh: true);
