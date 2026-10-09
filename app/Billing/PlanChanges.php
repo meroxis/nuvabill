@@ -6,6 +6,7 @@ use App\Enums\InvoiceStatus;
 use App\Enums\ServiceStatus;
 use App\Mail\TemplateMailer;
 use App\Models\Admin;
+use App\Models\Client;
 use App\Models\CreditNote;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
@@ -253,12 +254,16 @@ class PlanChanges
      */
     public function start(Service $service, Product $product, ?Admin $admin = null, bool $charge = true): PlanChange
     {
+        // Up to three tries, like a checkout: on MySQL and MariaDB the gaps between saved services
+        // are locked too, so two sales can still lock each other out. The database then stops one of
+        // them; it is rolled back in full and tried again. Only rows are saved in here: the log, the
+        // invoice mail and a change that happens now run after it.
         $change = DB::transaction(function () use ($service, $product, $admin, $charge): PlanChange {
-            // Locked before anything is read, in the order checkouts lock: the new plan's row, then
-            // the service, then the plan's services as its stock is counted. Two clients cannot both
-            // take the last one of a plan with a stock limit. Staff may.
+            // Locked before anything is read, in the order used everywhere (see lockPlans): both plans,
+            // then the service, then the new plan's services as its stock is counted. Two clients
+            // cannot both take the last one of a plan with a stock limit. Staff may.
             if ($admin === null) {
-                Product::query()->whereKey($product->id)->lockForUpdate()->first();
+                $this->lockPlans($service->product_id, $product->id);
             }
 
             $locked = Service::query()->lockForUpdate()->findOrFail($service->id);
@@ -316,7 +321,7 @@ class PlanChanges
             }
 
             return $change;
-        });
+        }, 3);
 
         Activity::log('service.plan_change', "Plan change for service #{$service->id}: {$service->product->name} → {$product->name} ({$change->mode})", $service, actor: $admin);
 
@@ -350,9 +355,14 @@ class PlanChanges
                 return false;
             }
 
-            // Locked before anything is read, in the order checkouts lock: the new plan's row, then
-            // the service, then the plan's services as its stock is counted.
-            $product = Product::query()->lockForUpdate()->find($locked->to_product_id);
+            // Locked before anything is read, in the order used everywhere (see lockPlans): the
+            // client whose wallet gets the unused time, both plans, the service, then the new plan's
+            // services as its stock is counted.
+            if ($locked->mode === PlanChange::MODE_NOW && $locked->difference < 0) {
+                Client::query()->whereKey($locked->client_id)->lockForUpdate()->first();
+            }
+
+            $product = $this->lockPlans($locked->from_product_id, $locked->to_product_id)->firstWhere('id', $locked->to_product_id);
             $service = Service::query()->lockForUpdate()->findOrFail($locked->service_id);
             // The last one of a plan in stock may have gone while the client's change waited.
             $countsStock = $product !== null && $locked->admin_id === null && $locked->mode !== PlanChange::MODE_RENEWAL;
@@ -416,6 +426,20 @@ class PlanChanges
         ]);
 
         return true;
+    }
+
+    /**
+     * Lock the rows of the plans a service moves between, in id order. Checkouts and plan changes
+     * lock rows in one order, so two of them never wait for each other in a circle: a plan change,
+     * then a client, then a coupon, then products in id order, then services. Two changes in
+     * opposite directions (Small to Large and Large to Small) so queue on the first plan, instead of
+     * each holding its own service while it counts the other's plan.
+     *
+     * @return Collection<int, Product>
+     */
+    private function lockPlans(int ...$ids): Collection
+    {
+        return Product::query()->whereKey(array_values(array_unique($ids)))->orderBy('id')->lockForUpdate()->get();
     }
 
     /**

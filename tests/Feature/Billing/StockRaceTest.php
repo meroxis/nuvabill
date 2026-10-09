@@ -20,12 +20,16 @@ use App\Models\Service;
 use Illuminate\Database\Connection;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Events\TransactionBeginning;
+use Illuminate\Database\Events\TransactionCommitted;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Process\InvokedProcess;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Process;
+use PDOException;
 use PHPUnit\Framework\Attributes\Group;
 use RuntimeException;
 use Tests\TestCase;
@@ -34,8 +38,9 @@ use Tests\TestCase;
  * The last one of a product with a stock limit goes to one buyer only, also when another checkout
  * saves its order while this one runs. On MySQL and MariaDB a transaction can read an older
  * snapshot that misses that order, so these tests open a second connection to the same database
- * and let it buy the last one at the worst moment. The second connection only sees saved rows, so
- * each test saves for real; TestCase then builds the database again for the next test.
+ * and let it buy the last one at the worst moment. Two plan changes at once run the real code, the
+ * second one in a process of its own. The other connection only sees saved rows, so each test saves
+ * for real; TestCase then builds the database again for the next test.
  */
 #[Group('mysql')]
 class StockRaceTest extends TestCase
@@ -86,12 +91,14 @@ class StockRaceTest extends TestCase
         $this->twoCheckoutsWithACouponShareOutTheLastOne();
     }
 
-    public function test_a_plan_change_and_a_checkout_cannot_both_take_the_last_one(): void
+    public function test_plan_changes_at_the_same_moment_as_checkouts_and_other_plan_changes(): void
     {
         $this->saveForReal();
 
         $this->aPlanChangeCannotStartForTheLastOneSoldAfterItsSnapshot();
         $this->aPaidPlanChangeStopsWhenTheLastOneSoldAfterItsSnapshot();
+        $this->aPlanChangeTheDatabaseStoppedIsTriedAgain();
+        $this->twoPlanChangesInOppositeDirectionsBothStartAtTheFirstTry();
     }
 
     public function test_on_mariadb_with_snapshot_isolation_the_checkout_is_tried_again_and_refused(): void
@@ -230,6 +237,135 @@ class StockRaceTest extends TestCase
         $this->assertSame($service->product_id, $service->fresh()->product_id);
         $this->assertSame(1, $this->servicesHoldingStock($business));
         $this->assertSame(500, $service->client->fresh()->credit, 'The upgrade paid for goes back to the wallet.');
+    }
+
+    /**
+     * Two sales can still lock each other out through the gaps between saved rows. The database then
+     * stops one of them; a plan change it stopped is rolled back and tried again, and makes one
+     * change and one invoice.
+     */
+    private function aPlanChangeTheDatabaseStoppedIsTriedAgain(): void
+    {
+        [$service, $business] = $this->serviceThatCanUpgrade();
+        $tries = $this->countTries();
+        $stopped = false;
+
+        DB::listen(function (QueryExecuted $query) use (&$stopped): void {
+            if (! $stopped && $query->connection->transactionLevel() > 0 && preg_match('/\bfrom\s+[`"]?services\b.*\bfor update\b/is', $query->sql) === 1) {
+                $stopped = true;
+
+                throw new QueryException($query->connectionName, $query->sql, $query->bindings, new PDOException('SQLSTATE[40001]: Serialization failure: 1213 Deadlock found when trying to get lock; try restarting transaction'));
+            }
+        });
+
+        $change = app(PlanChanges::class)->start($service, $business);
+
+        $this->assertTrue($stopped);
+        $this->assertSame(2, $tries->count);
+        $this->assertSame(PlanChange::MODE_INVOICE, $change->mode);
+        $this->assertSame(1, PlanChange::query()->where('service_id', $service->id)->count());
+        $this->assertSame(1, Invoice::query()->whereHas('items', fn ($query) => $query->where('service_id', $service->id))->count());
+    }
+
+    /**
+     * Two clients change plan at the same moment in opposite directions: Small to Large here, and
+     * Large to Small in a process of its own that holds its locks for a moment. Both plans have a
+     * stock limit, so each change counts the other's plan. Both start at the first try: this one
+     * waits for the plans the other one holds, instead of holding a service the other one needs.
+     */
+    private function twoPlanChangesInOppositeDirectionsBothStartAtTheFirstTry(): void
+    {
+        // The other process runs on the real clock and reads the settings saved here.
+        $this->travelBack();
+        $this->setSettings(['billing.downgrade' => 'renewal']);
+
+        $small = Product::factory()->priced(1000)->create(['name' => 'Small', 'stock' => 5]);
+        $large = Product::factory()->priced(2000)->create(['name' => 'Large', 'stock' => 5]);
+        $small->update(['upgrade_product_ids' => [$large->id]]);
+        $large->update(['upgrade_product_ids' => [$small->id]]);
+        $client = Client::factory()->create(['first_name' => 'Mer', 'last_name' => 'Las', 'currency' => 'USD']);
+        $up = Service::factory()->create(['client_id' => $client->id, 'product_id' => $small->id, 'domain' => 'up.example.test', 'recurring_amount' => 1000, 'next_due_date' => today()->addDays(15)]);
+        $down = Service::factory()->create(['client_id' => $this->buyer->id, 'product_id' => $large->id, 'domain' => 'down.example.test', 'recurring_amount' => 2000, 'next_due_date' => today()->addDays(15)]);
+
+        $other = $this->startPlanChangeInAnotherProcess($down, $small, pauseMs: 2000);
+        $tries = $this->countTries();
+        $waited = null;
+
+        DB::listen(function (QueryExecuted $query) use (&$waited): void {
+            if ($waited === null && preg_match('/\bfrom\s+[`"]?products\b.*\bfor update\b/is', $query->sql) === 1) {
+                $waited = $query->time;
+            }
+        });
+
+        $change = app(PlanChanges::class)->start($up->load('product', 'client'), $large);
+        $result = $other->wait();
+        $lines = preg_split('/\R/', trim($result->output()));
+
+        $this->assertSame(['started' => true, 'mode' => PlanChange::MODE_RENEWAL, 'tries' => 1], json_decode((string) end($lines), true), 'The other change: '.$result->errorOutput());
+        $this->assertSame(PlanChange::MODE_INVOICE, $change->mode);
+        $this->assertSame(1, $tries->count, 'This change started at the first try.');
+        $this->assertGreaterThan(1000, $waited, 'This change waited for the plans the other change held.');
+        $this->assertSame(2, PlanChange::query()->whereIn('service_id', [$up->id, $down->id])->count());
+    }
+
+    /**
+     * Start a client's plan change in a process of its own (tests/Fixtures/billing), with the same
+     * test database. Returns once that change holds its locks; it keeps them for the pause.
+     */
+    private function startPlanChangeInAnotherProcess(Service $service, Product $product, int $pauseMs): InvokedProcess
+    {
+        $config = DB::connection()->getConfig();
+        $process = Process::path(base_path())
+            ->env([
+                'APP_ENV' => 'testing',
+                'CACHE_STORE' => 'array',
+                'MAIL_MAILER' => 'array',
+                'QUEUE_CONNECTION' => 'sync',
+                'DB_URL' => '',
+                'DB_CONNECTION' => DB::getDefaultConnection(),
+                'DB_HOST' => (string) $config['host'],
+                'DB_PORT' => (string) $config['port'],
+                'DB_DATABASE' => (string) $config['database'],
+                'DB_USERNAME' => (string) $config['username'],
+                'DB_PASSWORD' => (string) $config['password'],
+            ])
+            ->timeout(60)
+            ->start([PHP_BINARY, base_path('tests/Fixtures/billing/start-plan-change.php'), (string) $service->id, (string) $product->id, (string) $pauseMs]);
+
+        $locked = false;
+        $process->waitUntil(function (string $type, string $output) use (&$locked): bool {
+            return $locked = $locked || str_contains($output, 'locked');
+        });
+
+        $this->assertTrue($locked, 'The other plan change got its locks: '.$process->errorOutput().$process->output());
+
+        return $process;
+    }
+
+    /**
+     * Counts how many times this connection begins its next transaction (not the ones inside it)
+     * until one is saved: 1 when the first try is saved, 2 when the database stopped the first.
+     *
+     * @return object{count: int}
+     */
+    private function countTries(): object
+    {
+        $tries = new class
+        {
+            public int $count = 0;
+
+            public bool $saved = false;
+        };
+        $default = DB::getDefaultConnection();
+
+        Event::listen(TransactionBeginning::class, function (TransactionBeginning $event) use ($tries, $default): void {
+            $tries->count += ! $tries->saved && $event->connectionName === $default && $event->connection->transactionLevel() === 1 ? 1 : 0;
+        });
+        Event::listen(TransactionCommitted::class, function (TransactionCommitted $event) use ($tries, $default): void {
+            $tries->saved = $tries->saved || ($event->connectionName === $default && $event->connection->transactionLevel() === 0);
+        });
+
+        return $tries;
     }
 
     /**

@@ -177,8 +177,10 @@ class Product extends Model
      *
      * On MySQL and MariaDB a plain count can read an older snapshot of the transaction and miss an
      * order another checkout saved a moment ago. This locking read cannot. Call it before anything
-     * else is read in the transaction, and lock products before services everywhere (as checkouts
-     * and plan changes do), so two of them never wait for each other in a circle.
+     * else is read in the transaction. Lock rows in the one order checkouts and plan changes use, so
+     * two of them never wait for each other in a circle: a plan change, then a client, then a coupon,
+     * then every product the transaction needs (in id order), then services. Lock any other product
+     * first, then call this.
      */
     public function lockedStockLeft(): ?int
     {

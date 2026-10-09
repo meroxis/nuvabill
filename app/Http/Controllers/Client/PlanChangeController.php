@@ -8,10 +8,10 @@ use App\Http\Controllers\Controller;
 use App\Models\PlanChange;
 use App\Models\Product;
 use App\Models\Service;
-use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
+use PDOException;
 use RuntimeException;
 
 /**
@@ -50,9 +50,10 @@ class PlanChangeController extends Controller
 
         try {
             $change = $changes->start($service->load('product', 'client'), $product);
-        } catch (QueryException $exception) {
+        } catch (PDOException $exception) {
             // A database error (a lock that waited too long, say) goes to the error page and the log,
-            // never into the message: it names the database server and the query.
+            // never into the message: it names the database server and the query. PDOException also
+            // covers the one Laravel throws when the database stops a transaction inside another.
             throw $exception;
         } catch (RuntimeException $exception) {
             return back()->with('error', $exception->getMessage());
@@ -78,7 +79,7 @@ class PlanChangeController extends Controller
         if ($pending !== null) {
             try {
                 $changes->cancel($pending);
-            } catch (QueryException $exception) {
+            } catch (PDOException $exception) {
                 throw $exception;
             } catch (RuntimeException $exception) {
                 // Money on the invoice that cannot go back to the wallet by itself needs staff.

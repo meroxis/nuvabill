@@ -61,8 +61,8 @@ class OrderPlacer
         // one of them; it is rolled back in full and made again.
         $order = DB::transaction(function () use ($client, $lines, $ipAddress, $fraudReasons, &$coupon): Order {
             // First, before anything is read: the client and coupon, then the products in stock and
-            // their services are locked, in the same order as everywhere else. MySQL and MariaDB then
-            // count the stock from the newest rows, not from an older snapshot of this transaction.
+            // their services are locked, in the order plan changes use too (see lockCoupon). MySQL
+            // and MariaDB then count the stock from the newest rows, not from an older snapshot.
             $checksCoupon = $coupon !== null && $lines->contains(fn (CartLine $line): bool => $line->discount > 0);
             $lockedCoupon = $checksCoupon ? $this->lockCoupon($client, $coupon) : null;
 
@@ -248,8 +248,9 @@ class OrderPlacer
      */
     private function lockCoupon(Client $client, Coupon $coupon): ?Coupon
     {
-        // Client first, then coupon, then products, then services: the same order everywhere, so no
-        // two checkouts wait for each other in a circle.
+        // Client first, then coupon, then products (in id order), then services. Plan changes keep the
+        // same order, with the change's own row before the client, so no two sales wait for each
+        // other in a circle.
         Client::query()->whereKey($client->id)->lockForUpdate()->first();
 
         return Coupon::query()->lockForUpdate()->find($coupon->id);
