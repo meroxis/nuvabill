@@ -30,6 +30,7 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.6.10 | Webhooks for add-ons |
 | 0.6.11 | Sign in from an order and come back to it; themes and order forms bring their own translations |
 | 0.6.12 | Fixes from a full line-by-line review: sign-in security, payments, wallet, renewals, imports and site health |
+| 0.6.13 | Virtualizor power buttons work again, a new VPS panel with one-click panel sign-in; stock limits hold on MySQL |
 
 ## Next
 

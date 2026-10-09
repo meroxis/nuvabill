@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.6.13](https://github.com/meroxis/nuvabill/releases/tag/v0.6.13) | 10 Oct 2026 | Virtualizor power buttons work again, a new VPS panel with one-click panel sign-in; stock limits hold on MySQL |
 | [0.6.12](https://github.com/meroxis/nuvabill/releases/tag/v0.6.12) | 4 Oct 2026 | Fixes from a full line-by-line review: sign-in security, payments, wallet, renewals, imports and site health |
 | [0.6.11](https://github.com/meroxis/nuvabill/releases/tag/v0.6.11) | 30 Sep 2026 | Sign in from an order and come back to it; themes and order forms bring their own translations |
 | [0.6.10](https://github.com/meroxis/nuvabill/releases/tag/v0.6.10) | 30 Sep 2026 | Webhooks for add-ons |
@@ -52,6 +53,43 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.6.13
+
+The Virtualizor power buttons work again, VPS clients get a better panel, and stock limits hold on MySQL and
+MariaDB.
+
+**Virtualizor 1.1.0**
+
+- **Start, stop and restart work again.** The module asked for the VPS status in a way that newer Virtualizor
+  versions do not answer, so the panel showed the wrong state and the buttons seemed to do nothing.
+- A new VPS panel for clients: one group of power buttons that shows "Starting..." until the server gets there,
+  cards for CPU, memory, disk and bandwidth use, IP addresses with a Copy button, and short notes on Shut down and
+  Power off. Power off stays usable while a shutdown is awaited. The panel works in dark mode, right-to-left and on
+  phones.
+- **Open Virtualizor panel** (a product setting, off by default): clients sign in to Virtualizor's own panel for
+  their VPS in one click. On every click Nuvabill checks that the VPS still belongs to that client and is not
+  suspended. The link is never saved or logged, it needs https, and it never uses an admin or API port. When the
+  sign-in fails, the client goes back to the service page with the reason.
+- More product options: recipe, control panel to install, IPv6 addresses and subnets, network and upload speed,
+  server group or server, and a limit on OS reinstalls. Empty options work as before.
+- Resource add-ons: sell extra cores, RAM, disk or IPv4 addresses as product add-ons, set per product in
+  "Resource add-ons (JSON)". Extras are only added when the order is paid, a plan change sets them again, and a
+  create request without a clear answer is never sent twice, also when the server is turned off in between.
+- **Security:** the Virtualizor API key and password never show in messages or the activity log.
+
+**Stock, plan changes and error pages**
+
+- On MySQL and MariaDB, two clients checking out at the same moment can no longer both buy the last one in stock.
+  Plan changes count stock the same safe way.
+- Two plan changes in opposite directions at the same moment no longer stop each other with an error page.
+- A product set up "as soon as the order is placed" is tried again when its order invoice is paid, so a setup that
+  needs the payment can finish.
+- **Security:** pages that show why an action was refused (quotes, wallet changes, cancels, refunds, credit notes,
+  plan changes, marketplace installs) no longer show a database error there. That error named the database server,
+  the database and the query. It now goes to the error page and the log.
+- **For developers:** server modules can implement the new `HasPanelState` contract, so the panel's status checks
+  ask only for the state, and `KeepsCreateServer`, so an unclear create stays on its server.
 
 ## 0.6.12
 
