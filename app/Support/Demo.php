@@ -117,7 +117,9 @@ class Demo
     {
         Http::fake(['https://'.self::VPS_HOST.':4085/*' => function (Request $request) {
             parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
-            $vpsId = (string) ($query['vpsid'] ?? $query['vs_status'][0] ?? '101');
+            // The status call names the VPS as vs_status=101 (older versions sent a list).
+            $status = $query['vs_status'] ?? null;
+            $vpsId = (string) ($query['vpsid'] ?? (is_array($status) ? (reset($status) ?: null) : $status) ?? '101');
             $seed = crc32($vpsId);
 
             return match (true) {

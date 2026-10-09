@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\Server;
 use App\Models\Service;
 use App\Provisioning\Provisioner;
+use App\Support\Demo;
 use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
@@ -26,6 +27,11 @@ class VirtualizorModuleTest extends TestCase
     use RefreshDatabase;
 
     private const API_PASSWORD = 'S3cretApiPass99';
+
+    /**
+     * The email of the Virtualizor user behind VPS 77.
+     */
+    private const VIRTUALIZOR_USER = 'mer.las@example.com';
 
     /**
      * The fake Virtualizor of the running test: its answers and the requests it got.
@@ -356,8 +362,9 @@ class VirtualizorModuleTest extends TestCase
         $this->assertStringNotContainsString('TESTTOKEN123', $sso['url']);
 
         // The owner is checked live before the link is made, and the link itself is never logged.
-        $this->assertSame(['vps', 'users', 'sso'], array_column($api->calls, 'kind'));
+        $this->assertSame(['vps', 'users', 'byuser', 'sso'], array_column($api->calls, 'kind'));
         $this->assertSame(['act' => 'vs', 'search' => '1', 'vpsid' => '77', 'page' => '1', 'reslen' => '1'], $this->withoutCredentials($api->calls[0]['query']));
+        $this->assertSame(['act' => 'vs', 'search' => '1', 'user' => self::VIRTUALIZOR_USER, 'page' => '1', 'reslen' => '100'], $this->withoutCredentials($api->calls[2]['query']));
         $this->assertFalse(ActivityLog::query()->where('description', 'like', '%sessvkD9MBpOg0aFkHfD%')->exists());
         $this->assertFalse(ActivityLog::query()->where('description', 'like', '%efgBrcHtvyVEGcvaeI9q2A9X4kaOAU18%')->exists());
         $this->assertTrue(ActivityLog::query()->where('action', 'service.panel_login')->exists());
@@ -380,19 +387,28 @@ class VirtualizorModuleTest extends TestCase
     public function test_panel_sign_in_is_refused_when_the_vps_does_not_belong_to_the_client_alone(): void
     {
         $sso = ['token_key' => 'sessvkD9MBpOg0aFkHfD', 'sid' => 'efgBrcHtvyVEGcvaeI9q2A9X4kaOAU18'];
+        $user = fn (array $values): array => ['users' => ['58' => $values + ['uid' => '58', 'email' => self::VIRTUALIZOR_USER, 'type' => '0', 'numvps' => '1']]];
+        $list = fn (array $owners): array => ['vs' => array_map(fn (string $uid): array => ['uid' => $uid], $owners)];
         $cases = [
-            'another user now' => [['uid' => '99'], ['users' => ['99' => ['uid' => '99', 'type' => '0', 'numvps' => '1']]]],
-            'suspended' => [['suspended' => '1'], null],
-            'an admin user' => [[], ['users' => ['58' => ['uid' => '58', 'type' => '1', 'numvps' => '1']]]],
-            'a cloud user' => [[], ['users' => ['58' => ['uid' => '58', 'type' => '2', 'numvps' => '1']]]],
-            'more VPS than the client has' => [[], ['users' => ['58' => ['uid' => '58', 'type' => '0', 'numvps' => '2']]]],
-            'no VPS count' => [[], ['users' => ['58' => ['uid' => '58', 'type' => '0']]]],
+            'another user now' => [['uid' => '99'], ['users' => ['99' => ['uid' => '99', 'type' => '0', 'numvps' => '1']]], null],
+            'suspended' => [['suspended' => '1'], null, null],
+            'an admin user' => [[], $user(['type' => '1']), null],
+            'a cloud user' => [[], $user(['type' => '2']), null],
+            'more VPS than the client has' => [[], $user(['numvps' => '2']), $list(['77' => '58', '80' => '58'])],
+            'no VPS count' => [[], ['users' => ['58' => ['uid' => '58', 'type' => '0']]], null],
+            // A count that leaves out a VPS of someone else: the list shows it.
+            'a VPS count that is too low' => [[], null, $list(['77' => '58', '80' => '58'])],
+            'a list with another user\'s VPS' => [[], null, $list(['77' => '58', '80' => '61'])],
+            'a list without its users' => [[], null, ['vs' => ['77' => ['vpsid' => '77']]]],
+            'a list without this VPS' => [[], null, ['vs' => []]],
+            'a list that may be cut short' => [[], $user(['numvps' => '100']), $list(array_fill_keys(array_map('strval', range(77, 176)), '58'))],
         ];
 
-        foreach ($cases as $case => [$vps, $users]) {
+        foreach ($cases as $case => [$vps, $users, $byUser]) {
             $api = $this->fakeVirtualizor(array_filter([
                 'vps' => fn (array $query): array => ['vs' => [$query['vpsid'] => $vps + ['vpsid' => $query['vpsid'], 'uid' => '58', 'suspended' => '0']]],
                 'users' => $users,
+                'byuser' => $byUser,
                 'sso' => $sso,
             ]));
             $service = $this->service(['client_login' => '1'], ['module_data' => ['vpsid' => '77', 'uid' => '58']]);
@@ -411,13 +427,17 @@ class VirtualizorModuleTest extends TestCase
             'vps' => function (array $query) use (&$owners): array {
                 return ['vs' => [$query['vpsid'] => ['vpsid' => $query['vpsid'], 'uid' => $owners[$query['vpsid']], 'suspended' => '0']]];
             },
-            'users' => ['users' => ['58' => ['uid' => '58', 'type' => '0', 'numvps' => '2']]],
+            'users' => ['users' => ['58' => ['uid' => '58', 'email' => self::VIRTUALIZOR_USER, 'type' => '0', 'numvps' => '2']]],
+            'byuser' => function () use (&$owners): array {
+                return ['vs' => array_map(fn (string $uid): array => ['uid' => $uid], array_filter($owners, fn (string $uid): bool => $uid === '58'))];
+            },
             'sso' => ['token_key' => 'sessvkD9MBpOg0aFkHfD', 'sid' => 'efgBrcHtvyVEGcvaeI9q2A9X4kaOAU18'],
         ]);
         $service = $this->service(['client_login' => '1'], ['module_data' => ['vpsid' => '77', 'uid' => '58']]);
         $this->service(['client_login' => '1'], ['client_id' => $service->client_id, 'module_data' => ['vpsid' => '78']], server: $service->server);
 
         $this->assertNotNull(app(Provisioner::class)->loginUrl($service));
+        $this->assertSame(['vps', 'users', 'byuser', 'sso'], array_column($api->calls, 'kind'));
 
         // The second VPS of that Virtualizor user belongs to another client.
         $owners['78'] = '61';
@@ -428,6 +448,81 @@ class VirtualizorModuleTest extends TestCase
 
         $this->assertNull(app(Provisioner::class)->loginUrl($service));
         $this->assertNotContains('sso', array_column($api->calls, 'kind'));
+    }
+
+    public function test_the_users_vps_are_searched_by_user_id_when_the_email_finds_none(): void
+    {
+        $api = $this->fakeVirtualizor([
+            'byuser' => fn (array $query): array => ['vs' => $query['user'] === '58' ? ['77' => ['vpsid' => '77', 'uid' => '58']] : []],
+            'sso' => ['token_key' => 'sessvkD9MBpOg0aFkHfD', 'sid' => 'efgBrcHtvyVEGcvaeI9q2A9X4kaOAU18'],
+        ]);
+        $service = $this->service(['client_login' => '1'], ['module_data' => ['vpsid' => '77', 'uid' => '58']]);
+
+        $this->assertNotNull(app(Provisioner::class)->loginUrl($service));
+        $this->assertSame([self::VIRTUALIZOR_USER, '58'], array_column(array_column(collect($api->calls)->where('kind', 'byuser')->values()->all(), 'query'), 'user'));
+    }
+
+    public function test_panel_sign_in_never_uses_an_admin_or_api_port(): void
+    {
+        $api = $this->fakeVirtualizor(['sso' => ['token_key' => 'sessvkD9MBpOg0aFkHfD', 'sid' => 'efgBrcHtvyVEGcvaeI9q2A9X4kaOAU18']]);
+        $admin = $this->service(['client_login' => '1', 'panel_port' => '4085'], ['module_data' => ['vpsid' => '77', 'uid' => '58']]);
+        $apiPort = $this->service(['client_login' => '1', 'panel_port' => '8443'], ['module_data' => ['vpsid' => '77', 'uid' => '58']], ['port' => 8443, 'hostname' => 'vz2.example.test']);
+        $defaultOnApiPort = $this->service(['client_login' => '1'], ['module_data' => ['vpsid' => '77', 'uid' => '58']], ['port' => 4083, 'hostname' => 'vz3.example.test']);
+
+        foreach ([$admin, $apiPort, $defaultOnApiPort] as $service) {
+            $this->assertNull(app(Provisioner::class)->loginUrl($service));
+            $this->assertNull(app(Provisioner::class)->loginUrl($service));
+        }
+
+        Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'act=sso'));
+        $this->assertSame([], $api->calls);
+
+        // Staff see why, once a day for each product, and the client keeps the VNC details.
+        $this->assertSame(3, ActivityLog::query()->where('action', 'service.module_failed')->where('description', 'like', '%is an admin or API port of Virtualizor%')->count());
+        $this->actingAs($admin->client, 'web')
+            ->get(route('client.services.show', $admin))
+            ->assertDontSee('Open Virtualizor panel')
+            ->assertSee('Show VNC details');
+    }
+
+    public function test_clients_keep_the_vnc_details_while_panel_sign_in_cannot_be_offered(): void
+    {
+        $this->fakeVirtualizor(['vnc' => ['info' => ['ip' => '198.51.100.2', 'port' => 5901, 'password' => 'vncpass1']]]);
+        $plain = $this->service(['client_login' => '1'], ['module_data' => ['vpsid' => '77', 'uid' => '58']], ['use_ssl' => false]);
+        $moved = $this->service(['client_login' => '1'], ['client_id' => $plain->client_id, 'module_data' => ['vpsid' => '77', 'uid' => '99']]);
+        $this->actingAs($plain->client, 'web');
+
+        foreach ([$plain, $moved] as $service) {
+            $this->get(route('client.services.show', $service))
+                ->assertSee('Show VNC details')
+                ->assertDontSee('Open Virtualizor panel')
+                ->assertDontSee('Need the console?');
+        }
+
+        foreach ([$plain, $moved] as $service) {
+            $this->post(route('client.services.panel', [$service, 'vnc']))->assertSessionHas('panel_result.vnc.port', '5901');
+        }
+    }
+
+    public function test_the_demo_vps_panel_shows_a_running_server_with_its_usage(): void
+    {
+        Http::preventStrayRequests();
+        Demo::fakeServers();
+        $server = Server::factory()->create(['module' => 'virtualizor', 'hostname' => Demo::VPS_HOST, 'port' => 4085, 'use_ssl' => true]);
+        $service = $this->service([], ['module_data' => ['vpsid' => '101']], $server);
+
+        $panel = app(Provisioner::class)->clientPanel($service)['data'];
+
+        $this->assertSame('running', $panel['state']);
+        $this->assertSame('vps101.yourhost.net', $panel['hostname']);
+        $this->assertNotNull($panel['cpu']);
+        $this->assertGreaterThan(0, $panel['ram']['used']);
+        $this->assertSame(4096.0, $panel['ram']['total']);
+
+        $this->actingAs($service->client, 'web')
+            ->get(route('client.services.show', $service))
+            ->assertSee('Running')
+            ->assertSee('vps101.yourhost.net');
     }
 
     public function test_an_older_service_without_a_stored_user_gets_it_once_the_check_passes(): void
@@ -486,7 +581,8 @@ class VirtualizorModuleTest extends TestCase
             'vps' => fn (array $query): array => ['vs' => [$query['vpsid'] => ['vpsid' => $query['vpsid'], 'uid' => '58', 'suspended' => '0', 'hostname' => 'vps1.example.com', 'os_name' => 'Ubuntu 24.04', 'virt' => 'kvm', 'ips' => ['2' => '203.0.113.7']]]],
             'status' => ['status' => ['77' => ['status' => 1]]],
             'ostemplates' => ['ostemplates' => ['100' => ['osid' => 100, 'type' => 'kvm', 'name' => 'Ubuntu 24.04']]],
-            'users' => ['users' => ['58' => ['uid' => '58', 'type' => '0', 'numvps' => '1']]],
+            'users' => ['users' => ['58' => ['uid' => '58', 'email' => self::VIRTUALIZOR_USER, 'type' => '0', 'numvps' => '1']]],
+            'byuser' => ['vs' => ['77' => ['vpsid' => '77', 'uid' => '58', 'email' => self::VIRTUALIZOR_USER]]],
         ];
         if ($this->api === null) {
             $this->api = new stdClass;
@@ -520,6 +616,7 @@ class VirtualizorModuleTest extends TestCase
             isset($query['vs_status']) => 'status',
             isset($query['action']) => 'power',
             isset($query['vpshostname']) => 'byname',
+            isset($query['user']) => 'byuser',
             isset($query['suspend']) => 'suspend',
             isset($query['unsuspend']) => 'unsuspend',
             isset($query['delete']) => 'delete',

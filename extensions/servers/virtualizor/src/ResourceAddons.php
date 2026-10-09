@@ -3,11 +3,14 @@
 namespace Nuvabill\Extensions\Virtualizor;
 
 use App\Enums\InvoiceStatus;
+use App\Enums\ServiceStatus;
 use App\Models\InvoiceItem;
 use App\Models\Service;
 use App\Models\ServiceAddon;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Crypt;
 use RuntimeException;
+use Throwable;
 
 /**
  * Extra VPS resources sold as product add-ons: more CPU cores, RAM, disk or IPv4 addresses.
@@ -206,7 +209,7 @@ final class ResourceAddons
      * The note of a create with add-on extras, or null when there is none or nothing was sent yet.
      * Notes from before version 1.1.0 keep their state next to a signed "snapshot"; they are read too.
      *
-     * @return array{state: string, vpsid: string|null, hostname: string|null, totals: array<string, int>, addons: list<int>, pool: int|null, requested_at: int|null}|null
+     * @return array{state: string, vpsid: string|null, hostname: string|null, email: string|null, totals: array<string, int>, addons: list<int>, pool: int|null, requested_at: int|null}|null
      */
     public static function record(Service $service): ?array
     {
@@ -241,6 +244,7 @@ final class ResourceAddons
             'state' => $vpsId === null ? self::REQUESTED : $state,
             'vpsid' => $vpsId,
             'hostname' => is_string($note['hostname'] ?? null) ? $note['hostname'] : null,
+            'email' => ! $old && is_string($raw['email'] ?? null) && $raw['email'] !== '' ? $raw['email'] : null,
             'totals' => array_map('intval', array_intersect_key(array_filter($totals, 'is_numeric'), self::MAXIMUMS)),
             'addons' => array_values(array_map('intval', array_filter($addons, 'is_numeric'))),
             'pool' => is_numeric($pool) && (int) $pool > 0 ? (int) $pool : null,
@@ -249,35 +253,67 @@ final class ResourceAddons
     }
 
     /**
-     * Save the note before the next step, with the root password when it is about to be sent.
+     * Save the note before the next step. The root password of a create about to be sent is kept
+     * in it, encrypted, until the VPS is checked: a pending service never shows it, and a VPS found
+     * after a create without a clear answer still gets it. A checked note keeps no password.
      * A made VPS's ID goes into the module data at once, so staff can always find it.
      *
      * @param  array<string, mixed>  $record
-     * @return array{state: string, vpsid: string|null, hostname: string|null, totals: array<string, int>, addons: list<int>, pool: int|null, requested_at: int|null}
+     * @return array{state: string, vpsid: string|null, hostname: string|null, email: string|null, totals: array<string, int>, addons: list<int>, pool: int|null, requested_at: int|null}
      */
     public static function remember(Service $service, array $record, ?string $password = null): array
     {
-        $data = array_merge((array) $service->module_data, [self::KEY => Arr::only($record, ['state', 'vpsid', 'hostname', 'totals', 'addons', 'pool', 'requested_at'])]);
+        $data = (array) $service->module_data;
+        $note = Arr::only($record, ['state', 'vpsid', 'hostname', 'email', 'totals', 'addons', 'pool', 'requested_at']);
+        $secret = $password !== null ? Crypt::encryptString($password) : (is_array($data[self::KEY] ?? null) ? ($data[self::KEY]['secret'] ?? null) : null);
+
+        if (is_string($secret) && ($note['state'] ?? null) !== self::VERIFIED) {
+            $note['secret'] = $secret;
+        }
+
+        $data[self::KEY] = $note;
 
         if (filled($record['vpsid'] ?? null)) {
             $data['vpsid'] = (string) $record['vpsid'];
         }
 
         $service->module_data = $data;
-
-        if ($password !== null) {
-            $service->username = 'root';
-            $service->password = $password;
-        }
-
         $service->save();
 
         return self::record($service) ?? throw new RuntimeException(__('The add-on note of this VPS could not be saved.'));
     }
 
+    /**
+     * The root password kept in the note, or null when there is none.
+     */
+    public static function password(Service $service): ?string
+    {
+        $note = ((array) $service->module_data)[self::KEY] ?? null;
+        $secret = is_array($note) ? ($note['secret'] ?? null) : null;
+
+        if (! is_string($secret)) {
+            return null;
+        }
+
+        try {
+            return Crypt::decryptString($secret);
+        } catch (Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Drop the note: no VPS was made. A service still waiting keeps no root password either, also
+     * not one an older version put on it before the request.
+     */
     public static function forget(Service $service): void
     {
         $service->module_data = Arr::except((array) $service->module_data, self::KEY);
+
+        if ($service->status === ServiceStatus::Pending) {
+            $service->password = null;
+        }
+
         $service->save();
     }
 

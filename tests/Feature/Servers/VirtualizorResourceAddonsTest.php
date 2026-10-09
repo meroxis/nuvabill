@@ -94,7 +94,7 @@ class VirtualizorResourceAddonsTest extends TestCase
         $noteBeforeRequest = null;
         $api = $this->fakeVirtualizor([
             'addvs' => function () use (&$noteBeforeRequest): array {
-                $noteBeforeRequest = Service::query()->latest('id')->first()->module_data[ResourceAddons::KEY]['state'] ?? null;
+                $noteBeforeRequest = Service::query()->latest('id')->first();
 
                 return ['done' => 1, 'vs_info' => ['vpsid' => '90', 'uid' => '58', 'ips' => ['203.0.113.9', '203.0.113.10']]];
             },
@@ -105,11 +105,18 @@ class VirtualizorResourceAddonsTest extends TestCase
         $result = app(Provisioner::class)->create($service);
 
         $this->assertTrue($result->success, $result->message);
-        $this->assertSame('requested', $noteBeforeRequest);
         $this->assertSame(['plans', 'addvs', 'vps'], array_column($api->calls, 'kind'));
         $post = $api->calls[1]['data'];
         $this->assertSame([3, 3, 6144, 2], [$post['plid'], $post['cores'], $post['ram'], $post['num_ips']]);
         $this->assertArrayNotHasKey('space', $post);
+
+        // Noted before the request, with the root password encrypted in the note, not on the service.
+        $note = $noteBeforeRequest->module_data[ResourceAddons::KEY];
+        $this->assertSame('requested', $note['state']);
+        $this->assertSame($service->client->email, $note['email']);
+        $this->assertNull($noteBeforeRequest->password);
+        $this->assertStringNotContainsString($post['rootpass'], json_encode($noteBeforeRequest->module_data));
+        $this->assertSame($post['rootpass'], ResourceAddons::password($noteBeforeRequest));
 
         $service->refresh();
         $this->assertSame(ServiceStatus::Active, $service->status);
@@ -117,6 +124,7 @@ class VirtualizorResourceAddonsTest extends TestCase
         $this->assertSame('58', $service->module_data['uid']);
         $this->assertSame(['203.0.113.9', '203.0.113.10'], $service->module_data['ips']);
         $this->assertSame('verified', $service->module_data[ResourceAddons::KEY]['state']);
+        $this->assertArrayNotHasKey('secret', $service->module_data[ResourceAddons::KEY]);
         $this->assertSame($post['rootpass'], $service->password);
     }
 
@@ -176,11 +184,14 @@ class VirtualizorResourceAddonsTest extends TestCase
         $service = $this->orderedVps($this->policy(), ['cpu']);
 
         $first = app(Provisioner::class)->create($service);
+        $rootPassword = $api->calls[1]['data']['rootpass'];
 
         $this->assertFalse($first->success);
         $this->assertStringContainsString('no clear answer', $first->message);
         $this->assertSame('requested', $service->fresh()->module_data[ResourceAddons::KEY]['state']);
-        $this->assertNotNull($service->fresh()->password);
+        // The pending service shows no root password; the note keeps it for a VPS found later.
+        $this->assertNull($service->fresh()->password);
+        $this->assertSame($rootPassword, ResourceAddons::password($service->fresh()));
 
         // Virtualizor lists another VPS with a similar name: still unclear, so nothing is sent.
         $api = $this->fakeVirtualizor(['byname' => ['vs' => ['12' => ['vpsid' => '12', 'hostname' => 'vps1.example.com', 'email' => 'someone@example.net']]]]);
@@ -203,6 +214,58 @@ class VirtualizorResourceAddonsTest extends TestCase
         $this->assertTrue($result->success, $result->message);
         $this->assertSame(['byname', 'vps'], array_column($api->calls, 'kind'));
         $this->assertSame('90', $service->fresh()->module_data['vpsid']);
+        $this->assertSame($rootPassword, $service->fresh()->password);
+    }
+
+    public function test_a_vps_found_after_an_unclear_create_is_matched_by_the_email_it_was_made_with(): void
+    {
+        $this->fakeVirtualizor(['addvs' => fn () => throw new ConnectionException('cURL error 28: timed out')]);
+        $service = $this->orderedVps($this->policy(), ['cpu']);
+        $this->assertFalse(app(Provisioner::class)->create($service)->success);
+
+        // The client changed their email since, and another service already uses VPS 12 of that name.
+        $service->client->update(['email' => 'new.address@example.org']);
+        $other = $this->orderedVps([], []);
+        $other->update(['status' => ServiceStatus::Active, 'module_data' => ['vpsid' => '12']]);
+        $api = $this->fakeVirtualizor([
+            'byname' => ['vs' => [
+                '12' => ['vpsid' => '12', 'hostname' => 'vps1.example.com', 'email' => 'mer.las@example.com'],
+                '90' => ['vpsid' => '90', 'hostname' => 'vps1.example.com', 'email' => 'mer.las@example.com'],
+            ]],
+            'vps' => $this->vps(['cores' => '3']),
+        ]);
+
+        $result = app(Provisioner::class)->create($service->fresh());
+
+        $this->assertTrue($result->success, $result->message);
+        $this->assertSame(['byname', 'vps'], array_column($api->calls, 'kind'));
+        $this->assertSame('90', $service->fresh()->module_data['vpsid']);
+    }
+
+    public function test_another_users_vps_with_the_same_name_does_not_block_a_new_create_for_ever(): void
+    {
+        $this->fakeVirtualizor(['addvs' => fn () => throw new ConnectionException('cURL error 7: refused')]);
+        $service = $this->orderedVps($this->policy(), ['cpu']);
+        $this->assertFalse(app(Provisioner::class)->create($service)->success);
+        $someoneElse = ['vs' => ['12' => ['vpsid' => '12', 'hostname' => 'vps1.example.com', 'email' => 'someone@example.net']]];
+
+        // A search that did not work (other names, or no email) never counts as "none was made".
+        $this->travel(11)->minutes();
+
+        foreach ([
+            ['vs' => ['12' => ['vpsid' => '12', 'hostname' => 'other.example.net', 'email' => 'someone@example.net']]],
+            ['vs' => ['12' => ['vpsid' => '12', 'hostname' => 'vps1.example.com']]],
+        ] as $answer) {
+            $api = $this->fakeVirtualizor(['byname' => $answer]);
+            $this->assertStringContainsString('no clear answer', app(Provisioner::class)->create($service->fresh())->message);
+            $this->assertSame(['byname'], array_column($api->calls, 'kind'));
+        }
+
+        $api = $this->fakeVirtualizor(['byname' => $someoneElse, 'vps' => $this->vps(['cores' => '3'])]);
+        $result = app(Provisioner::class)->create($service->fresh());
+
+        $this->assertTrue($result->success, $result->message);
+        $this->assertSame(['byname', 'plans', 'addvs', 'vps'], array_column($api->calls, 'kind'));
     }
 
     public function test_a_create_that_virtualizor_shows_never_ran_may_be_sent_again_later(): void
@@ -243,14 +306,35 @@ class VirtualizorResourceAddonsTest extends TestCase
         $result = app(Provisioner::class)->create($service);
 
         $this->assertFalse($result->success);
-        $this->assertSame('VPS #90 does not match the paid add-on resources (CPU cores). It stays pending: fix it in Virtualizor, then try again. No second VPS is made.', $result->message);
+        $this->assertSame('VPS #90 does not match the paid add-on resources (CPU cores). It stays pending: fix it in Virtualizor, then try again. No second VPS is made. If you cancel the order instead, delete VPS #90 in Virtualizor.', $result->message);
         $service->refresh();
         $this->assertSame(ServiceStatus::Pending, $service->status);
         $this->assertSame('90', $service->module_data['vpsid']);
+        // The client sees no root password while the VPS waits.
+        $this->assertNull($service->password);
+        $this->actingAs($service->client, 'web')->get(route('client.services.show', $service))->assertOk()->assertDontSee(ResourceAddons::password($service));
+
+        // A VPS that could not be checked tells staff the same.
+        $this->fakeVirtualizor(['vps' => fn () => Http::response('Bad gateway', 502)]);
+        $this->assertSame('VPS #90 was made but could not be checked yet. Try again; no second VPS is made. If you cancel the order instead, delete VPS #90 in Virtualizor.', app(Provisioner::class)->create($service)->message);
 
         $api = $this->fakeVirtualizor(['vps' => $this->vps(['cores' => '3'])]);
         $this->assertTrue(app(Provisioner::class)->create($service)->success);
         $this->assertSame(['vps'], array_column($api->calls, 'kind'));
+        $this->assertNotNull($service->fresh()->password);
+    }
+
+    public function test_a_create_virtualizor_refused_leaves_no_root_password_on_the_waiting_service(): void
+    {
+        $this->fakeVirtualizor(['addvs' => ['error' => ['No free IP in pool 5']]]);
+        $service = $this->orderedVps($this->policy(), ['cpu']);
+        // An older version put the password on the service before it sent the request.
+        $service->update(['password' => 'Legacy12345']);
+
+        $this->assertFalse(app(Provisioner::class)->create($service)->success);
+
+        $this->assertNull($service->fresh()->password);
+        $this->assertArrayNotHasKey(ResourceAddons::KEY, (array) $service->fresh()->module_data);
     }
 
     public function test_policies_and_notes_from_before_the_update_keep_working(): void
