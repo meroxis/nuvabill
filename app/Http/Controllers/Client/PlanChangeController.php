@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\PlanChange;
 use App\Models\Product;
 use App\Models\Service;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -49,6 +50,10 @@ class PlanChangeController extends Controller
 
         try {
             $change = $changes->start($service->load('product', 'client'), $product);
+        } catch (QueryException $exception) {
+            // A database error (a lock that waited too long, say) goes to the error page and the log,
+            // never into the message: it names the database server and the query.
+            throw $exception;
         } catch (RuntimeException $exception) {
             return back()->with('error', $exception->getMessage());
         }
@@ -73,6 +78,8 @@ class PlanChangeController extends Controller
         if ($pending !== null) {
             try {
                 $changes->cancel($pending);
+            } catch (QueryException $exception) {
+                throw $exception;
             } catch (RuntimeException $exception) {
                 // Money on the invoice that cannot go back to the wallet by itself needs staff.
                 $stuck = $pending->invoice?->refresh()->status === InvoiceStatus::Unpaid && $pending->invoice->amount_paid > 0;

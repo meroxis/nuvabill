@@ -254,8 +254,16 @@ class PlanChanges
     public function start(Service $service, Product $product, ?Admin $admin = null, bool $charge = true): PlanChange
     {
         $change = DB::transaction(function () use ($service, $product, $admin, $charge): PlanChange {
+            // Locked before anything is read, in the order checkouts lock: the new plan's row, then
+            // the service, then the plan's services as its stock is counted. Two clients cannot both
+            // take the last one of a plan with a stock limit. Staff may.
+            if ($admin === null) {
+                Product::query()->whereKey($product->id)->lockForUpdate()->first();
+            }
+
             $locked = Service::query()->lockForUpdate()->findOrFail($service->id);
             $locked->setRelation('product', $service->product);
+            $soldOut = $admin === null && $product->lockedStockLeft() === 0;
 
             $reason = $this->blockedReason($locked);
 
@@ -267,8 +275,7 @@ class PlanChanges
                 throw new RuntimeException(__('This service cannot move to that plan.'));
             }
 
-            // Two clients cannot both take the last one of a plan with a stock limit. Staff may.
-            if ($admin === null && $product->stock !== null && Product::query()->lockForUpdate()->findOrFail($product->id)->stockLeft() === 0) {
+            if ($soldOut) {
                 throw new RuntimeException(__('This plan is sold out.'));
             }
 
@@ -332,15 +339,24 @@ class PlanChanges
         $notCredited = 0;
         $stopped = null;
 
+        // Up to three tries: on MySQL and MariaDB moving the service can lock out a checkout of
+        // another product and the other way round. The database then stops one of them; this
+        // change is rolled back in full and tried again.
         $applied = DB::transaction(function () use ($change, &$credit, &$notCredited, &$stopped): bool {
+            [$credit, $notCredited, $stopped] = [0, 0, null];
             $locked = PlanChange::query()->lockForUpdate()->find($change->id);
 
             if ($locked === null || ! $locked->isPending()) {
                 return false;
             }
 
+            // Locked before anything is read, in the order checkouts lock: the new plan's row, then
+            // the service, then the plan's services as its stock is counted.
+            $product = Product::query()->lockForUpdate()->find($locked->to_product_id);
             $service = Service::query()->lockForUpdate()->findOrFail($locked->service_id);
-            $stopped = $this->stopReason($locked, $service);
+            // The last one of a plan in stock may have gone while the client's change waited.
+            $countsStock = $product !== null && $locked->admin_id === null && $locked->mode !== PlanChange::MODE_RENEWAL;
+            $stopped = $this->stopReason($locked, $service, $product, $countsStock ? $product->lockedStockLeft() : null);
 
             if ($stopped !== null) {
                 $locked->update(['status' => PlanChange::STATUS_CANCELLED]);
@@ -363,7 +379,7 @@ class PlanChanges
             }
 
             return true;
-        });
+        }, 3);
 
         if ($stopped !== null) {
             $this->stopped($change->refresh(), $stopped);
@@ -404,11 +420,12 @@ class PlanChanges
 
     /**
      * Why a waiting change can no longer happen, in words for the client, or null when it can.
+     *
+     * @param  Product|null  $product  The new plan, locked; null when it was deleted.
+     * @param  int|null  $stockLeft  What is left of it, counted under its lock; null when not counted.
      */
-    private function stopReason(PlanChange $change, Service $service): ?string
+    private function stopReason(PlanChange $change, Service $service, ?Product $product, ?int $stockLeft): ?string
     {
-        $product = Product::query()->find($change->to_product_id);
-
         if ($product === null) {
             return __('The new plan is no longer sold.');
         }
@@ -417,8 +434,7 @@ class PlanChanges
             return __('The service renewed before the plan change was paid.');
         }
 
-        // The last one of a plan in stock may have gone while the client's change waited.
-        if ($change->admin_id === null && $change->mode !== PlanChange::MODE_RENEWAL && $product->stockLeft() === 0) {
+        if ($stockLeft === 0) {
             return __('The new plan is sold out.');
         }
 

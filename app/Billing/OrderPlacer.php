@@ -56,13 +56,23 @@ class OrderPlacer
 
         $fraudReasons = $this->fraud->reasons($client, $ipAddress, $ipCountry);
 
+        // Up to three tries: on MySQL and MariaDB two checkouts of different products can still lock
+        // each other out (the gaps between saved services are locked too). The database then stops
+        // one of them; it is rolled back in full and made again.
         $order = DB::transaction(function () use ($client, $lines, $ipAddress, $fraudReasons, &$coupon): Order {
-            // First, before anything is read: the coupon's limits are checked again under a lock.
-            if ($coupon !== null && $lines->contains(fn (CartLine $line): bool => $line->discount > 0)) {
-                $coupon = $this->lockCoupon($client, $coupon);
-            }
+            // First, before anything is read: the client and coupon, then the products in stock and
+            // their services are locked, in the same order as everywhere else. MySQL and MariaDB then
+            // count the stock from the newest rows, not from an older snapshot of this transaction.
+            $checksCoupon = $coupon !== null && $lines->contains(fn (CartLine $line): bool => $line->discount > 0);
+            $lockedCoupon = $checksCoupon ? $this->lockCoupon($client, $coupon) : null;
 
             $this->reserveStock($lines);
+
+            // Then the coupon's limits are checked again, under its lock.
+            if ($checksCoupon) {
+                $coupon = $this->checkCoupon($client, $lockedCoupon);
+            }
+
             $today = CarbonImmutable::today();
 
             $order = Order::create([
@@ -149,7 +159,7 @@ class OrderPlacer
             }
 
             return $order;
-        });
+        }, 3);
 
         $order->load('invoice', 'services.product', 'domains');
 
@@ -233,17 +243,25 @@ class OrderPlacer
 
     /**
      * The cart checked the coupon before the order started, but another checkout may have used it
-     * since. The client and the coupon are locked until the order is made, then its limits (uses
-     * left, uses per client, new clients only) are checked again. Run inside the order's database
-     * transaction, before anything else is read.
+     * since. The client and the coupon are locked until the order is made. Run inside the order's
+     * database transaction, before anything else is read. Returns null when the coupon is gone.
+     */
+    private function lockCoupon(Client $client, Coupon $coupon): ?Coupon
+    {
+        // Client first, then coupon, then products, then services: the same order everywhere, so no
+        // two checkouts wait for each other in a circle.
+        Client::query()->whereKey($client->id)->lockForUpdate()->first();
+
+        return Coupon::query()->lockForUpdate()->find($coupon->id);
+    }
+
+    /**
+     * Check the locked coupon's limits again (uses left, uses per client, new clients only).
      *
      * @throws CouponUnavailable
      */
-    private function lockCoupon(Client $client, Coupon $coupon): Coupon
+    private function checkCoupon(Client $client, ?Coupon $locked): Coupon
     {
-        // Client first, then coupon, then products: the same order everywhere, so no deadlocks.
-        Client::query()->whereKey($client->id)->lockForUpdate()->first();
-        $locked = Coupon::query()->lockForUpdate()->find($coupon->id);
         $reason = $locked === null ? __('This coupon has ended.') : $locked->unavailableReason($client, $client->currency);
 
         if ($reason !== null) {
@@ -254,8 +272,9 @@ class OrderPlacer
     }
 
     /**
-     * Products with a stock limit are locked until the order is made, so two checkouts at once
-     * cannot both take the last one. Run inside the order's database transaction.
+     * Products with a stock limit and their services are locked until the order is made, so two
+     * checkouts at once cannot both take the last one. Run inside the order's database transaction,
+     * before anything is read.
      *
      * @param  Collection<int, CartLine>  $lines
      *
@@ -269,12 +288,14 @@ class OrderPlacer
             return;
         }
 
+        // All the products first, in id order, so two carts with the same products lock them in the
+        // same order; then each one's services.
         $limited = Product::query()->whereKey($wanted->keys()->all())->whereNotNull('stock')->orderBy('id')->lockForUpdate()->get();
 
         foreach ($limited as $product) {
-            $left = (int) $product->stockLeft();
+            $left = $product->lockedStockLeft();
 
-            if ($wanted[$product->id] > $left) {
+            if ($left !== null && $wanted[$product->id] > $left) {
                 throw new SoldOut($product, $left);
             }
         }

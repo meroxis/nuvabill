@@ -157,7 +157,8 @@ class Product extends Model
     }
 
     /**
-     * How many more can be sold, or null when the product has no stock limit.
+     * How many more can be sold, or null when the product has no stock limit. Good for showing;
+     * where the answer decides a sale or a plan change, use lockedStockLeft().
      */
     public function stockLeft(): ?int
     {
@@ -165,9 +166,48 @@ class Product extends Model
             return null;
         }
 
-        $used = $this->services()->whereNotIn('status', [ServiceStatus::Terminated, ServiceStatus::Cancelled])->count();
+        return max(0, $this->stock - $this->servicesHoldingStock()->count());
+    }
 
-        return max(0, $this->stock - $used);
+    /**
+     * How many more can be sold, or null when the product has no stock limit, counted from the
+     * newest saved rows. Use it where the answer decides a sale or a plan change, inside that
+     * database transaction: the product's row and then its services stay locked until it ends, so
+     * no other checkout can take one in the meantime.
+     *
+     * On MySQL and MariaDB a plain count can read an older snapshot of the transaction and miss an
+     * order another checkout saved a moment ago. This locking read cannot. Call it before anything
+     * else is read in the transaction, and lock products before services everywhere (as checkouts
+     * and plan changes do), so two of them never wait for each other in a circle.
+     */
+    public function lockedStockLeft(): ?int
+    {
+        // A product deleted meanwhile has nothing left to sell.
+        $saved = static::query()->whereKey($this->getKey())->lockForUpdate()->first(['id', 'stock']);
+
+        if ($saved === null) {
+            return 0;
+        }
+
+        if ($saved->stock === null) {
+            return null;
+        }
+
+        // The ids are counted here because PostgreSQL cannot lock the rows of a COUNT. In id order,
+        // so every caller locks them in the same order.
+        $used = $this->servicesHoldingStock()->orderBy('services.id')->lockForUpdate()->pluck('services.id')->count();
+
+        return max(0, $saved->stock - $used);
+    }
+
+    /**
+     * The services that hold one of the product's stock: all but terminated and cancelled ones.
+     *
+     * @return HasMany<Service, $this>
+     */
+    private function servicesHoldingStock(): HasMany
+    {
+        return $this->services()->whereNotIn('status', [ServiceStatus::Terminated, ServiceStatus::Cancelled]);
     }
 
     /**
