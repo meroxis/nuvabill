@@ -2,11 +2,15 @@
 
 namespace Tests\Feature\Servers;
 
+use App\Billing\Cart;
+use App\Billing\OrderPlacer;
 use App\Billing\PaymentRecorder;
 use App\Enums\AutoSetup;
+use App\Enums\BillingCycle;
 use App\Enums\InvoiceStatus;
 use App\Enums\OrderStatus;
 use App\Enums\ServiceStatus;
+use App\Jobs\ProvisionService;
 use App\Models\Client;
 use App\Models\Invoice;
 use App\Models\InvoiceItem;
@@ -22,6 +26,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Nuvabill\Extensions\Virtualizor\ResourceAddons;
 use stdClass;
 use Tests\TestCase;
@@ -365,15 +370,108 @@ class VirtualizorResourceAddonsTest extends TestCase
         $invoice = $service->order->invoice;
         InvoiceItem::query()->create(['invoice_id' => $invoice->id, 'service_id' => $service->id, 'type' => InvoiceItem::TYPE_SERVICE, 'description' => 'VPS - vps1.example.com', 'amount' => 2500, 'period_start' => today(), 'period_end' => today()->addMonth()->subDay()]);
 
-        // The setup when the order was placed could not make the VPS yet.
+        // The setup when the order was placed could not make the VPS yet: it waits for the payment.
         $this->assertSame('The order invoice with the resource add-ons is not paid yet, so no VPS was made.', app(Provisioner::class)->create($service)->message);
         $this->assertSame([], $api->calls);
+        $this->assertTrue($service->fresh()->module_data[ResourceAddons::WAITING]);
 
         app(PaymentRecorder::class)->record($invoice->fresh(), 3000, 'banktransfer', 'BANK-1');
 
         $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
         $this->assertSame(ServiceStatus::Active, $service->fresh()->status);
         $this->assertSame(['plans', 'addvs', 'vps'], array_column($api->calls, 'kind'));
+        $this->assertArrayNotHasKey(ResourceAddons::WAITING, $service->fresh()->module_data);
+    }
+
+    public function test_only_the_order_invoice_starts_a_vps_that_waits_for_its_payment(): void
+    {
+        $this->fakeVirtualizor();
+        $service = $this->orderedVps($this->policy(), ['cpu'], paid: false);
+        $service->product->update(['auto_setup' => AutoSetup::OnOrder]);
+        $this->assertFalse(app(Provisioner::class)->create($service)->success);
+        $other = Invoice::factory()->create(['client_id' => $service->client_id, 'total' => 2500, 'subtotal' => 2500]);
+        $other->items()->create(['service_id' => $service->id, 'type' => InvoiceItem::TYPE_SERVICE, 'description' => 'Another invoice for the same VPS', 'amount' => 2500]);
+        Queue::fake();
+
+        app(PaymentRecorder::class)->record($other, 2500, 'banktransfer', 'BANK-OTHER');
+
+        $this->assertSame(InvoiceStatus::Paid, $other->fresh()->status);
+        Queue::assertNotPushed(ProvisionService::class);
+
+        $invoice = $service->order->invoice;
+        InvoiceItem::query()->create(['invoice_id' => $invoice->id, 'service_id' => $service->id, 'type' => InvoiceItem::TYPE_SERVICE, 'description' => 'VPS - vps1.example.com', 'amount' => 2500, 'period_start' => today(), 'period_end' => today()->addMonth()->subDay()]);
+        app(PaymentRecorder::class)->record($invoice->fresh(), 3000, 'banktransfer', 'BANK-1');
+
+        Queue::assertPushed(ProvisionService::class, 1);
+    }
+
+    public function test_a_create_with_add_ons_waits_for_the_payment_only_when_the_order_invoice_is_not_paid(): void
+    {
+        $this->fakeVirtualizor();
+        $reviewed = $this->orderedVps($this->policy(), ['cpu'], paid: false);
+        $reviewed->order->update(['needs_review' => true]);
+        $credited = $this->orderedVps($this->policy(), ['cpu']);
+        $credited->order->invoice->creditNotes()->create(['number' => 'CN-1', 'client_id' => $credited->client_id, 'currency' => 'USD', 'subtotal' => 100, 'tax' => 0, 'total' => 100, 'items' => [], 'method' => 'none', 'reason' => 'Goodwill', 'issued_at' => now()]);
+        $missingLine = $this->orderedVps($this->policy(), ['cpu'], lines: false);
+
+        foreach ([$reviewed, $credited, $missingLine] as $service) {
+            $this->assertFalse(app(Provisioner::class)->create($service)->success);
+            $this->assertArrayNotHasKey(ResourceAddons::WAITING, (array) $service->fresh()->module_data);
+            $this->assertFalse(app(Provisioner::class)->waitsForPayment($service));
+        }
+
+        // A create that was refused for the payment and then sent no longer waits for it.
+        $unpaid = $this->orderedVps($this->policy(), ['cpu'], paid: false);
+        $this->assertFalse(app(Provisioner::class)->create($unpaid)->success);
+        $this->assertTrue(app(Provisioner::class)->waitsForPayment($unpaid));
+        $unpaid->order->invoice->update(['status' => InvoiceStatus::Paid, 'amount_paid' => 3000, 'paid_at' => now()]);
+        $this->fakeVirtualizor(['addvs' => fn () => throw new ConnectionException('cURL error 28: timed out')]);
+
+        $this->assertStringContainsString('no clear answer', app(Provisioner::class)->create($unpaid->fresh())->message);
+        $this->assertArrayNotHasKey(ResourceAddons::WAITING, $unpaid->fresh()->module_data);
+        $this->assertFalse(app(Provisioner::class)->waitsForPayment($unpaid));
+    }
+
+    public function test_a_vps_set_up_on_order_whose_create_had_no_clear_answer_is_not_sent_again_when_its_order_invoice_is_paid(): void
+    {
+        $api = $this->fakeVirtualizor(['addvs' => fn () => throw new ConnectionException('cURL error 28: timed out')]);
+        $service = $this->orderedVps($this->policy(), [], paid: false);
+        $service->product->update(['auto_setup' => AutoSetup::OnOrder]);
+        $invoice = $service->order->invoice;
+        InvoiceItem::query()->create(['invoice_id' => $invoice->id, 'service_id' => $service->id, 'type' => InvoiceItem::TYPE_SERVICE, 'description' => 'VPS - vps1.example.com', 'amount' => 3000, 'period_start' => today(), 'period_end' => today()->addMonth()->subDay()]);
+
+        // The setup when the order was placed sent the create, and no answer came back.
+        $this->assertSame('Could not connect to vz.example.test.', app(Provisioner::class)->create($service)->message);
+
+        app(PaymentRecorder::class)->record($invoice->fresh(), 3000, 'banktransfer', 'BANK-1');
+
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertSame(['addvs'], array_column($api->calls, 'kind'));
+        $this->assertSame(ServiceStatus::Pending, $service->fresh()->status);
+    }
+
+    public function test_a_vps_set_up_on_order_and_paid_from_the_wallet_at_once_is_not_sent_twice_after_a_create_without_an_answer(): void
+    {
+        $api = $this->fakeVirtualizor(['addvs' => fn () => throw new ConnectionException('cURL error 28: timed out')]);
+
+        $order = $this->placeVpsOrder([], credit: 2500);
+
+        $this->assertSame(InvoiceStatus::Paid, $order->invoice->fresh()->status);
+        $this->assertSame(['addvs'], array_column($api->calls, 'kind'));
+        $this->assertSame(ServiceStatus::Pending, $order->services()->sole()->status);
+    }
+
+    public function test_a_vps_with_add_ons_set_up_on_order_and_paid_from_the_wallet_at_once_is_made_once(): void
+    {
+        $api = $this->fakeVirtualizor(['vps' => $this->vps(['cores' => '3'])]);
+
+        $order = $this->placeVpsOrder(['cpu'], credit: 3000);
+        $service = $order->services()->sole();
+
+        $this->assertSame(InvoiceStatus::Paid, $order->invoice->fresh()->status);
+        $this->assertSame(ServiceStatus::Active, $service->status);
+        $this->assertSame(['plans', 'addvs', 'vps'], array_column($api->calls, 'kind'));
+        $this->assertSame(3, $api->calls[1]['data']['cores']);
     }
 
     public function test_a_create_virtualizor_refused_may_be_tried_again(): void
@@ -585,6 +683,28 @@ class VirtualizorResourceAddonsTest extends TestCase
         }
 
         return $service;
+    }
+
+    /**
+     * An order of Mer Las for a VPS set up as soon as the order is placed, with the given add-ons.
+     * Her wallet pays the order invoice right after the order is placed.
+     *
+     * @param  list<string>  $addons
+     */
+    private function placeVpsOrder(array $addons, int $credit): Order
+    {
+        $this->setSettings(['wallet.auto_apply' => true]);
+        $client = Client::factory()->create(['first_name' => 'Mer', 'last_name' => 'Las', 'company_name' => null, 'email' => 'mer.las@example.com', 'currency' => 'USD', 'credit' => $credit]);
+        $product = Product::factory()->priced(2500)->create(['server_module' => 'virtualizor', 'server_id' => $this->server->id, 'auto_setup' => AutoSetup::OnOrder, 'module_config' => $this->policy() + ['virt' => 'kvm', 'os_id' => '100', 'plan_id' => '3']]);
+
+        foreach ($addons as $kind) {
+            $this->catalog[$kind]->prices()->create(['currency' => 'USD', 'billing_cycle' => BillingCycle::Monthly, 'price' => 500]);
+        }
+
+        $cart = app(Cart::class);
+        $cart->add($product, BillingCycle::Monthly, 'vps1.example.com', array_map(fn (string $kind): int => $this->catalog[$kind]->id, $addons));
+
+        return app(OrderPlacer::class)->place($client, $cart->lines('USD'));
     }
 
     /**

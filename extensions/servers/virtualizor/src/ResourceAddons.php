@@ -39,6 +39,18 @@ final class ResourceAddons
     public const KEY = 'virtualizor_resource_addons_v1';
 
     /**
+     * Module data key: the last create was refused only because the order invoice with the add-ons
+     * was not paid yet, before anything was sent. The VPS is made once that invoice is paid.
+     */
+    public const WAITING = 'virtualizor_waits_for_payment';
+
+    /**
+     * Exception code of assertPaid when the order invoice is not paid yet. Any other refusal has
+     * another code.
+     */
+    public const UNPAID = 402;
+
+    /**
      * The create request was sent, and it is not known yet whether it made a VPS.
      */
     public const REQUESTED = 'requested';
@@ -172,7 +184,8 @@ final class ResourceAddons
 
     /**
      * Throws unless every add-on was on the service's paid order invoice. Add-ons only come with
-     * an order, so a missing or unpaid line means the extras are not paid for.
+     * an order, so a missing or unpaid line means the extras are not paid for. Only an order
+     * invoice that is not paid yet throws with the UNPAID code.
      *
      * @param  list<ServiceAddon>  $addons
      */
@@ -181,8 +194,8 @@ final class ResourceAddons
         $order = $service->order;
         $invoice = $order?->invoice;
 
-        self::check($order !== null && $invoice !== null && (int) $order->client_id === (int) $service->client_id && ! $order->needs_review, __('The resource add-ons of this VPS are not on a checked order, so no VPS was made. Check the order.'));
-        self::check($invoice->status === InvoiceStatus::Paid && (int) $invoice->client_id === (int) $service->client_id, __('The order invoice with the resource add-ons is not paid yet, so no VPS was made.'));
+        self::check($order !== null && $invoice !== null && (int) $order->client_id === (int) $service->client_id && (int) $invoice->client_id === (int) $service->client_id && ! $order->needs_review, __('The resource add-ons of this VPS are not on a checked order, so no VPS was made. Check the order.'));
+        self::check($invoice->status === InvoiceStatus::Paid, __('The order invoice with the resource add-ons is not paid yet, so no VPS was made.'), self::UNPAID);
         self::check(! $invoice->creditNotes()->exists(), __('The order invoice has a credit note, so its resource add-ons need a check by hand. No VPS was made.'));
 
         $lines = $invoice->items()
@@ -265,7 +278,8 @@ final class ResourceAddons
      */
     public static function remember(Service $service, array $record, ?string $password = null): array
     {
-        $data = (array) $service->module_data;
+        // A noted create no longer waits for the payment: it is never sent again by itself.
+        $data = Arr::except((array) $service->module_data, self::WAITING);
         $note = Arr::only($record, ['state', 'vpsid', 'server_id', 'hostname', 'email', 'totals', 'addons', 'pool', 'requested_at']);
         $secret = $password !== null ? Crypt::encryptString($password) : (is_array($data[self::KEY] ?? null) ? ($data[self::KEY]['secret'] ?? null) : null);
 
@@ -320,6 +334,42 @@ final class ResourceAddons
     }
 
     /**
+     * Note that the create waits for the order invoice to be paid. Nothing was sent for it.
+     */
+    public static function waitForPayment(Service $service): void
+    {
+        $service->module_data = array_merge((array) $service->module_data, [self::WAITING => true]);
+        $service->save();
+    }
+
+    /**
+     * Drop the payment note, before a create tries anything. Saved at once, so it never outlives a
+     * create that sends a request, also when that create is stopped before it ends.
+     */
+    public static function stopWaiting(Service $service): void
+    {
+        $data = (array) $service->module_data;
+
+        if (! array_key_exists(self::WAITING, $data)) {
+            return;
+        }
+
+        $service->module_data = Arr::except($data, self::WAITING);
+        $service->save();
+    }
+
+    /**
+     * Whether the last create waits only for the order invoice to be paid: it was refused for that
+     * before anything was sent, and no create request was noted since.
+     */
+    public static function waitsForPayment(Service $service): bool
+    {
+        $data = (array) $service->module_data;
+
+        return ($data[self::WAITING] ?? null) === true && ! array_key_exists(self::KEY, $data);
+    }
+
+    /**
      * @return array<int|string, mixed>
      */
     private static function object(mixed $value, string $name): array
@@ -343,10 +393,10 @@ final class ResourceAddons
         self::check($condition, __('The resource add-on policy of this product is not valid: :problem. Fix it on the product; nothing was changed.', ['problem' => $problem]));
     }
 
-    private static function check(bool $condition, string $message): void
+    private static function check(bool $condition, string $message, int $code = 0): void
     {
         if (! $condition) {
-            throw new RuntimeException($message);
+            throw new RuntimeException($message, $code);
         }
     }
 }

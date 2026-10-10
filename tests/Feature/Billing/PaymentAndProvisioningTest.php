@@ -14,7 +14,6 @@ use App\Extensions\ExtensionManager;
 use App\Jobs\ProvisionService;
 use App\Models\Client;
 use App\Models\Invoice;
-use App\Models\InvoiceItem;
 use App\Models\Order;
 use App\Models\Product;
 use App\Models\Server;
@@ -119,7 +118,7 @@ class PaymentAndProvisioningTest extends TestCase
         $this->assertSame(ServiceStatus::Active, $waiting->fresh()->status);
     }
 
-    public function test_a_setup_on_order_that_could_not_finish_is_tried_again_once_the_order_invoice_is_paid(): void
+    public function test_a_failed_setup_on_order_is_not_tried_again_when_the_order_invoice_is_paid(): void
     {
         Http::fake(['*/json-api/createacct*' => Http::sequence()
             ->push(['metadata' => ['result' => 0, 'reason' => 'Try again later']])
@@ -130,23 +129,10 @@ class PaymentAndProvisioningTest extends TestCase
 
         app(PaymentRecorder::class)->record($invoice, 899, 'stripe', 'pi_on_order');
 
-        $this->assertSame(ServiceStatus::Active, $service->fresh()->status);
-        $this->assertCount(2, Http::recorded(fn (Request $request): bool => str_contains($request->url(), 'createacct')));
-    }
-
-    public function test_only_the_order_invoice_starts_a_setup_on_order_again(): void
-    {
-        Http::fake(['*/json-api/createacct*' => Http::response(['metadata' => ['result' => 0, 'reason' => 'Try again later']])]);
-        $order = $this->placeCpanelOrder(Server::factory()->create(), setup: AutoSetup::OnOrder);
-        $service = $order->items->first()->service;
-        $other = Invoice::factory()->create(['client_id' => $service->client_id, 'total' => 899, 'subtotal' => 899]);
-        $other->items()->create(['service_id' => $service->id, 'type' => InvoiceItem::TYPE_SERVICE, 'description' => 'Another invoice for the same service', 'amount' => 899]);
-        Queue::fake();
-
-        app(PaymentRecorder::class)->record($other, 899, 'stripe', 'pi_other');
-
-        $this->assertSame(InvoiceStatus::Paid, $other->fresh()->status);
-        Queue::assertNotPushed(ProvisionService::class);
+        // The module does not wait for the payment, so the failed setup waits for staff.
+        $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
+        $this->assertSame(ServiceStatus::Pending, $service->fresh()->status);
+        $this->assertCount(1, Http::recorded(fn (Request $request): bool => str_contains($request->url(), 'createacct')));
     }
 
     public function test_a_new_account_never_goes_to_a_server_that_is_turned_off(): void

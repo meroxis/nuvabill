@@ -75,12 +75,10 @@ class InvoicePaidHandler
             $service->save();
         }
 
-        // A service set up "as soon as the order is placed" is tried once more when its order invoice
-        // is paid: a setup that needs the payment (a VPS with paid extras, say) could not finish then.
-        $orderInvoicePaid = $service->order !== null && (int) $service->order->invoice_id === (int) $item->invoice_id;
+        $setup = $service->product->auto_setup;
 
         if ($service->status === ServiceStatus::Pending
-            && ($service->product->auto_setup === AutoSetup::OnPayment || ($service->product->auto_setup === AutoSetup::OnOrder && $orderInvoicePaid))) {
+            && ($setup === AutoSetup::OnPayment || ($setup === AutoSetup::OnOrder && $this->setupWaitsForThisPayment($item, $service)))) {
             if ($service->order?->needs_review !== true) {
                 ProvisionService::dispatch($service);
             }
@@ -93,6 +91,19 @@ class InvoicePaidHandler
             && ! $this->hasOtherOverdueInvoices($service, $item->invoice_id)) {
             $this->provisioner->unsuspend($service);
         }
+    }
+
+    /**
+     * A service set up "as soon as the order is placed" is set up again when its order invoice is
+     * paid only when its module refused that setup because it needed this payment (a VPS with paid
+     * extras, say). After any other failure it waits for staff: a create without a clear answer
+     * may have made an account, and a second create would give the client a second one.
+     */
+    private function setupWaitsForThisPayment(InvoiceItem $item, Service $service): bool
+    {
+        return $service->order !== null
+            && (int) $service->order->invoice_id === (int) $item->invoice_id
+            && $this->provisioner->waitsForPayment($service);
     }
 
     private function handleDomainItem(InvoiceItem $item, Domain $domain): void

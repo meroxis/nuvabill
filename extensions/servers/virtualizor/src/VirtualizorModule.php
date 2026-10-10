@@ -5,6 +5,7 @@ namespace Nuvabill\Extensions\Virtualizor;
 use App\Contracts\HasClientPanel;
 use App\Contracts\HasPanelState;
 use App\Contracts\KeepsCreateServer;
+use App\Contracts\WaitsForPayment;
 use App\Enums\ServiceStatus;
 use App\Extensions\Servers\Module;
 use App\Extensions\Servers\ModuleResult;
@@ -24,7 +25,7 @@ use Throwable;
  * power, usage, IP addresses, OS reinstall, hostname and root password. A product can also let
  * clients open their own VPS in Virtualizor's end-user panel with one click.
  */
-class VirtualizorModule extends Module implements HasClientPanel, HasPanelState, KeepsCreateServer
+class VirtualizorModule extends Module implements HasClientPanel, HasPanelState, KeepsCreateServer, WaitsForPayment
 {
     /**
      * Exception code: Virtualizor answered and refused the request, so it did nothing. Any other
@@ -171,6 +172,8 @@ class VirtualizorModule extends Module implements HasClientPanel, HasPanelState,
     public function create(Service $service): ModuleResult
     {
         return $this->attempt(function () use ($service): ModuleResult {
+            // Only this try decides whether the VPS waits for its payment (see waitsForPayment).
+            ResourceAddons::stopWaiting($service);
             $record = ResourceAddons::record($service);
 
             // The VPS of an earlier create request is only looked for on the server it was sent to.
@@ -219,7 +222,15 @@ class VirtualizorModule extends Module implements HasClientPanel, HasPanelState,
                 unset($post['node_select']);
             }
 
-            $resources = $this->resources($service, forCreate: true);
+            try {
+                $resources = $this->resources($service, forCreate: true);
+            } catch (RuntimeException $exception) {
+                if ($exception->getCode() === ResourceAddons::UNPAID) {
+                    ResourceAddons::waitForPayment($service);
+                }
+
+                throw $exception;
+            }
 
             if ($resources !== null) {
                 return $this->createWithResources($service, $post, $resources, $hostname, $rootPassword);
@@ -251,6 +262,16 @@ class VirtualizorModule extends Module implements HasClientPanel, HasPanelState,
     public function keepsServer(Service $service): bool
     {
         return ResourceAddons::record($service) !== null;
+    }
+
+    /**
+     * Only a VPS with add-on extras whose last create was refused because its order invoice was not
+     * paid yet. A create that was sent, also one without a clear answer, is never tried again by
+     * itself: it may have made a VPS.
+     */
+    public function waitsForPayment(Service $service): bool
+    {
+        return ResourceAddons::waitsForPayment($service);
     }
 
     public function suspend(Service $service, string $reason): ModuleResult

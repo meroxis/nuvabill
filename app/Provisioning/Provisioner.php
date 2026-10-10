@@ -7,6 +7,7 @@ use App\Contracts\HasLoginForm;
 use App\Contracts\HasPanelState;
 use App\Contracts\KeepsCreateServer;
 use App\Contracts\ServerModule;
+use App\Contracts\WaitsForPayment;
 use App\Enums\ServiceStatus;
 use App\Events\ServiceActivated;
 use App\Events\ServiceSuspended;
@@ -495,6 +496,34 @@ class Provisioner
         }
 
         return $form !== null && str_starts_with((string) ($form['url'] ?? ''), 'https://') ? $form : null;
+    }
+
+    /**
+     * Whether the service still waits to be set up, and its module refused the last setup only
+     * because the order invoice was not paid yet. Such a setup may run again once that invoice is
+     * paid. Read from the database, as a setup may have run since the service was loaded.
+     */
+    public function waitsForPayment(Service $service): bool
+    {
+        $current = $service->fresh(['product']);
+
+        if ($current?->product === null || $current->status !== ServiceStatus::Pending) {
+            return false;
+        }
+
+        $module = $this->moduleFor($current);
+
+        if (! $module instanceof WaitsForPayment) {
+            return false;
+        }
+
+        try {
+            return $module->waitsForPayment($current);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return false;
+        }
     }
 
     public function usesLoginForm(Service $service): bool
