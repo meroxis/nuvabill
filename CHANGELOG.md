@@ -83,13 +83,16 @@ MariaDB.
 - On MySQL and MariaDB, two clients checking out at the same moment can no longer both buy the last one in stock.
   Plan changes count stock the same safe way.
 - Two plan changes in opposite directions at the same moment no longer stop each other with an error page.
-- A product set up "as soon as the order is placed" is tried again when its order invoice is paid, so a setup that
-  needs the payment can finish.
+- Plan changes that wait for the renewal date, and plan changes staff make, now hold their place in the new plan's
+  stock. Before, many clients could schedule a move into a plan with one left.
+- A VPS with paid resource add-ons that is set up "as soon as the order is placed" is made once its order invoice is
+  paid. Any other setup that failed waits for staff, so a setup without a clear answer never makes a second account.
 - **Security:** pages that show why an action was refused (quotes, wallet changes, cancels, refunds, credit notes,
   plan changes, marketplace installs) no longer show a database error there. That error named the database server,
   the database and the query. It now goes to the error page and the log.
 - **For developers:** server modules can implement the new `HasPanelState` contract, so the panel's status checks
-  ask only for the state, and `KeepsCreateServer`, so an unclear create stays on its server.
+  ask only for the state, `KeepsCreateServer`, so an unclear create stays on its server, and `WaitsForPayment`, so a
+  setup that needs the order payment runs again once it is paid.
 
 ## 0.6.12
 
