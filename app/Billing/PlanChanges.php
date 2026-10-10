@@ -364,7 +364,9 @@ class PlanChanges
 
             $product = $this->lockPlans($locked->from_product_id, $locked->to_product_id)->firstWhere('id', $locked->to_product_id);
             $service = Service::query()->lockForUpdate()->findOrFail($locked->service_id);
-            // The last one of a plan in stock may have gone while the client's change waited.
+            // The last one of a plan in stock may have gone while the client's change waited. A change
+            // for the renewal date, or one staff made, held its unit while it waited (see
+            // Product::lockedStockLeft), so it is not counted again, which would count it against itself.
             $countsStock = $product !== null && $locked->admin_id === null && $locked->mode !== PlanChange::MODE_RENEWAL;
             $stopped = $this->stopReason($locked, $service, $product, $countsStock ? $product->lockedStockLeft() : null);
 

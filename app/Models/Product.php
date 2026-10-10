@@ -20,6 +20,11 @@ class Product extends Model
     /** @use HasFactory<ProductFactory> */
     use HasFactory;
 
+    /**
+     * Services in these states hold none of their product's stock.
+     */
+    private const STATUSES_WITHOUT_STOCK = [ServiceStatus::Terminated, ServiceStatus::Cancelled];
+
     protected $fillable = [
         'product_group_id',
         'name',
@@ -157,8 +162,10 @@ class Product extends Model
     }
 
     /**
-     * How many more can be sold, or null when the product has no stock limit. Good for showing;
-     * where the answer decides a sale or a plan change, use lockedStockLeft().
+     * How many more can be sold, or null when the product has no stock limit. Each of its services
+     * holds one, and so does each waiting plan change into it that will not count the stock when it
+     * happens (see planChangesHoldingStock). Good for showing; where the answer decides a sale or a
+     * plan change, use lockedStockLeft().
      */
     public function stockLeft(): ?int
     {
@@ -166,14 +173,15 @@ class Product extends Model
             return null;
         }
 
-        return max(0, $this->stock - $this->servicesHoldingStock()->count());
+        return max(0, $this->stock - $this->servicesHoldingStock()->count() - $this->planChangesHoldingStock()->count());
     }
 
     /**
      * How many more can be sold, or null when the product has no stock limit, counted from the
-     * newest saved rows. Use it where the answer decides a sale or a plan change, inside that
-     * database transaction: the product's row and then its services stay locked until it ends, so
-     * no other checkout can take one in the meantime.
+     * newest saved rows. Each of its services holds one, and so does each waiting plan change into it
+     * that will not count the stock when it happens (see planChangesHoldingStock). Use it where the
+     * answer decides a sale or a plan change, inside that database transaction: the product's row and
+     * then its services stay locked until it ends, so no other checkout can take one in the meantime.
      *
      * On MySQL and MariaDB a plain count can read an older snapshot of the transaction and miss an
      * order another checkout saved a moment ago. This locking read cannot. Call it before anything
@@ -181,6 +189,12 @@ class Product extends Model
      * two of them never wait for each other in a circle: a plan change, then a client, then a coupon,
      * then every product the transaction needs (in id order), then services. Lock any other product
      * first, then call this.
+     *
+     * The waiting plan changes are counted with a plain read, after the locks, and are not locked:
+     * applying a change locks the change before the products, so locking changes here could make
+     * the two wait for each other. A client's plan change locks the product before it is saved, so
+     * once this holds the product's lock, each such change is either saved, and seen by the plain
+     * read, or waits for this transaction to end.
      */
     public function lockedStockLeft(): ?int
     {
@@ -199,7 +213,7 @@ class Product extends Model
         // so every caller locks them in the same order.
         $used = $this->servicesHoldingStock()->orderBy('services.id')->lockForUpdate()->pluck('services.id')->count();
 
-        return max(0, $saved->stock - $used);
+        return max(0, $saved->stock - $used - $this->planChangesHoldingStock()->count());
     }
 
     /**
@@ -209,7 +223,26 @@ class Product extends Model
      */
     private function servicesHoldingStock(): HasMany
     {
-        return $this->services()->whereNotIn('status', [ServiceStatus::Terminated, ServiceStatus::Cancelled]);
+        return $this->services()->whereNotIn('status', self::STATUSES_WITHOUT_STOCK);
+    }
+
+    /**
+     * The waiting plan changes into the product that hold one of its stock: the ones that move their
+     * service without counting the stock when they happen. Those are the changes that wait for the
+     * renewal date and the ones staff made (staff may go past the limit). A client's change that is
+     * paid first or happens now counts the stock when it happens, so it is not counted here and
+     * never counts against itself. A change for a terminated or cancelled service holds nothing, as
+     * that service would not hold stock on the new plan either. A stopped or applied change no
+     * longer counts; an applied one is counted with the services.
+     *
+     * @return HasMany<PlanChange, $this>
+     */
+    private function planChangesHoldingStock(): HasMany
+    {
+        return $this->hasMany(PlanChange::class, 'to_product_id')
+            ->where('status', PlanChange::STATUS_PENDING)
+            ->where(fn (Builder $query): Builder => $query->where('mode', PlanChange::MODE_RENEWAL)->orWhereNotNull('admin_id'))
+            ->whereHas('service', fn (Builder $query): Builder => $query->whereNotIn('status', self::STATUSES_WITHOUT_STOCK));
     }
 
     /**

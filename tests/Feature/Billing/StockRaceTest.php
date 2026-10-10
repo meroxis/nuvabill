@@ -99,6 +99,7 @@ class StockRaceTest extends TestCase
         $this->aPaidPlanChangeStopsWhenTheLastOneSoldAfterItsSnapshot();
         $this->aPlanChangeTheDatabaseStoppedIsTriedAgain();
         $this->twoPlanChangesInOppositeDirectionsBothStartAtTheFirstTry();
+        $this->twoChangesForTheRenewalDateCannotBothTakeTheLastOne();
     }
 
     public function test_on_mariadb_with_snapshot_isolation_the_checkout_is_tried_again_and_refused(): void
@@ -306,6 +307,44 @@ class StockRaceTest extends TestCase
         $this->assertSame(1, $tries->count, 'This change started at the first try.');
         $this->assertGreaterThan(1000, $waited, 'This change waited for the plans the other change held.');
         $this->assertSame(2, PlanChange::query()->whereIn('service_id', [$up->id, $down->id])->count());
+    }
+
+    /**
+     * Two clients ask at the same moment to move down, on their renewal date, to a plan with one
+     * left: one in a process of its own that holds its locks for a moment. Neither moves now, so no
+     * service holds the last one yet. This change waits for the plan, then counts the other's
+     * waiting change, which holds the last one, and is refused.
+     */
+    private function twoChangesForTheRenewalDateCannotBothTakeTheLastOne(): void
+    {
+        // The other process runs on the real clock and reads the settings saved here.
+        $this->travelBack();
+        $this->setSettings(['billing.downgrade' => 'renewal']);
+
+        $business = Product::factory()->priced(2000)->create(['name' => 'Business', 'stock' => 1]);
+        $pro = Product::factory()->priced(3000)->create(['name' => 'Pro', 'upgrade_product_ids' => [$business->id]]);
+        $client = Client::factory()->create(['first_name' => 'Mer', 'last_name' => 'Las', 'currency' => 'USD']);
+        $first = Service::factory()->create(['client_id' => $this->buyer->id, 'product_id' => $pro->id, 'domain' => 'first.example.test', 'recurring_amount' => 3000, 'next_due_date' => today()->addDays(15)]);
+        $second = Service::factory()->create(['client_id' => $client->id, 'product_id' => $pro->id, 'domain' => 'second.example.test', 'recurring_amount' => 3000, 'next_due_date' => today()->addDays(15)]);
+
+        $other = $this->startPlanChangeInAnotherProcess($first, $business, pauseMs: 1000);
+        $refused = null;
+
+        try {
+            app(PlanChanges::class)->start($second->load('product', 'client'), $business);
+        } catch (RuntimeException $exception) {
+            $refused = $exception->getMessage();
+        }
+
+        $result = $other->wait();
+        $lines = preg_split('/\R/', trim($result->output()));
+
+        $this->assertSame(['started' => true, 'mode' => PlanChange::MODE_RENEWAL, 'tries' => 1], json_decode((string) end($lines), true), 'The other change: '.$result->errorOutput());
+        // Business is no longer offered to this client once it is sold out.
+        $this->assertSame('This service cannot move to that plan.', $refused);
+        $this->assertSame(1, PlanChange::query()->where('to_product_id', $business->id)->count());
+        $this->assertSame(0, $business->stockLeft());
+        $this->assertSame(0, $business->services()->count());
     }
 
     /**

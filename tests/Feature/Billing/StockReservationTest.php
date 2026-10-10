@@ -4,6 +4,7 @@ namespace Tests\Feature\Billing;
 
 use App\Billing\Cart;
 use App\Billing\OrderPlacer;
+use App\Billing\PaymentRecorder;
 use App\Billing\PlanChanges;
 use App\Enums\BillingCycle;
 use App\Enums\ServiceStatus;
@@ -28,13 +29,15 @@ use Illuminate\Support\Facades\Exceptions;
 use Mockery\MockInterface;
 use PDOException;
 use PHPUnit\Framework\Attributes\DataProvider;
+use RuntimeException;
 use Tests\TestCase;
 
 /**
  * Where stock decides a sale or a plan change, it is counted under a lock from the newest rows.
  * Checkouts and plan changes lock in one order (a plan change, a client, a coupon, products in id
- * order, then services) and before they read anything else. The race itself needs two connections
- * to MySQL or MariaDB: see StockRaceTest.
+ * order, then services) and before they read anything else. A plan change that will not count the
+ * stock when it happens holds its unit while it waits. The race itself needs two connections to
+ * MySQL or MariaDB: see StockRaceTest.
  */
 class StockReservationTest extends TestCase
 {
@@ -144,6 +147,110 @@ class StockReservationTest extends TestCase
         $this->assertSame(500, $service->client->fresh()->credit);
     }
 
+    public function test_a_change_for_the_renewal_date_holds_the_last_one_so_a_second_client_cannot_take_it(): void
+    {
+        [$business, $first, $second] = $this->twoServicesThatCanMoveDown();
+
+        $change = app(PlanChanges::class)->start($first, $business);
+        $this->assertSame(PlanChange::MODE_RENEWAL, $change->mode);
+        $this->assertSame(0, $business->services()->count());
+
+        // The plan has no service yet, but its last one is taken: in the store, the cart and for plan changes.
+        $this->assertSame(0, $business->stockLeft());
+        $this->assertSame(0, $business->lockedStockLeft());
+        $this->get(route('store.product', [$business->group, $business]))->assertOk()->assertSee('This plan is sold out right now.');
+        $this->post(route('cart.store'), ['product_id' => $business->id, 'billing_cycle' => BillingCycle::Monthly->value, 'domain' => 'shop.example.test'])
+            ->assertSessionHasErrors(['product_id' => 'This product is not available right now.']);
+        $this->actingAs($second->client, 'web')->get(route('client.services.change-plan', $second))->assertOk()->assertDontSee('Switch to Business');
+
+        try {
+            app(PlanChanges::class)->start($second, $business);
+            $this->fail('The second change should be refused.');
+        } catch (RuntimeException $exception) {
+            // Business is no longer offered to the client once it is sold out.
+            $this->assertSame('This service cannot move to that plan.', $exception->getMessage());
+        }
+
+        $this->assertSame(1, PlanChange::query()->count());
+
+        // On the renewal date the change moves its service; the unit it held is not counted against it.
+        $this->assertSame(1, app(PlanChanges::class)->applyScheduled(Carbon::parse('2026-10-16')));
+        $this->assertSame(PlanChange::STATUS_APPLIED, $change->fresh()->status);
+        $this->assertSame($business->id, $first->fresh()->product_id);
+        $this->assertSame(1, $business->services()->count());
+        $this->assertSame(0, $business->stockLeft());
+
+        // The applied change is counted as the service it moved, not twice.
+        $business->update(['stock' => 2]);
+        $this->assertSame(1, $business->stockLeft());
+        $this->assertSame(1, $business->lockedStockLeft());
+    }
+
+    public function test_a_stopped_change_for_the_renewal_date_frees_the_last_one_again(): void
+    {
+        [$business, $first, $second] = $this->twoServicesThatCanMoveDown();
+        $change = app(PlanChanges::class)->start($first, $business);
+        $this->assertSame(0, $business->stockLeft());
+
+        app(PlanChanges::class)->cancel($change);
+
+        $this->assertSame(PlanChange::STATUS_CANCELLED, $change->fresh()->status);
+        $this->assertSame(1, $business->stockLeft());
+        $this->assertSame(1, $business->lockedStockLeft());
+        $this->get(route('store.product', [$business->group, $business]))->assertOk()->assertDontSee('This plan is sold out right now.');
+
+        $next = app(PlanChanges::class)->start($second, $business);
+        $this->assertSame(PlanChange::MODE_RENEWAL, $next->mode);
+        $this->assertSame(0, $business->stockLeft());
+
+        // A terminated service would hold no stock on the new plan either, so its waiting change holds nothing.
+        $second->update(['status' => ServiceStatus::Terminated]);
+        $this->assertSame(1, $business->stockLeft());
+        $this->assertSame(1, $business->lockedStockLeft());
+    }
+
+    public function test_a_paid_upgrade_counts_the_changes_waiting_for_the_renewal_date_but_not_itself(): void
+    {
+        $this->setSettings(['wallet.enabled' => true, 'billing.downgrade' => 'renewal']);
+        [$service, , $business] = $this->serviceThatCanUpgrade();
+        $upgrade = app(PlanChanges::class)->start($service, $business);
+
+        // An upgrade counts the stock when it is paid, so it holds nothing while it waits for payment.
+        $this->assertSame(PlanChange::MODE_INVOICE, $upgrade->mode);
+        $this->assertSame(1, $business->stockLeft());
+
+        $pro = Product::factory()->priced(3000)->create(['name' => 'Pro', 'upgrade_product_ids' => [$business->id]]);
+        $downgrade = app(PlanChanges::class)->start($this->serviceOn($pro, 'Raz', ''), $business);
+        $this->assertSame(PlanChange::MODE_RENEWAL, $downgrade->mode);
+        $this->assertSame(0, $business->lockedStockLeft());
+
+        app(PaymentRecorder::class)->record($upgrade->invoice, $upgrade->invoice->total, 'banktransfer');
+
+        $this->assertSame(PlanChange::STATUS_CANCELLED, $upgrade->fresh()->status);
+        $this->assertSame($service->product_id, $service->fresh()->product_id);
+        $this->assertSame(500, $service->client->fresh()->credit, 'The upgrade paid for goes back to the wallet.');
+
+        $this->assertSame(1, app(PlanChanges::class)->applyScheduled(Carbon::parse('2026-10-16')));
+        $this->assertSame(1, $business->services()->count());
+    }
+
+    public function test_a_change_staff_made_holds_its_unit_until_it_is_applied(): void
+    {
+        [$service, , $business] = $this->serviceThatCanUpgrade();
+        $change = app(PlanChanges::class)->start($service, $business, Admin::factory()->create(['name' => 'Mer Las']), charge: true);
+
+        // Staff may go past the limit, so the change does not count the stock when it is paid. It holds its unit meanwhile.
+        $this->assertSame(PlanChange::MODE_INVOICE, $change->mode);
+        $this->assertSame(0, $business->stockLeft());
+        $this->assertSame(0, $business->lockedStockLeft());
+
+        app(PaymentRecorder::class)->record($change->invoice, $change->invoice->total, 'banktransfer');
+
+        $this->assertSame(PlanChange::STATUS_APPLIED, $change->fresh()->status);
+        $this->assertSame($business->id, $service->fresh()->product_id);
+        $this->assertSame(0, $business->stockLeft());
+    }
+
     /**
      * @return array<string, array{0: string}>
      */
@@ -216,6 +323,39 @@ class StockReservationTest extends TestCase
         ]);
 
         return [$service->load('product', 'client'), $starter, $business];
+    }
+
+    /**
+     * Two clients on Pro who may move down to Business, which has one left in stock. A downgrade
+     * waits for the renewal date, 16 Oct 2026.
+     *
+     * @return array{0: Product, 1: Service, 2: Service}
+     */
+    private function twoServicesThatCanMoveDown(): array
+    {
+        $this->travelTo(Carbon::parse('2026-10-01 10:00'));
+        $this->setSettings(['billing.downgrade' => 'renewal']);
+
+        $business = Product::factory()->priced(2000)->create(['name' => 'Business', 'stock' => 1]);
+        $pro = Product::factory()->priced(3000)->create(['name' => 'Pro', 'upgrade_product_ids' => [$business->id]]);
+
+        return [$business, $this->serviceOn($pro, 'Mer', 'Las'), $this->serviceOn($pro, 'Raz', '')];
+    }
+
+    /**
+     * An active service on the product for a new client, renewing on 16 Oct 2026.
+     */
+    private function serviceOn(Product $product, string $firstName, string $lastName): Service
+    {
+        $client = Client::factory()->create(['first_name' => $firstName, 'last_name' => $lastName, 'company_name' => null, 'currency' => 'USD']);
+
+        return Service::factory()->create([
+            'client_id' => $client->id,
+            'product_id' => $product->id,
+            'domain' => strtolower($firstName).'.example.test',
+            'recurring_amount' => (int) $product->prices()->value('price'),
+            'next_due_date' => '2026-10-16',
+        ])->load('product', 'client');
     }
 
     /**
