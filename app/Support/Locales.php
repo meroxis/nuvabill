@@ -25,6 +25,7 @@ class Locales
         'en' => ['name' => 'English', 'native' => 'English', 'short' => 'EN', 'rtl' => false],
         'es' => ['name' => 'Spanish', 'native' => 'Español', 'short' => 'ES', 'rtl' => false],
         'fr' => ['name' => 'French', 'native' => 'Français', 'short' => 'FR', 'rtl' => false],
+        'mn' => ['name' => 'Mongolian', 'native' => 'Монгол', 'short' => 'MN', 'rtl' => false],
         'pt_BR' => ['name' => 'Portuguese (Brazil)', 'native' => 'Português (Brasil)', 'short' => 'PT', 'rtl' => false],
         'tr' => ['name' => 'Turkish', 'native' => 'Türkçe', 'short' => 'TR', 'rtl' => false],
         'ru' => ['name' => 'Russian', 'native' => 'Русский', 'short' => 'RU', 'rtl' => false],
