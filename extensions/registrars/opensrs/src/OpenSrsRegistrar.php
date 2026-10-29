@@ -74,8 +74,9 @@ class OpenSrsRegistrar extends Registrar
     public function register(Domain $domain, Contact $contact): RegistrarResult
     {
         return $this->attempt(function () use ($domain, $contact): RegistrarResult {
+            
             $nameservers = $domain->nameserverList();
-
+            
             $attributes = [
                 'domain' => $domain->name,
                 'reg_type' => 'new',
@@ -87,13 +88,13 @@ class OpenSrsRegistrar extends Registrar
                 'custom_nameservers' => $nameservers === [] ? 0 : 1,
                 'contact_set' => $this->contactSet($contact),
             ];
-
+            
             if ($nameservers !== []) {
                 $attributes['nameserver_list'] = $this->nameserverList($nameservers);
             }
-
+            
             $response = $this->call('SW_REGISTER', 'DOMAIN', $attributes);
-
+            
             return RegistrarResult::ok(__('Registered with OpenSRS.'), [
                 'registrar_data' => ['order_id' => (string) ($response['attributes']['id'] ?? '')],
             ]);
