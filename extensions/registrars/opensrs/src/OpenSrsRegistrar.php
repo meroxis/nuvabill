@@ -74,9 +74,10 @@ class OpenSrsRegistrar extends Registrar
     public function register(Domain $domain, Contact $contact): RegistrarResult
     {
         return $this->attempt(function () use ($domain, $contact): RegistrarResult {
+            
             $nameservers = $domain->nameserverList();
-
-            $response = $this->call('SW_REGISTER', 'DOMAIN', [
+            
+            $attributes = [
                 'domain' => $domain->name,
                 'reg_type' => 'new',
                 'period' => $domain->years,
@@ -85,10 +86,15 @@ class OpenSrsRegistrar extends Registrar
                 'handle' => 'process',
                 'custom_tech_contact' => 0,
                 'custom_nameservers' => $nameservers === [] ? 0 : 1,
-                'nameserver_list' => $this->nameserverList($nameservers),
                 'contact_set' => $this->contactSet($contact),
-            ]);
-
+            ];
+            
+            if ($nameservers !== []) {
+                $attributes['nameserver_list'] = $this->nameserverList($nameservers);
+            }
+            
+            $response = $this->call('SW_REGISTER', 'DOMAIN', $attributes);
+            
             return RegistrarResult::ok(__('Registered with OpenSRS.'), [
                 'registrar_data' => ['order_id' => (string) ($response['attributes']['id'] ?? '')],
             ]);
@@ -267,7 +273,7 @@ class OpenSrsRegistrar extends Registrar
         $code = (int) ($data['response_code'] ?? 0);
 
         if ((int) ($data['is_success'] ?? 0) !== 1 && ! in_array($code, [200, ...$allowCodes], true)) {
-            throw new RuntimeException('OpenSRS: '.($data['response_text'] ?? __('unknown error')));
+            throw new RuntimeException('OpenSRS: '.($data['response_text'] ?? __('unknown error')).' (code '.$code.')');
         }
 
         return $data;
@@ -291,7 +297,7 @@ class OpenSrsRegistrar extends Registrar
             return htmlspecialchars((string) $value, ENT_XML1);
         }
 
-        $tag = array_is_list($value) ? 'dt_array' : 'dt_assoc';
+        $tag = $value !== [] && array_is_list($value) ? 'dt_array' : 'dt_assoc';
         $items = '';
 
         foreach ($value as $key => $item) {
