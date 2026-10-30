@@ -74,9 +74,8 @@ class OpenSrsRegistrar extends Registrar
     public function register(Domain $domain, Contact $contact): RegistrarResult
     {
         return $this->attempt(function () use ($domain, $contact): RegistrarResult {
-            
             $nameservers = $domain->nameserverList();
-            
+
             $attributes = [
                 'domain' => $domain->name,
                 'reg_type' => 'new',
@@ -88,13 +87,13 @@ class OpenSrsRegistrar extends Registrar
                 'custom_nameservers' => $nameservers === [] ? 0 : 1,
                 'contact_set' => $this->contactSet($contact),
             ];
-            
+
             if ($nameservers !== []) {
                 $attributes['nameserver_list'] = $this->nameserverList($nameservers);
             }
-            
+
             $response = $this->call('SW_REGISTER', 'DOMAIN', $attributes);
-            
+
             return RegistrarResult::ok(__('Registered with OpenSRS.'), [
                 'registrar_data' => ['order_id' => (string) ($response['attributes']['id'] ?? '')],
             ]);
@@ -273,7 +272,8 @@ class OpenSrsRegistrar extends Registrar
         $code = (int) ($data['response_code'] ?? 0);
 
         if ((int) ($data['is_success'] ?? 0) !== 1 && ! in_array($code, [200, ...$allowCodes], true)) {
-            throw new RuntimeException('OpenSRS: '.($data['response_text'] ?? __('unknown error')).' (code '.$code.')');
+            // The code tells staff what went wrong when the text does not, for example 211 for a taken domain.
+            throw new RuntimeException('OpenSRS: '.($data['response_text'] ?? __('unknown error')).($code > 0 ? ' (code '.$code.')' : ''));
         }
 
         return $data;

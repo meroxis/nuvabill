@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.7.3](https://github.com/meroxis/nuvabill/releases/tag/v0.7.3) | Unreleased | OpenSRS fixes |
 | [0.7.2](https://github.com/meroxis/nuvabill/releases/tag/v0.7.2) | 28 Oct 2026 | Security fixes: API keys after a password reset, typed secrets after form errors, refunds never sent twice, no server passwords over plain HTTP on the internet |
 | [0.7.1](https://github.com/meroxis/nuvabill/releases/tag/v0.7.1) | 28 Oct 2026 | Mongolian (off until you turn it on), 155 currencies, the public demo can switch chosen add-ons on again after every reset; marketplace listings are checked for length before they are saved; the client side follows the admin language when no client language was picked |
 | [0.7.0](https://github.com/meroxis/nuvabill/releases/tag/v0.7.0) | 27 Oct 2026 | Resource sliders, a full server panel with console, Virtualizor 2.0, your own dedicated servers, free Hetzner modules, Connect to marketplace, Thai, more hooks for server modules and dedicated server add-ons |
@@ -56,6 +57,16 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.7.3
+
+Work in progress.
+
+**Domains**
+
+- OpenSRS: **Test connection** works again with live reseller accounts, an OpenSRS error now shows its code (for
+  example 211 when the domain is already taken), and a domain registered without its own nameservers no longer sends
+  an empty nameserver list. Thanks to @gbatkhuyag for finding and fixing these.
 
 ## 0.7.2
 

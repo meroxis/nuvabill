@@ -151,7 +151,40 @@ class RegistrarModulesTest extends TestCase
                 && str_contains($body, '<item key="name">ns1.host.test</item>');
         });
 
-        $this->assertSame('OpenSRS: Authentication Error.', $registrar->testConnection()->message);
+        // The response code helps staff see what went wrong, for example 415 for a wrong key.
+        $this->assertSame('OpenSRS: Authentication Error. (code 415)', $registrar->testConnection()->message);
+    }
+
+    public function test_opensrs_sends_empty_attributes_as_a_list_of_keys_and_leaves_out_empty_nameservers(): void
+    {
+        $reply = fn (string $inner): string => '<?xml version="1.0"?><OPS_envelope><header><version>0.9</version></header><body><data_block><dt_assoc>'.$inner.'</dt_assoc></data_block></body></OPS_envelope>';
+
+        Http::fake(['horizon.opensrs.net:55443*' => fn () => Http::response($reply('<item key="is_success">1</item><item key="response_code">200</item><item key="attributes"><dt_assoc><item key="balance">12.50</item><item key="id">9002</item></dt_assoc></item>'))]);
+
+        $registrar = $this->registrar('opensrs', ['username' => 'rapidnet', 'api_key' => 'secret', 'mode' => 'test']);
+
+        $this->assertTrue($registrar->testConnection()->success);
+        Http::assertSent(fn (Request $request): bool => str_contains($request->body(), 'GET_BALANCE')
+            && str_contains($request->body(), '<item key="attributes"><dt_assoc></dt_assoc></item>'));
+
+        // Without nameservers, OpenSRS uses its own: no empty nameserver list is sent.
+        $domain = $this->domain('plain.com');
+        $domain->update(['nameservers' => []]);
+
+        $this->assertTrue($registrar->register($domain->fresh(), Contact::fromClient($domain->client))->success);
+        Http::assertSent(fn (Request $request): bool => str_contains($request->body(), 'SW_REGISTER')
+            && str_contains($request->body(), '<item key="custom_nameservers">0</item>')
+            && ! str_contains($request->body(), 'nameserver_list'));
+    }
+
+    public function test_opensrs_errors_name_the_code_only_when_there_is_one(): void
+    {
+        $reply = fn (string $inner): string => '<?xml version="1.0"?><OPS_envelope><header><version>0.9</version></header><body><data_block><dt_assoc>'.$inner.'</dt_assoc></data_block></body></OPS_envelope>';
+        Http::fake(['horizon.opensrs.net:55443*' => Http::response($reply('<item key="is_success">0</item><item key="response_text">Internal server error</item>'))]);
+
+        $registrar = $this->registrar('opensrs', ['username' => 'rapidnet', 'api_key' => 'secret', 'mode' => 'test']);
+
+        $this->assertSame('OpenSRS: Internal server error', $registrar->testConnection()->message);
     }
 
     /**
