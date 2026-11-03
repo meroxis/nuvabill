@@ -127,7 +127,7 @@ Prefer to upload a zip? Follow the steps below.
 
 ### 1. Check your hosting
 
-- PHP **8.3 or newer** with `pdo`, `openssl`, `mbstring`, `intl`, `curl`, `zip`, `sodium`, `bcmath`, `fileinfo`
+- PHP **8.3 or newer** with `pdo`, `pdo_mysql` (or `pdo_sqlite` for SQLite), `openssl`, `mbstring`, `tokenizer`, `xml`, `ctype`, `json`, `fileinfo`, `curl`, `zip`, `intl`, `sodium`, `bcmath`
 - **MySQL 8** or **MariaDB 10.6+** (SQLite works for small sites and testing)
 - A **cron job** that runs every minute
 

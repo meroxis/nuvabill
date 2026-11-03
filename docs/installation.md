@@ -2,7 +2,7 @@
 
 ## What you need
 
-- **PHP 8.3 or newer** with `pdo`, `openssl`, `mbstring`, `intl`, `curl`, `zip`, `sodium`, `bcmath` and `fileinfo`
+- **PHP 8.3 or newer** with `pdo`, `pdo_mysql` (or `pdo_sqlite` for SQLite), `openssl`, `mbstring`, `tokenizer`, `xml`, `ctype`, `json`, `fileinfo`, `curl`, `zip`, `intl`, `sodium` and `bcmath`
 - **MySQL 8** or **MariaDB 10.6+**. SQLite also works for small sites and testing.
 - A **cron job** that runs every minute
 - A domain or subdomain, for example `billing.yourhost.com`, with HTTPS
