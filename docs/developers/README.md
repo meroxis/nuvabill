@@ -318,6 +318,8 @@ On Windows 10 or 11, in the `extensions/addons` folder:
 tar -a -c -f acme-slack-alerts-1.0.0.zip acme-slack-alerts
 ```
 
+Do not use PowerShell's `Compress-Archive`: it writes paths with a backslash, which the store refuses.
+
 On macOS or Linux, in the `extensions/addons` folder:
 
 ```
@@ -329,6 +331,8 @@ Before you upload, check that the zip:
 - has `extension.json` at the top, or in the one top folder;
 - has at most 5,000 files, is at most 100 MB unpacked and at most 20 MB zipped;
 - has no program files or server files (`.phar`, `.exe`, `.sh`, `.bat`, `.htaccess` and others are refused);
+- has no archives inside (`.zip`, `.tar`, `.gz` and others are refused), and only real images as `.png`, `.jpg`, `.gif` or `.webp`;
+- uses `/` in its paths (the commands above do) and holds each file name only once;
 - has no PHP code in any file that is not `.php` (`.md` files may show PHP examples);
 - has no encoded code (ionCube, SourceGuardian, `eval(base64_decode(...))` and the like);
 - has no file named `.nuvabill-license` (the store adds one to paid downloads);

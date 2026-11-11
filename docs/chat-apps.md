@@ -41,6 +41,16 @@ Keep it somewhere safe.
 The signup window runs on `my.nuvabill.com`, because Meta only allows it on the domains of an approved Meta app. It
 hands the access key back to your own site and keeps nothing. Your site talks to Meta directly after that.
 
+The window only opens for a site it knows, because the access key goes to the site that opened it:
+
+- **Connect your site to the marketplace first** (Marketplace → Connect to marketplace). Until then, Settings → Chat
+  apps tells you so and shows the form for your own Meta app.
+- Open the admin area on the address the site is connected with. `www.example.com` and `example.com` are two
+  addresses.
+- The window shows the address the access key goes to. Only continue when it is your own site.
+- The button's link works for one hour. If the window says it must be opened from Settings, load Settings → Chat apps
+  again and press the button.
+
 Until Meta has approved Nuvabill for this, Settings → Chat apps says so and shows the form for your own Meta app
 instead. It asks the Nuvabill store again every 10 minutes.
 
@@ -160,3 +170,19 @@ META_WHATSAPP_QR_OPEN=false
   button within 10 minutes.
 
 Then set `NUVABILL_WHATSAPP_CONNECT_URL=https://your-site/connect/whatsapp` on the sites that should use it.
+
+The page hands the access key to the site that opened it, so it only opens for sites it knows. The admin area of the
+site that shows the window always works. For every other site, add its host name to the `.env` of the site that shows
+the window:
+
+```
+META_WHATSAPP_QR_SITES=billing.example.com,clients.example.net
+```
+
+Only `https` sites on the standard port can be listed. A site that is not on the list gets a page that says it must be
+opened from Settings → Chat apps.
+
+On the marketplace store itself no list is needed: its page opens for sites that are connected to the marketplace and
+sign the link with their marketplace key. Sites on Nuvabill 0.7.2 or older send no signature. The store still opens
+for them while `META_WHATSAPP_QR_UNSIGNED` is true (the default) and they are connected to the marketplace. Set
+`META_WHATSAPP_QR_UNSIGNED=false` once those sites have updated.

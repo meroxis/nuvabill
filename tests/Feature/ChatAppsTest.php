@@ -14,6 +14,7 @@ use App\Models\Admin;
 use App\Models\ChatLink;
 use App\Models\Client;
 use App\Models\Invoice;
+use App\Models\MarketplaceSite;
 use App\Models\Ticket;
 use App\Models\TicketDepartment;
 use App\Support\TicketDesk;
@@ -307,6 +308,9 @@ class ChatAppsTest extends TestCase
         // Template buttons need an https site address.
         URL::forceRootUrl('https://billing.example.com');
         URL::forceScheme('https');
+        // The QR page only opens for a site that is connected to the marketplace.
+        config(['app.url' => 'https://billing.example.com']);
+        $this->setSettings(['marketplace.site_key' => 'nvb_site_'.str_repeat('a', 43), 'marketplace.site_id' => 7, 'marketplace.site_status' => 'active']);
         $this->signInAdmin();
         Http::fake(['my.nuvabill.com/connect/whatsapp/status' => Http::response(['ready' => true])]);
         $this->get(route('admin.settings.chat.edit'))->assertOk()->assertSee('Connect with a QR code');
@@ -354,6 +358,8 @@ class ChatAppsTest extends TestCase
     public function test_the_connect_page_runs_meta_signup_only_where_meta_keys_are_set(): void
     {
         $query = '?origin='.urlencode('https://billing.example.com/').'&state='.str_repeat('a', 32);
+        // The page only opens for a site it knows: this one is connected to the marketplace.
+        MarketplaceSite::query()->create(['host' => 'billing.example.com', 'ip' => '45.33.10.20', 'ip_family' => 'ipv4', 'key_hash' => MarketplaceSite::hashKey('nvb_site_'.str_repeat('a', 43)), 'key_created_at' => now(), 'status' => MarketplaceSite::STATUS_ACTIVE]);
 
         $this->get(route('connect.whatsapp').$query)->assertOk()->assertSee('not available yet')->assertDontSee('connect.facebook.net');
         $this->getJson(route('connect.whatsapp.status'))->assertOk()->assertExactJson(['ready' => false]);
@@ -370,7 +376,8 @@ class ChatAppsTest extends TestCase
         $this->get(route('connect.whatsapp').'?origin='.urlencode('javascript:alert(1)').'&state='.str_repeat('a', 32))->assertSee('must be opened from Settings');
 
         Http::fake(['graph.facebook.com/*' => Http::response(['access_token' => 'EAABbusiness'])]);
-        $this->postJson(route('connect.whatsapp.exchange'), ['code' => 'abc'])->assertOk()->assertJson(['token' => 'EAABbusiness']);
+        $this->postJson(route('connect.whatsapp.exchange'), ['code' => 'abc'])->assertForbidden();
+        $this->postJson(route('connect.whatsapp.exchange'), ['code' => 'abc', 'origin' => 'https://billing.example.com/', 'state' => str_repeat('a', 32)])->assertOk()->assertJson(['token' => 'EAABbusiness']);
         Http::assertSent(fn (Request $request): bool => str_contains($request->url(), 'oauth/access_token') && $request['client_secret'] === 'shh' && $request['code'] === 'abc');
     }
 

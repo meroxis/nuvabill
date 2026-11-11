@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Chat\WhatsAppConnectLink;
 use App\Http\Middleware\SecurityHeaders;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\JsonResponse;
@@ -18,13 +19,20 @@ use Illuminate\View\View;
  */
 class WhatsAppConnectController extends Controller
 {
-    public function show(Request $request): View
-    {
-        $origin = (string) $request->query('origin');
-        $state = (string) $request->query('state');
-        $valid = self::isSiteOrigin($origin) && preg_match('/^[A-Za-z0-9]{32}$/', $state) === 1;
+    /**
+     * What a Nuvabill site sends when it opens this page, and what the page sends back with Meta's code.
+     */
+    private const LINK_VALUES = ['origin', 'state', 'site', 'time', 'signature'];
 
-        if (self::isReady()) {
+    public function show(Request $request, WhatsAppConnectLink $link): View
+    {
+        $values = $request->only(self::LINK_VALUES);
+        // The token goes to the site that opened this page, so only for a site this page knows.
+        $valid = self::isReady() && $link->accepts($values, $request->getSchemeAndHttpHost());
+        $values = $valid ? array_map(strval(...), $values) : [];
+        $origin = $valid ? (string) WhatsAppConnectLink::originOf($values['origin']) : '';
+
+        if ($valid) {
             $request->attributes->set(SecurityHeaders::PAGE_SOURCES, [
                 'script-src' => ['https://connect.facebook.net'],
                 'frame-src' => ['https://www.facebook.com', 'https://web.facebook.com', 'https://staticxx.facebook.com'],
@@ -37,10 +45,10 @@ class WhatsAppConnectController extends Controller
         return view('connect.whatsapp', [
             'ready' => self::isReady(),
             'valid' => $valid,
-            'origin' => $origin,
-            'state' => $state,
+            'link' => $values,
+            'state' => $values['state'] ?? '',
             'siteHost' => (string) parse_url($origin, PHP_URL_HOST),
-            'targetOrigin' => $valid ? self::originOf($origin) : '',
+            'targetOrigin' => $origin,
             'appId' => (string) config('nuvabill.whatsapp_connect.app_id'),
             'configId' => (string) config('nuvabill.whatsapp_connect.config_id'),
             'graphVersion' => (string) config('nuvabill.whatsapp_connect.graph_version'),
@@ -80,10 +88,15 @@ class WhatsAppConnectController extends Controller
         return response('ok', 200, ['Content-Type' => 'text/plain']);
     }
 
-    public function exchange(Request $request): JsonResponse
+    public function exchange(Request $request, WhatsAppConnectLink $link): JsonResponse
     {
         abort_unless(self::isReady(), 404);
         $data = $request->validate(['code' => ['required', 'string', 'max:2000']]);
+
+        // Only as the last step of a signup this page showed for a site it knows.
+        if (! $link->accepts($request->only(self::LINK_VALUES), $request->getSchemeAndHttpHost(), WhatsAppConnectLink::FINISH_MINUTES)) {
+            return response()->json(['message' => __('This window was open for too long. Close it and start again from Settings → Chat apps.')], 403);
+        }
 
         try {
             $response = Http::timeout(15)->get('https://graph.facebook.com/'.config('nuvabill.whatsapp_connect.graph_version').'/oauth/access_token', [
@@ -107,29 +120,5 @@ class WhatsAppConnectController extends Controller
     public static function isReady(): bool
     {
         return filled(config('nuvabill.whatsapp_connect.app_id')) && filled(config('nuvabill.whatsapp_connect.app_secret')) && filled(config('nuvabill.whatsapp_connect.config_id'));
-    }
-
-    /**
-     * "https://example.com/billing" becomes "https://example.com", the origin postMessage needs.
-     */
-    private static function originOf(string $address): string
-    {
-        $parts = (array) parse_url($address);
-
-        return $parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : '');
-    }
-
-    /**
-     * The token only goes back to a real site address: https, or http on this computer for testing.
-     */
-    private static function isSiteOrigin(string $origin): bool
-    {
-        $parts = parse_url($origin);
-
-        if (! is_array($parts) || ! isset($parts['scheme'], $parts['host']) || isset($parts['user']) || isset($parts['query']) || isset($parts['fragment'])) {
-            return false;
-        }
-
-        return $parts['scheme'] === 'https' || ($parts['scheme'] === 'http' && in_array($parts['host'], ['localhost', '127.0.0.1'], true));
     }
 }

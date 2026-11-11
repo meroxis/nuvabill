@@ -100,6 +100,9 @@
                     @else
                         @if (! $qrReady)
                         <p class="flash" data-tone="warn" style="margin:0">{{ __('Connecting by QR code is not available yet. It opens as soon as Meta has approved Nuvabill. Until then, use your own Meta app below.') }}</p>
+                        @elseif ($connectUrl === null)
+                        {{-- The QR page hands the WhatsApp access key to the site that opened it, so it only opens for a site the marketplace knows. --}}
+                        <p class="flash" data-tone="warn" style="margin:0"><span>{{ __('To connect by QR code, this site must be connected to the marketplace as :host. Connect it on the Marketplace page, then open this page again. Or use your own Meta app below.', ['host' => $siteHost]) }} <a href="{{ route('admin.marketplace.index') }}">{{ __('Marketplace') }}</a></span></p>
                         @else
                         <div x-data="whatsappConnect(@js([
                             'url' => $connectUrl,
@@ -120,7 +123,7 @@
                         </div>
                         @endif
 
-                        <details @if (! $qrReady) open @endif>
+                        <details @if (! $qrReady || $connectUrl === null) open @endif>
                             <summary style="cursor:pointer;font-weight:600">{{ __('Use your own Meta app instead') }}</summary>
                             <form method="POST" action="{{ route('admin.settings.chat.whatsapp.manual') }}" style="display:grid;gap:.8rem;margin-top:.8rem">
                                 @csrf

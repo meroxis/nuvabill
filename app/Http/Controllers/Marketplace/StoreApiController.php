@@ -3,15 +3,19 @@
 namespace App\Http\Controllers\Marketplace;
 
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\AuthenticateMarketplaceSite;
 use App\Marketplace\Store\DownloadBuilder;
 use App\Marketplace\Store\LicenseService;
+use App\Marketplace\Store\SourceNetwork;
 use App\Marketplace\Store\StoreCatalog;
 use App\Models\License;
 use App\Models\MarketplaceDownload;
 use App\Models\MarketplaceItem;
+use App\Models\MarketplaceSite;
 use App\Models\MarketplaceVersion;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\URL;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
@@ -20,6 +24,12 @@ use Symfony\Component\HttpFoundation\BinaryFileResponse;
  */
 class StoreApiController extends Controller
 {
+    /**
+     * New installs of one free item that are counted in a day from callers that are not
+     * connected sites.
+     */
+    public const UNCONNECTED_INSTALLS_PER_DAY = 25;
+
     public function __construct(
         private StoreCatalog $catalog,
         private LicenseService $licenses,
@@ -53,10 +63,11 @@ class StoreApiController extends Controller
         }
 
         $license = null;
+        $site = $this->siteName($request, $data['site']);
         $version = $this->catalog->newestFor($item, $data['nuvabill'] ?? null);
 
         if (! $item->isFree()) {
-            $check = $this->licenses->verify($item, $data['license_key'] ?? null, $data['site'], $request->ip(), $version?->version);
+            $check = $this->licenses->verify($item, $data['license_key'] ?? null, $site, $request->ip(), $version?->version, download: true);
 
             if (! $check['valid']) {
                 return response()->json(['message' => $check['message'] ?: __('A valid license key is needed.')], 403);
@@ -75,7 +86,7 @@ class StoreApiController extends Controller
         }
 
         $build = $builder->build($version, $license);
-        $this->countDownload($request, $item, $version, $license, License::normalizeSite($data['site']));
+        $this->countDownload($request, $item, $version, $license, License::normalizeSite($site));
 
         return response()->json([
             // The slug the package was signed with. After a rename, older versions still carry the old one.
@@ -90,38 +101,82 @@ class StoreApiController extends Controller
     }
 
     /**
-     * Note the download, and count a new install. Anyone can download a free item for any site
-     * name, so a free item only counts a site from an address not seen before. Test sites like
-     * localhost never count, and the same download again within an hour is not saved twice.
+     * Note the download, and count a new install. A paid item counts each site that has a key.
+     * A free item counts each connected site once: its address was checked when it connected.
+     * Other callers can send any site name, so they count once per network, and only a few of
+     * them a day. Test sites like localhost never count, and the same download again within an
+     * hour is not saved twice.
      */
     private function countDownload(Request $request, MarketplaceItem $item, MarketplaceVersion $version, ?License $license, string $site): void
     {
         $ip = $request->ip();
-        $seen = MarketplaceDownload::query()
-            ->where('marketplace_item_id', $item->id)
-            ->where(fn ($query) => $query->where('site', $site)->when($license === null && $ip !== null, fn ($query) => $query->orWhere('ip', $ip)))
-            ->exists();
+        $network = SourceNetwork::of($ip);
+        $caller = $this->connectedSite($request);
+        // A site that still waits for store staff counts like any other caller.
+        $connected = $caller?->isActive() ? $caller : null;
+        $earlier = fn () => MarketplaceDownload::query()->where('marketplace_item_id', $item->id);
 
-        $repeat = $seen && MarketplaceDownload::query()
-            ->where('marketplace_item_id', $item->id)
-            ->where('site', $site)
-            ->where('ip', $ip)
-            ->where('created_at', '>=', now()->subHour())
-            ->exists();
+        $seen = match (true) {
+            $license !== null => $earlier()->where('site', $site)->exists(),
+            // Its own downloads, and those under its name from before downloads noted the connected site.
+            $connected !== null => $earlier()
+                ->where(fn ($query) => $query->where('marketplace_site_id', $connected->id)->orWhere(fn ($query) => $query->where('site', $site)->whereNull('network')))
+                ->exists(),
+            default => $network === null || $earlier()
+                ->where(fn ($query) => $query->where('site', $site)->orWhere('network', $network)->orWhere('ip', $ip))
+                ->exists(),
+        };
+
+        $repeat = $seen && $earlier()->where('site', $site)->where('ip', $ip)->where('created_at', '>=', now()->subHour())->exists();
 
         if (! $repeat) {
             MarketplaceDownload::create([
                 'marketplace_item_id' => $item->id,
                 'marketplace_version_id' => $version->id,
                 'license_id' => $license?->id,
+                'marketplace_site_id' => $caller?->id,
                 'site' => $site,
                 'ip' => $ip,
+                'network' => $network,
             ]);
         }
 
-        if (! $seen && ! License::isTestSite($site)) {
-            $item->increment('installs_count');
+        if ($seen || License::isTestSite($site)) {
+            return;
         }
+
+        if ($license === null && $connected === null && ! $this->underDailyLimit($item)) {
+            return;
+        }
+
+        $item->increment('installs_count');
+    }
+
+    /**
+     * Whether one more install from a caller that is not a connected site still counts today.
+     */
+    private function underDailyLimit(MarketplaceItem $item): bool
+    {
+        $counter = 'nuvabill.marketplace.installs.'.$item->id.'.'.now()->toDateString();
+        Cache::add($counter, 0, now()->addDay());
+
+        return Cache::increment($counter) <= self::UNCONNECTED_INSTALLS_PER_DAY;
+    }
+
+    /**
+     * The site a call is for. A connected site proved its address when it connected, so that
+     * address counts, whatever name it sends. Other callers are taken at their word.
+     */
+    private function siteName(Request $request, string $sent): string
+    {
+        return $this->connectedSite($request)?->host ?? $sent;
+    }
+
+    private function connectedSite(Request $request): ?MarketplaceSite
+    {
+        $site = $request->attributes->get(AuthenticateMarketplaceSite::ATTRIBUTE);
+
+        return $site instanceof MarketplaceSite ? $site : null;
     }
 
     public function check(Request $request): JsonResponse
@@ -139,7 +194,7 @@ class StoreApiController extends Controller
             return response()->json(['valid' => false, 'status' => 'unknown', 'message' => __('This item is not in the marketplace.')]);
         }
 
-        $result = $this->licenses->verify($item, $data['license_key'], $data['site'], $request->ip(), $data['version'] ?? null);
+        $result = $this->licenses->verify($item, $data['license_key'], $this->siteName($request, $data['site']), $request->ip(), $data['version'] ?? null);
 
         return response()->json([
             'valid' => $result['valid'],

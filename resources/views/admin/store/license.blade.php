@@ -8,7 +8,7 @@
     </div>
 
     @if ($shared)
-        <div class="flash" data-tone="warn"><span>{{ __('This key was used on :count different sites in the last 30 days. It may have been shared or leaked.', ['count' => count($recentSites)]) }}</span></div>
+        <div class="flash" data-tone="warn"><span>{{ __('This key was used on :sites different sites and from :networks different networks in the last 30 days. It may have been shared or leaked.', ['sites' => count($recentSites), 'networks' => count($recentNetworks)]) }}</span></div>
     @endif
 
     <div class="grid-2" style="align-items:start">
@@ -20,6 +20,7 @@
                 <dt>{{ __('Updates until') }}</dt><dd>{{ $license->updates_until?->translatedFormat('d M Y') ?? '—' }}</dd>
                 <dt>{{ __('Last seen') }}</dt><dd>{{ $license->last_seen_at?->diffForHumans() ?? '—' }}</dd>
                 <dt>{{ __('Sites, 30 days') }}</dt><dd>{{ $recentSites ? implode(', ', $recentSites) : '—' }}</dd>
+                <dt>{{ __('Networks, 30 days') }}</dt><dd>{{ count($recentNetworks) }}</dd>
                 @if ($license->service)<dt>{{ __('Service') }}</dt><dd><a href="{{ route('admin.services.show', $license->service) }}">#{{ $license->service->id }}</a></dd>@endif
             </dl>
             <div style="display:flex;gap:8px;flex-wrap:wrap">

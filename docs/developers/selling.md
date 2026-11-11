@@ -101,7 +101,7 @@ The package goes through the [automatic checks](#automatic-checks) right away. I
 
 ### Editing your listing
 
-Before the first approval, every edit applies at once.
+Before the first approval, every edit applies at once. Nothing is public yet: the listing and its screenshots are only shown to you and to the reviewer. The reviewer reads the listing with your first version, and the approval is for the listing they saw. If you change it while they are looking, they are asked to look again.
 
 After the item is approved (0.6.12+):
 
@@ -140,24 +140,31 @@ Every upload is checked at once. The full list, and how to pass each check, is o
 - There is no `theme.json`, `orderform.json` or `extension.json`, or it is not valid JSON.
 - The manifest slug is not 2 to 64 lowercase letters, numbers, `-` or `_`, or the version does not look like `1.0.0`.
 - Paths with `../`, absolute paths, drive letters, null bytes or symbolic links.
+- File names with a backslash, the same file name twice (upper and lower case count as the same), or a zip with a password or special compression.
 - The slug or type in the manifest does not match the item.
 - The version is not newer than the latest approved version.
 - Encoded or hidden code: ionCube, SourceGuardian, Zend loader, or code like `eval(base64_decode(...))`.
-- PHP code in a file that is not `.php` (0.6.12+). Markdown files may show PHP examples, but they are still checked for encoded code.
+- PHP code in a file that is not `.php` (0.6.12+), also inside an image or another binary file. Markdown files may show PHP examples, but they are still checked for encoded code.
 - Blocked file types: `.phar`, `.phtml`, `.pht`, `.phps`, `.php3` to `.php8`, `.inc`, `.exe`, `.dll`, `.so`, `.sh`, `.bat`, `.cmd`, `.com`, `.jar` and `.htaccess`.
+- Archives inside the package: `.zip`, `.tar`, `.gz`, `.tgz`, `.bz2`, `.xz`, `.7z`, `.rar`, or an archive under another name.
+- A `.png`, `.jpg`, `.jpeg`, `.gif` or `.webp` file that is not a real image of that kind.
 
 **These checks only warn the reviewer:**
 
 - No `requires` line in the manifest, or one that does not start with `>=`. (Add one anyway, for example `">=0.7.0"`. It stops older sites from installing your package.)
-- Risky functions, such as `exec()`, `shell_exec()`, `system()`, `proc_open()`, `eval()`, `unserialize()`, `curl_exec()` and `ini_set()`. Shell commands in backticks, and an `include` or `require` of a file that is not `.php`, also warn.
+- Risky functions, such as `exec()`, `shell_exec()`, `system()`, `proc_open()`, `eval()`, `unserialize()`, `curl_exec()` and `ini_set()`. Shell commands in backticks, and an `include` or `require` of a file that is not `.php` or whose path is not fixed text, also warn.
+- Code that writes files, decodes text, unpacks archives or calls a function through a variable, such as `file_put_contents()`, `base64_decode()`, `ZipArchive` and `$callback(...)`. Honest code uses these too, so most packages get this warning.
 - Web addresses in your PHP or JavaScript that are not in your `http:` permissions.
 
 A warning does not block review, but the reviewer will ask why. Explain it in a message, or remove the code.
+
+The checks run again right before a version is approved. So a version that waited in the queue is always judged by the rules of that day.
 
 ## Human review and messages
 
 After the checks, a person from the store team reviews your version. The reviewer downloads your zip and checks this list:
 
+- Read the code
 - Installs without errors
 - Settings page works
 - Does what the listing says
@@ -270,13 +277,14 @@ You do not write any licence code. The store does it for you.
 - When a buyer pays for your item, the store makes one key in the form `NVB-XXXX-XXXX-XXXX-XXXX` and emails it to them.
 - The key is for one website. The buyer can type the site on the item page ("Website address for this license"). If no site was set, the first real site that checks the key becomes its site.
 - The buyer can move the key to a new site **3 times a year** from their client account.
-- Staff are warned when more than 3 different real sites use one key within 30 days. Staff can revoke, restore or release keys.
+- A site that is connected to the marketplace is checked under the address it connected with, whatever site name it sends.
+- Staff are warned when one key is used on more than 3 different real sites, or from more than 5 different networks, within 30 days. Test sites count for the networks too. Staff can revoke, restore or release keys.
 - Every paid download is a copy stamped with a signed `.nuvabill-license` file next to the manifest. It holds the licence id, item, version, site, the last 4 characters of the key and the time. The stamped copy is signed again. Free items are downloaded as they are.
 - Download links are signed and work for 15 minutes.
 
 ### Test sites
 
-These sites never use up a key and never count as installs:
+Copies on a developer's own computer work with any key and never use it up:
 
 ```text
 localhost
@@ -285,11 +293,27 @@ localhost
 *.local
 *.localhost
 *.example
-staging.*
-dev.*
 ```
 
-The site is lowercased and a leading `www.` is removed first. So buyers can test your item on `billing.test` or `staging.acme.com` for free.
+A key also works on the test copies of **its own site**: `staging.` or `dev.` in front of the site, or in front of a parent of it. For a key of `billing.acme.com` these are `staging.billing.acme.com`, `dev.billing.acme.com`, `staging.acme.com` and `dev.acme.com`. Once a key has a site, any other `staging.*` or `dev.*` name is a site of its own and needs its own key. A key that has no site yet works on any `staging.*` or `dev.*` name and stays free, so a buyer can set up a staging copy first and still use the key on the live site.
+
+The site is lowercased and a leading `www.` is removed first. So buyers can test your item on `billing.test` or on `staging.` plus their own site for free.
+
+Two limits keep one key from being used everywhere under a test name:
+
+- Test sites can **download** with one key from 5 different networks in 30 days. A network that downloaded before keeps working, and the key's own site is never limited. The daily licence check of a test site always passes.
+- Test sites count for the staff warning above.
+
+A network is the `/24` of an IPv4 address or the `/48` of an IPv6 address.
+
+### Install counts
+
+The **Installs** number decides the order of items in the marketplace, after featured items.
+
+- A paid item counts each site that downloads it with a key.
+- A free item counts each site that is connected to the marketplace once.
+- Other downloads of a free item count once per network, whatever site name they send, and at most 25 of them a day per item.
+- `localhost`, `*.test`, `*.local`, `*.localhost`, `*.example`, `staging.*` and `dev.*` never count.
 
 ### The price decides, not the manifest
 
@@ -322,8 +346,9 @@ On the buyer's Nuvabill, staff with the `marketplace.manage` permission:
 2. Click **Install**. For a paid item, they enter the licence key. They can change the key later.
 3. Later, click **Update**. The saved key is used again.
 
-Before anything is unpacked, the buyer's site checks:
+Before the files are put in place, the buyer's site checks:
 
+- that the store's answer is about the item staff asked for, and not about an older version than the one installed (an installed item never goes back to an older version)
 - the SHA-256 hash and the store signature
 - that the package is the one the store described
 - your `requires` line against its own Nuvabill version

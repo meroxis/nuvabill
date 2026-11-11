@@ -6,6 +6,7 @@ use App\Chat\ChatError;
 use App\Chat\ChatMessages;
 use App\Chat\Telegram;
 use App\Chat\WhatsApp;
+use App\Chat\WhatsAppConnectLink;
 use App\Chat\WhatsAppSetup;
 use App\Http\Controllers\Controller;
 use App\Models\ChatLink;
@@ -25,7 +26,7 @@ use Illuminate\View\View;
  */
 class ChatSettingsController extends Controller
 {
-    public function edit(Request $request, Telegram $telegram, WhatsApp $whatsApp, WhatsAppSetup $setup, Settings $settings): View
+    public function edit(Request $request, Telegram $telegram, WhatsApp $whatsApp, WhatsAppSetup $setup, Settings $settings, WhatsAppConnectLink $link): View
     {
         // Proves that the QR connect popup answering this page was opened by this page.
         $state = Str::random(32);
@@ -52,7 +53,9 @@ class ChatSettingsController extends Controller
             'departments' => TicketDepartment::query()->orderBy('sort_order')->pluck('name', 'id')->all(),
             'links' => ChatLink::query()->selectRaw('channel, count(*) as total')->groupBy('channel')->pluck('total', 'channel')->all(),
             'qrReady' => ! $whatsApp->isConnected() && $setup->canConnectByQr(),
-            'connectUrl' => config('nuvabill.whatsapp_connect.url').'?'.http_build_query(['origin' => url('/'), 'state' => $state]),
+            // Signed, so the connect page knows this site opened it. Null when that page would turn this site away.
+            'connectUrl' => $link->url($state),
+            'siteHost' => $request->getHost(),
             'connectOrigin' => (string) parse_url((string) config('nuvabill.whatsapp_connect.url'), PHP_URL_SCHEME).'://'.parse_url((string) config('nuvabill.whatsapp_connect.url'), PHP_URL_HOST),
             'state' => $state,
             'webhookUrl' => route('webhooks.whatsapp', $key),

@@ -38,6 +38,7 @@ class LicenseController extends Controller
         return view('admin.store.license', [
             'license' => $license->load('item', 'client', 'service'),
             'recentSites' => $licenses->recentSites($license),
+            'recentNetworks' => $licenses->recentNetworks($license),
             'shared' => $licenses->looksShared($license),
             'checks' => $license->checks()->latest('id')->limit(25)->get(),
         ]);

@@ -89,7 +89,7 @@ class StoreTest extends TestCase
         $this->get(route('admin.store.reviews.index'))->assertRedirect(route('admin.store.reviews.show', $version));
         $this->get(route('admin.store.reviews.show', $version))->assertOk()->assertSee('Paper')->assertSee('Approve and sign');
 
-        $this->post(route('admin.store.reviews.approve', $version), ['message' => 'Looks great.'])->assertRedirect(route('admin.store.reviews.index'));
+        $this->post(route('admin.store.reviews.approve', $version), ['message' => 'Looks great.', 'seen' => $version->item->listingFingerprint()])->assertRedirect(route('admin.store.reviews.index'));
 
         $version->refresh();
         $item = MarketplaceItem::query()->sole();
@@ -588,9 +588,12 @@ class StoreTest extends TestCase
         $this->assertSame(1, $item->fresh()->installs_count, 'Test sites never count.');
 
         $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10'])->postJson(route('marketplace.api.download'), ['slug' => 'paper', 'site' => 'four.example.org'])->assertOk();
-        $this->postJson(route('marketplace.api.download'), ['slug' => 'paper', 'site' => 'four.example.org'])->assertOk();
+        $this->assertSame(1, $item->fresh()->installs_count, 'Another address in the same network is the same place.');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.10'])->postJson(route('marketplace.api.download'), ['slug' => 'paper', 'site' => 'five.example.org'])->assertOk();
+        $this->postJson(route('marketplace.api.download'), ['slug' => 'paper', 'site' => 'five.example.org'])->assertOk();
         $this->assertSame(2, $item->fresh()->installs_count);
-        $this->assertSame(5, MarketplaceDownload::query()->count(), 'The same download again soon after is saved once.');
+        $this->assertSame(6, MarketplaceDownload::query()->count(), 'The same download again soon after is saved once.');
     }
 
     public function test_listing_changes_on_an_approved_item_wait_for_review(): void

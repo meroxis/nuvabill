@@ -21,11 +21,12 @@ class MarketplaceVersion extends Model
     public const STATUS_REJECTED = 'rejected';
 
     /**
-     * What a reviewer tries before approving.
+     * What a reviewer reads and tries before approving.
      *
      * @var array<string, string>
      */
     public const CHECKLIST = [
+        'code' => 'Read the code',
         'installs' => 'Installs without errors',
         'settings' => 'Settings page works',
         'works' => 'Does what the listing says',

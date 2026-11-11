@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use RuntimeException;
+use SplFileInfo;
 use Throwable;
 
 /**
@@ -44,21 +45,28 @@ class PackageInstaller
 
     /**
      * @param  array{slug: string, type: string, version: string, url: string, sha256: string, signature: string}  $download
+     * @param  string|null  $requested  The slug staff asked the store for. The store's answer must be about it.
      */
-    public function install(array $download, ?string $licenseKey = null): MarketplaceInstall
+    public function install(array $download, ?string $licenseKey = null, ?string $requested = null): MarketplaceInstall
     {
         $this->steps = [];
         $slug = $download['slug'];
         $type = PackageType::tryFrom($download['type']) ?? throw new RuntimeException(__('Unknown package type.'));
-        $publicKey = (string) config('nuvabill.marketplace.public_key');
+        // The marketplace's key, and the other keys this copy trusts while the marketplace changes its key.
+        $publicKeys = array_values(array_unique(array_filter([
+            (string) config('nuvabill.marketplace.public_key'),
+            ...array_map('strval', (array) config('nuvabill.marketplace.public_keys')),
+        ])));
 
         if (! preg_match('/^[a-z0-9][a-z0-9_-]{1,63}$/', $slug) || ! str_starts_with($download['url'], 'https://')) {
             throw new RuntimeException(__('The marketplace sent an invalid download.'));
         }
 
-        if ($publicKey === '') {
+        if ($publicKeys === []) {
             throw new RuntimeException(__('This copy of Nuvabill has no marketplace key, so packages cannot be checked. Update Nuvabill first.'));
         }
+
+        $this->checkAnswer($download, $requested);
 
         $work = storage_path('app/marketplace/'.Str::random(12));
         File::ensureDirectoryExists($work);
@@ -82,7 +90,7 @@ class PackageInstaller
             $this->steps[] = __('Downloaded :name :version (:size)', ['name' => $slug, 'version' => $download['version'], 'size' => $this->size((int) filesize($zipPath))]);
 
             if (! hash_equals(strtolower($download['sha256']), (string) hash_file('sha256', $zipPath))
-                || ! PackageSignature::verify($slug, $download['version'], $download['sha256'], $download['signature'], $publicKey)) {
+                || ! collect($publicKeys)->contains(fn (string $key): bool => PackageSignature::verify($slug, $download['version'], $download['sha256'], $download['signature'], $key))) {
                 Activity::log('marketplace.rejected', "Package {$slug} {$download['version']} failed the signature check and was not installed");
 
                 throw new RuntimeException(__('The package failed the security check and was not installed.'));
@@ -102,16 +110,19 @@ class PackageInstaller
                 throw new RuntimeException(__(':name needs Nuvabill :version or newer. Update Nuvabill first.', ['name' => $archive->name(), 'version' => trim(substr($requires, 2))]));
             }
 
-            // Database changes only come with extensions that say so, because staff see that before installing.
-            $hasMigrations = collect($archive->files())->contains(fn (string $file): bool => str_starts_with($file, 'database/migrations/') && str_ends_with($file, '.php'));
-
-            if ($hasMigrations && (! $type->isExtension() || ! in_array('database', $archive->permissions(), true))) {
-                throw new RuntimeException(__('The package changes the database but does not ask for the database permission, so it was not installed.'));
-            }
-
             $unpacked = $work.'/unpacked';
             $archive->extractTo($unpacked);
             $archive = null;
+
+            // From here on only the unpacked files count, because they are the ones that will run.
+            $manifest = $this->unpackedManifest($unpacked, $type, $slug, $download['version']);
+
+            // Database changes only come with extensions that say so, because staff see that before installing.
+            $hasMigrations = $this->hasMigrations($unpacked);
+
+            if ($hasMigrations && (! $type->isExtension() || ! in_array('database', (array) ($manifest['permissions'] ?? []), true))) {
+                throw new RuntimeException(__('The package changes the database but does not ask for the database permission, so it was not installed.'));
+            }
 
             if ($type->isExtension()) {
                 ExtensionManifest::fromFile($unpacked.'/extension.json');
@@ -193,6 +204,67 @@ class PackageInstaller
         Cache::forget(LicenseChecker::UNLICENSED_CACHE_KEY);
 
         Activity::log('marketplace.removed', "Removed {$install->name} from the marketplace installs");
+    }
+
+    /**
+     * The store's answer is not signed, only the package is, and every package the store ever
+     * signed stays valid. So the answer must be about the item staff asked for, and it may
+     * never take an installed item back to an older version.
+     *
+     * @param  array{slug: string, type: string, version: string, url: string, sha256: string, signature: string}  $download
+     */
+    private function checkAnswer(array $download, ?string $requested): void
+    {
+        $slug = $download['slug'];
+        $installed = MarketplaceInstall::query()->where('slug', $slug)->first();
+
+        // An item installed before the store renamed it keeps its old slug here, so that slug is fine too.
+        // An update of an item installed under the slug that was asked for must stay that item.
+        if ($requested !== null && $requested !== $slug
+            && ($installed === null || MarketplaceInstall::query()->where('slug', $requested)->exists())) {
+            Activity::log('marketplace.rejected', "The marketplace answered the request for {$requested} with {$slug} {$download['version']}, which was not installed");
+
+            throw new RuntimeException(__('The marketplace sent a different package than the one you asked for, so it was not installed.'));
+        }
+
+        if ($installed !== null && version_compare($download['version'], (string) $installed->version, '<')) {
+            Activity::log('marketplace.rejected', "The marketplace sent {$slug} {$download['version']}, older than the installed {$installed->version}, so it was not installed");
+
+            throw new RuntimeException(__('The marketplace sent version :new, which is older than version :installed installed here, so nothing was changed.', ['new' => $download['version'], 'installed' => $installed->version]));
+        }
+    }
+
+    /**
+     * The manifest as it was unpacked. It must say the same as the package the store signed.
+     *
+     * @return array<string, mixed>
+     */
+    private function unpackedManifest(string $directory, PackageType $type, string $slug, string $version): array
+    {
+        $manifest = json_decode((string) @file_get_contents($directory.DIRECTORY_SEPARATOR.$type->manifestFile()), true);
+
+        $found = match (true) {
+            ! is_array($manifest) => null,
+            ! $type->isExtension() => $type,
+            default => PackageType::tryFrom((string) ($manifest['type'] ?? '')),
+        };
+
+        if ($found !== $type || ($manifest['slug'] ?? null) !== $slug || ($manifest['version'] ?? null) !== $version) {
+            throw new RuntimeException(__('The package does not match what the marketplace said it is.'));
+        }
+
+        return $manifest;
+    }
+
+    /**
+     * Whether the unpacked package brings database changes.
+     */
+    private function hasMigrations(string $directory): bool
+    {
+        $path = $directory.DIRECTORY_SEPARATOR.'database'.DIRECTORY_SEPARATOR.'migrations';
+
+        return is_dir($path)
+            && collect(File::allFiles($path, true))->contains(fn (SplFileInfo $file): bool => strtolower($file->getExtension()) === 'php');
     }
 
     /**

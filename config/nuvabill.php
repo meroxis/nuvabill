@@ -103,6 +103,10 @@ return [
     | owner's own access token and hands it back. Only the store sets the
     | META_* values; every other site uses the "url" to reach it.
     |
+    | The page hands the token to the site that opened it, so it only opens
+    | for a site it knows: its own site, a site connected to the marketplace
+    | (on the store), or a site listed in "sites".
+    |
     */
 
     'whatsapp_connect' => [
@@ -115,11 +119,21 @@ return [
         'verify_token' => env('META_WEBHOOK_VERIFY_TOKEN'),
         // Other Nuvabill sites only show the QR button once this is true, after Meta approved the app.
         'open' => (bool) env('META_WHATSAPP_QR_OPEN', false),
+        // For people who run their own signup page: the host names of the other sites that may use it,
+        // separated by commas, for example "billing.example.com,clients.example.net".
+        'sites' => array_values(array_filter(array_map('trim', explode(',', strtolower((string) env('META_WHATSAPP_QR_SITES', '')))))),
+        // Sites on Nuvabill 0.7.2 or older open the page without a signature. While this is true the
+        // store still opens for them when they are connected to the marketplace. Set it to false
+        // once they have updated.
+        'unsigned' => (bool) env('META_WHATSAPP_QR_UNSIGNED', true),
     ],
 
     'marketplace' => [
         'url' => rtrim((string) env('NUVABILL_MARKETPLACE_URL', 'https://my.nuvabill.com'), '/'),
         'public_key' => env('NUVABILL_MARKETPLACE_PUBLIC_KEY', 'ZQ8NK5APeVMJvCJ/8cs6D+R7/X3trvQdMNizLINm3MQ='),
+        // More keys whose packages are installed too. This is how the marketplace can change its
+        // key: one release adds the new key here, and a later release makes it the main key above.
+        'public_keys' => array_values(array_filter(array_map('trim', explode(',', (string) env('NUVABILL_MARKETPLACE_PUBLIC_KEYS', ''))))),
         'store' => (bool) env('NUVABILL_MARKETPLACE_STORE', false),
         'signing_key_path' => env('NUVABILL_MARKETPLACE_SIGNING_KEY_PATH'),
     ],

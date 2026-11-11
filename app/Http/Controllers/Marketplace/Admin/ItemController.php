@@ -107,12 +107,14 @@ class ItemController extends Controller
     }
 
     /**
-     * Staff open the new screenshots that wait for review. They stay off the public media
-     * link until staff approve them, and are not cached on the way.
+     * Staff open the screenshots that are not public: new ones that wait for review, and all
+     * screenshots of an item that is not live. They stay off the public media link until staff
+     * approve them, and are not cached on the way.
      */
     public function media(MarketplaceItem $item, string $file): BinaryFileResponse
     {
-        $waiting = array_map(fn (mixed $name): string => basename((string) $name), (array) ($item->pending_listing['screenshots'] ?? []));
+        $private = [...(array) ($item->pending_listing['screenshots'] ?? []), ...($item->isLive() ? [] : (array) $item->screenshots)];
+        $waiting = array_map(fn (mixed $name): string => basename((string) $name), $private);
         abort_unless(in_array($file, $waiting, true), 404);
 
         return MediaController::send($item->slug, $file, 'private, no-store');

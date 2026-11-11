@@ -5,6 +5,7 @@ namespace App\Marketplace\Store;
 use App\Mail\TemplateMailer;
 use App\Marketplace\PackageType;
 use App\Models\License;
+use App\Models\MarketplaceDownload;
 use App\Models\MarketplaceItem;
 use App\Models\Service;
 use App\Support\Activity;
@@ -20,6 +21,17 @@ class LicenseService
      * Different sites a key may be checked from in 30 days before staff are warned it is shared.
      */
     public const SHARED_SITE_LIMIT = 3;
+
+    /**
+     * Different networks a key may be used from in 30 days before staff are warned it is shared,
+     * whatever site names were sent.
+     */
+    public const SHARED_NETWORK_LIMIT = 5;
+
+    /**
+     * Different networks a key may download to test sites from in 30 days.
+     */
+    public const TEST_DOWNLOAD_NETWORKS = 5;
 
     public function __construct(private TemplateMailer $mailer) {}
 
@@ -82,12 +94,14 @@ class LicenseService
     }
 
     /**
-     * Check a key for an item and a site. The first real site a key is used on becomes its site;
-     * test sites (localhost, *.test, staging.*) always work and never take the key.
+     * Check a key for an item and a site. The first real site a key is used on becomes its site.
+     * Test sites (localhost, *.test, and staging.… or dev.… of the key's own site) pass the check
+     * and never take the key. Pass $download for a download: test sites can only download from a
+     * few networks in 30 days.
      *
      * @return array{valid: bool, status: string, message: string, license: License|null}
      */
-    public function verify(MarketplaceItem $item, ?string $key, string $site, ?string $ip = null, ?string $version = null, bool $record = true): array
+    public function verify(MarketplaceItem $item, ?string $key, string $site, ?string $ip = null, ?string $version = null, bool $record = true, bool $download = false): array
     {
         $site = License::normalizeSite($site);
         $license = filled($key) ? License::query()->where('key', strtoupper(trim((string) $key)))->first() : null;
@@ -100,7 +114,10 @@ class LicenseService
             return ['valid' => false, 'status' => 'unknown', 'message' => __('This license key is not for :item.', ['item' => $item->name]), 'license' => null];
         }
 
-        $matched = $license->site === null || $license->site === $site || License::isTestSite($site);
+        $test = $this->isTestSite($license, $site);
+        $matched = $license->site === null || $license->site === $site || $test;
+        // Looked up before this call is saved, so it does not count itself.
+        $limited = $download && $test && $this->testDownloadsUsedUp($license, $ip);
 
         if ($record) {
             $license->checks()->create(['site' => $site, 'ip' => $ip, 'version' => $version, 'matched' => $matched]);
@@ -119,11 +136,52 @@ class LicenseService
             return ['valid' => false, 'status' => 'wrong_site', 'message' => __('This key is used on :site. Move it from your account on :store first.', ['site' => $license->site, 'store' => parse_url((string) config('app.url'), PHP_URL_HOST)]), 'license' => $license];
         }
 
-        if ($license->site === null && ! License::isTestSite($site)) {
+        if ($limited) {
+            return ['valid' => false, 'status' => 'test_limit', 'message' => __('This key was used for test sites from too many places in the last 30 days. Use it on its own site, or try again later.'), 'license' => $license];
+        }
+
+        if ($license->site === null && ! $test) {
             $license->update(['site' => $site]);
         }
 
         return ['valid' => true, 'status' => 'active', 'message' => '', 'license' => $license];
+    }
+
+    /**
+     * A site this key works on without being its own site: a local copy, or a test copy
+     * (staging.… or dev.…) of the key's own site or of a parent of it, so staging.example.com is
+     * a test copy of billing.example.com. Before a key has a site, any test copy name works and
+     * leaves the key free, so a shop set up on its staging copy first keeps its key for the live
+     * site (downloads to test sites stay limited). Any other name is a site of its own.
+     */
+    public function isTestSite(License $license, string $site): bool
+    {
+        $site = License::normalizeSite($site);
+        $own = (string) $license->site;
+
+        if ($site === $own) {
+            return false;
+        }
+
+        if (License::isLocalSite($site)) {
+            return true;
+        }
+
+        foreach (License::TEST_COPY_PREFIXES as $prefix) {
+            if (str_starts_with($site, $prefix)) {
+                $base = substr($site, strlen($prefix));
+
+                if ($own === '') {
+                    return str_contains($base, '.');
+                }
+
+                $domain = ConnectedSites::registrableDomain($own);
+
+                return $base === $own || (str_ends_with($own, '.'.$base) && ($base === $domain || str_ends_with($base, '.'.$domain)));
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -161,7 +219,8 @@ class LicenseService
     }
 
     /**
-     * Sites that used the key in the last 30 days. More than a few means the key is shared.
+     * Sites that used the key in the last 30 days, without its own test sites. More than a few
+     * means the key is shared.
      *
      * @return list<string>
      */
@@ -169,15 +228,53 @@ class LicenseService
     {
         return $license->checks()
             ->where('created_at', '>=', now()->subDays(30))
+            ->distinct()
             ->pluck('site')
+            ->reject(fn (string $site): bool => $this->isTestSite($license, $site))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Networks the key was used from in the last 30 days, test sites included. A site name is
+     * only what the caller says, so many networks also mean the key is shared.
+     *
+     * @return list<string>
+     */
+    public function recentNetworks(License $license): array
+    {
+        return $license->checks()
+            ->where('created_at', '>=', now()->subDays(30))
+            ->whereNotNull('ip')
+            ->distinct()
+            ->pluck('ip')
+            ->map(fn (string $ip): ?string => SourceNetwork::of($ip))
+            ->filter()
             ->unique()
-            ->reject(fn (string $site): bool => License::isTestSite($site))
             ->values()
             ->all();
     }
 
     public function looksShared(License $license): bool
     {
-        return count($this->recentSites($license)) > self::SHARED_SITE_LIMIT;
+        return count($this->recentSites($license)) > self::SHARED_SITE_LIMIT
+            || count($this->recentNetworks($license)) > self::SHARED_NETWORK_LIMIT;
+    }
+
+    /**
+     * Test sites download from a few networks in 30 days. A network that downloaded already
+     * keeps working.
+     */
+    private function testDownloadsUsedUp(License $license, ?string $ip): bool
+    {
+        $networks = MarketplaceDownload::query()
+            ->where('license_id', $license->id)
+            ->where('created_at', '>=', now()->subDays(30))
+            ->get(['site', 'ip'])
+            ->filter(fn (MarketplaceDownload $download): bool => $this->isTestSite($license, (string) $download->site))
+            ->map(fn (MarketplaceDownload $download): string => (string) SourceNetwork::of($download->ip))
+            ->unique();
+
+        return ! $networks->contains((string) SourceNetwork::of($ip)) && $networks->count() >= self::TEST_DOWNLOAD_NETWORKS;
     }
 }

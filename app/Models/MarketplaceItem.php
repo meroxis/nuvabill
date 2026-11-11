@@ -186,6 +186,15 @@ class MarketplaceItem extends Model
     }
 
     /**
+     * A short fingerprint of what buyers read about the item. It is sent with the form that
+     * approves an item's first version, so the listing that goes live is the one staff saw.
+     */
+    public function listingFingerprint(): string
+    {
+        return hash('sha256', (string) json_encode(array_map(fn (string $field): mixed => $this->getAttribute($field), self::REVIEWED_FIELDS)));
+    }
+
+    /**
      * Pages under the old slug of a renamed item find the item too. Staff and developer pages
      * open the item that has the slug now, so an item that took an old slug can still be managed.
      */

@@ -3,7 +3,10 @@
         <p style="margin:0">{{ __('Connecting WhatsApp by QR code is not available yet. It opens as soon as Meta has approved Nuvabill. Until then, use your own Meta app in Settings → Chat apps.') }}</p>
     @elseif (! $valid)
         <p style="margin:0">{{ __('This page must be opened from Settings → Chat apps in your Nuvabill admin area.') }}</p>
+        <p class="muted" style="margin:0;font-size:.88rem">{{ __('It only opens for a site that is connected to the marketplace. Connect your site on its Marketplace page and update Nuvabill if an update is waiting. Then open Settings → Chat apps again and press the button within one hour.') }}</p>
     @else
+        {{-- The token goes to this address, so the owner is asked to check it before signing in. --}}
+        <p class="flash" data-tone="warn" style="margin:0"><span>{{ __('Only continue if :address is your own Nuvabill site and you opened this window from its admin area. The access key of your WhatsApp account is sent to that address.', ['address' => $targetOrigin]) }}</span></p>
         <ol class="muted" style="margin:0;padding-inline-start:1.2rem;list-style:decimal;display:grid;gap:.4rem">
             <li>{{ __('Press the button and sign in with Facebook.') }}</li>
             <li>{{ __('Pick your business, then choose to connect your existing WhatsApp Business app number.') }}</li>
@@ -23,6 +26,18 @@
             (() => {
                 const target = @js($targetOrigin);
                 const state = @js($state);
+                // What the site sent to open this page. It goes back with Meta's code, and is checked again.
+                const link = @js($link);
+                // Meta's signup window: facebook.com itself or a name under it, over https.
+                const fromMeta = (origin) => {
+                    try {
+                        const url = new URL(origin);
+
+                        return url.protocol === 'https:' && url.port === '' && (url.hostname === 'facebook.com' || url.hostname.endsWith('.facebook.com'));
+                    } catch {
+                        return false;
+                    }
+                };
                 const text = @js([
                     'cancelled' => __('Signup was cancelled. Press the button to start again.'),
                     'failed' => __('WhatsApp could not be connected. Please try again.'),
@@ -67,7 +82,7 @@
                             'Content-Type': 'application/json',
                             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
                         },
-                        body: JSON.stringify({ code }),
+                        body: JSON.stringify({ ...link, code }),
                     }).catch(() => null);
                     const answer = response ? await response.json().catch(() => ({})) : {};
 
@@ -85,7 +100,7 @@
 
                 // Meta's signup window tells this page which WhatsApp account was connected.
                 window.addEventListener('message', (event) => {
-                    if (!event.origin.endsWith('facebook.com')) {
+                    if (!fromMeta(event.origin)) {
                         return;
                     }
 

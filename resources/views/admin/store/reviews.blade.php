@@ -45,6 +45,30 @@
                     <div style="text-align:right"><b style="font-size:1.4rem">{{ $version->item->isFree() ? __('Free') : money($version->item->price, $version->item->currency) }}</b>@if ($version->item->update_price)<div class="faint" style="font-size:.8rem">{{ __('updates :price a year', ['price' => money($version->item->update_price, $version->item->currency)]) }}</div>@endif</div>
                 </div>
 
+                @if ($version->item->latest_version_id === null)
+                    {{-- A new item goes live with its listing, so the reviewer reads it here. Its screenshots are not public yet. --}}
+                    @php $listed = $version->item; @endphp
+                    <section class="card" style="display:grid;gap:.6rem">
+                        <h3 style="font-size:1rem">{{ __('Listing') }}</h3>
+                        <p class="muted" style="margin:0">{{ __('This listing goes live when you approve the first version. Check the texts, links and screenshots.') }}</p>
+                        <dl class="dl">
+                            <dt>{{ __('Name') }}</dt><dd>{{ $listed->name }}</dd>
+                            <dt>{{ __('Short description') }}</dt><dd>{{ $listed->summary }}</dd>
+                            <dt>{{ __('Full description') }}</dt><dd>@if ($listed->description){!! nl2br(e($listed->description)) !!}@else—@endif</dd>
+                            <dt>{{ __('Demo link') }}</dt><dd>@if ($listed->demo_url)<a href="{{ $listed->demo_url }}" target="_blank" rel="noopener noreferrer">{{ $listed->demo_url }}</a>@else—@endif</dd>
+                            <dt>{{ __('Help page link') }}</dt><dd>@if ($listed->docs_url)<a href="{{ $listed->docs_url }}" target="_blank" rel="noopener noreferrer">{{ $listed->docs_url }}</a>@else—@endif</dd>
+                            <dt>{{ __('Screenshots') }}</dt>
+                            <dd style="display:flex;gap:8px;flex-wrap:wrap">
+                                @forelse ((array) $listed->screenshots as $file)
+                                    <a href="{{ route('admin.store.items.media', [$listed, basename((string) $file)]) }}" target="_blank" rel="noopener"><img src="{{ route('admin.store.items.media', [$listed, basename((string) $file)]) }}" alt="{{ basename((string) $file) }}" loading="lazy" style="max-height:110px;max-width:100%;border:1px solid var(--nb-line);border-radius:var(--nb-radius)"></a>
+                                @empty
+                                    —
+                                @endforelse
+                            </dd>
+                        </dl>
+                    </section>
+                @endif
+
                 <div class="grid-2">
                     <section class="card" style="display:grid;gap:.6rem">
                         <h3 style="font-size:1rem">{{ __('Automatic checks') }}</h3>
@@ -97,6 +121,8 @@
                             <form method="POST" action="{{ route('admin.store.reviews.approve', $version) }}" onsubmit="this.querySelector('[name=message]').value = document.getElementById('review-message').value">
                                 @csrf
                                 <input type="hidden" name="message">
+                                {{-- The listing as it was when this page was made: a first approval is only for that listing. --}}
+                                <input type="hidden" name="seen" value="{{ $version->item->listingFingerprint() }}">
                                 <button class="btn btn-primary" type="submit" @disabled($version->hasFailures())><x-icon name="shield" />{{ __('Approve and sign') }}</button>
                             </form>
                         </div>

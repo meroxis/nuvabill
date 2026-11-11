@@ -48,6 +48,10 @@ the store** until then.
 - If your server moves to a new address, the store checks it the same way, by calling your site at the new address.
   When that works, nothing changes for you. Otherwise the box shows **Address changed**: click **Connect again**.
 - **Site health** warns when Cloudflare stops this server or the connection needs you.
+- The store checks the license keys of paid items under the address your site connected with. If you move your site
+  to a new web address, connect it again from the new address, then move your keys to it in your account on the store.
+- **Connect with a QR code** for WhatsApp (Settings → Chat apps) only works for a connected site, see
+  [Telegram and WhatsApp](chat-apps.md).
 - If the store no longer accepts your key (for example the connection was not used for 60 days), the box shows
   **Connect again**.
 
@@ -104,3 +108,44 @@ sub-domains.
 - The connect form can ask for a CAPTCHA: tick **Connect a site to the marketplace** under **Settings → Security**.
 - A daily task ends sites not seen for 60 days and sites that waited 14 days without approval, and removes their
   rules.
+
+### The signing key
+
+The store signs every approved package, and every paid download, with one Ed25519 key. Every Nuvabill site installs
+what is signed with it, so treat the key file like the master key of the marketplace.
+
+- The key is made once with `php artisan nuvabill:marketplace-key`. It is a file that only the store's own account
+  may read (mode `600`). By default it is `storage/app/private/marketplace-signing.key`.
+- **Keep it outside the Nuvabill folder.** A whole-site backup copies every file in the Nuvabill folder, so a key
+  inside it is in each backup too. Move the file to a folder that only the store's account can read and that the web
+  server does not serve, and add its full path to `.env`:
+
+  ```
+  NUVABILL_MARKETPLACE_SIGNING_KEY_PATH=/home/store/keys/marketplace-signing.key
+  ```
+
+  If your config is cached, run `php artisan config:cache` again. Then run
+  `php artisan nuvabill:marketplace-key --show`: it must print the same public key as before.
+- **Keep one more copy offline**, for example on an encrypted USB stick. Once the key is outside the Nuvabill folder,
+  backups no longer hold it. Without the key the store cannot sign anything.
+- Give your whole-site backups a password while the key is still inside the Nuvabill folder.
+- Never put the key in git, in a ticket or in a chat.
+
+**Site health** on the store has a group **Marketplace signing key**. It warns when other accounts on the server can
+read the file, when the file is in the Nuvabill folder or the public folder, and when the key on the server is not a
+key that Nuvabill sites trust. The checks only look: they never move or change the key.
+
+#### Changing the key
+
+Sites trust the key in `config/nuvabill.php` → `marketplace.public_key`, and every key in the list
+`marketplace.public_keys` (`NUVABILL_MARKETPLACE_PUBLIC_KEYS` in `.env`, separated by commas). So the key can be
+changed without breaking sites, in two Nuvabill releases:
+
+1. Make the new key in a new place: run `nuvabill:marketplace-key` with `NUVABILL_MARKETPLACE_SIGNING_KEY_PATH` set
+   to a new file. Keep using the old key on the store.
+2. Ship a Nuvabill release that has the new public key in `marketplace.public_keys`. Wait until sites have updated:
+   a site on an older version only knows the old key.
+3. Point `NUVABILL_MARKETPLACE_SIGNING_KEY_PATH` on the store at the new key. New approvals and paid downloads are
+   now signed with it. Versions that were approved before keep the old key's signature, so sites must still trust
+   the old key until each item has a version that was approved with the new key.
+4. In a later release, make the new key `marketplace.public_key` and take the old one out.

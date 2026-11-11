@@ -105,7 +105,7 @@ class MarketplaceController extends Controller
 
         try {
             $download = $this->client->download($slug, $key);
-            $installed = $installer->install($download, $key);
+            $installed = $installer->install($download, $key, $slug);
         } catch (RuntimeException $exception) {
             return back()->withInput($request->except('license_key'))->with('error', $this->refusalMessage($exception));
         }

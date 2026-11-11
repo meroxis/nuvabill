@@ -23,11 +23,26 @@ class License extends Model
     public const SITE_CHANGES_PER_YEAR = 3;
 
     /**
-     * Sites that never need a license of their own: local and test copies.
+     * Copies on a developer's own computer. A key works on them without being tied to them.
      *
      * @var list<string>
      */
-    public const TEST_SITE_PATTERNS = ['localhost', '127.0.0.1', '*.test', '*.local', '*.localhost', '*.example', 'staging.*', 'dev.*'];
+    public const LOCAL_SITE_PATTERNS = ['localhost', '127.0.0.1', '*.test', '*.local', '*.localhost', '*.example'];
+
+    /**
+     * How the name of a test copy of a live site starts: staging.example.com is a test copy of
+     * example.com. A key only works on the test copies of its own site.
+     *
+     * @var list<string>
+     */
+    public const TEST_COPY_PREFIXES = ['staging.', 'dev.'];
+
+    /**
+     * Sites that are never counted as an install: local copies and test copies.
+     *
+     * @var list<string>
+     */
+    public const TEST_SITE_PATTERNS = [...self::LOCAL_SITE_PATTERNS, 'staging.*', 'dev.*'];
 
     protected $fillable = ['key', 'marketplace_item_id', 'client_id', 'service_id', 'site', 'site_changes', 'site_changes_since', 'status', 'updates_until', 'revoked_reason', 'last_seen_at'];
 
@@ -110,6 +125,11 @@ class License extends Model
     public static function isTestSite(string $site): bool
     {
         return Str::is(self::TEST_SITE_PATTERNS, self::normalizeSite($site));
+    }
+
+    public static function isLocalSite(string $site): bool
+    {
+        return Str::is(self::LOCAL_SITE_PATTERNS, self::normalizeSite($site));
     }
 
     public function isActive(): bool

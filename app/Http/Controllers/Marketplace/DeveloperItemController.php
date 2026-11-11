@@ -96,9 +96,7 @@ class DeveloperItemController extends Controller
             $attributes['screenshots'] = $screenshots;
         }
 
-        if ($item->latest_version_id === null) {
-            $item->update($attributes);
-
+        if ($item->latest_version_id === null && $this->saveBeforeFirstApproval($item, $attributes)) {
             return back()->with('status', __('Listing saved.'));
         }
 
@@ -155,6 +153,26 @@ class DeveloperItemController extends Controller
         ]);
 
         return back()->with('status', __('Message sent to the review team.'));
+    }
+
+    /**
+     * Until an item's first version is approved, its listing is saved as it is. The item is read
+     * again and held while it is saved: when a reviewer approved it in the same moment, nothing
+     * is saved here and the changes wait for review like those of any approved item.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function saveBeforeFirstApproval(MarketplaceItem $item, array $attributes): bool
+    {
+        $saved = DB::transaction(function () use ($item, $attributes): bool {
+            $current = MarketplaceItem::query()->lockForUpdate()->findOrFail($item->id);
+
+            return $current->latest_version_id === null && $current->update($attributes);
+        });
+
+        $item->refresh();
+
+        return $saved;
     }
 
     private function developer(Request $request): Developer

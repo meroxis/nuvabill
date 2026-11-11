@@ -344,11 +344,21 @@ A **warning** is shown to the reviewer, who decides.
   20 MB.
 - The zip must have 1 to 5,000 entries.
 - All files together must be at most 100 MB when unpacked.
-- No entry may have `../` in its path, start with `/`, start with a drive letter such as `C:`, or
-  contain a NUL byte.
+- Paths use `/`. A file or folder name may not have a backslash (`\`), one of `: * ? " < > |`, a
+  control character, a dot or a space at its end, or `~` followed by a digit. Paths with `.` or
+  `..` parts, with `//`, or with `/` at the start are refused too.
+- Each file name is in the zip only once. Upper and lower case count as the same name, so
+  `Logo.png` next to `logo.png` is refused. A name cannot be a file and a folder at once.
+- The zip is a plain one: no password, and files are stored or deflated, which is what zip tools
+  do when you change no setting. Each file must be exactly as long as the zip says.
 - No symbolic links.
 
-The buyer's site runs the same zip checks again before it unpacks anything.
+If the store says your zip has a file name with a backslash, your zip tool wrote Windows paths.
+PowerShell's `Compress-Archive` does that on Windows. Use `tar -a -c -f acme-alerts-1.0.0.zip
+acme-alerts` there instead (it comes with Windows 10 and 11), or another zip tool.
+
+The buyer's site runs the same zip checks again before it unpacks anything, and it unpacks
+exactly the files the store checked.
 
 ### Manifest and version (fail)
 
@@ -365,6 +375,17 @@ These file types are refused anywhere in the package:
 
 Any file named `.htaccess` is refused too.
 
+Archives are refused as well, because nobody can check what is inside them:
+
+`.zip` `.tar` `.gz` `.tgz` `.bz2` `.xz` `.7z` `.rar`
+
+A file that is an archive is refused under any other name too. Ship the files themselves.
+
+### Images (fail)
+
+A `.png`, `.jpg`, `.jpeg`, `.gif` or `.webp` file must be a real image of that kind. A file that
+cannot be opened as one fails with "Images that cannot be opened".
+
 ### Encoded code (fail)
 
 The marketplace only takes readable code. This check looks at `.php` files and at every other
@@ -372,16 +393,16 @@ file with PHP code in it. Such a file fails when it contains any of these:
 
 - `ionCube Loader`, `sg_load(`, `SourceGuardian`, `zend_loader` or `<?php //0`
 - `eval(` directly followed by a call to `base64_decode`, `gzinflate`, `gzuncompress`, `gzdecode`,
-  `str_rot13` or `hex2bin`. Spaces or an `@` in between still count, such as
-  `eval (@base64_decode(`.
+  `str_rot13` or `hex2bin`. Spaces, line breaks, comments, an `@` or a `\` in between still
+  count, such as `eval (@\base64_decode(`.
 
 ### PHP code only in .php files (fail, 0.6.12+)
 
 A file that does not end in `.php` fails with "PHP code only goes in .php files" when it contains:
 
-- `<?php`, or
-- a short open tag `<?`. XML declarations such as `<?xml version="1.0"?>` are fine. Short tags
-  are only looked for in text files, not in binary files.
+- `<?php` or `<?=`. These count in every file, also in images and other binary files, or
+- a short open tag `<?`. XML declarations such as `<?xml version="1.0"?>` are fine. A `<?` alone
+  is only looked for in text files, not in binary files.
 
 Blade views end in `.blade.php`, so they count as PHP files and are fine.
 
@@ -393,18 +414,30 @@ XML. Move such text into a `.php` file or build it in another way.
 
 ### Flagged for the reviewer (warning)
 
-The store looks for these in the same files as the encoded code check. It lists each line with
-the file name and line number. Up to 8 are shown.
+The store looks for these in the same files as the encoded code check. Each kind is named once,
+with the file name and line number of the first place and how often it is there, such as
+`src/Backup.php:40 fwrite() ×3`. The ones that run commands or code come first.
 
 - A call to one of these functions: `exec`, `shell_exec`, `system`, `passthru`, `proc_open`,
   `popen`, `pcntl_exec`, `eval`, `assert`, `create_function`, `dl`, `putenv`, `ini_set`,
   `unserialize`, `move_uploaded_file`, `curl_exec`.
-  Method calls such as `$pdo->exec(` or `Foo::exec(` are not flagged.
-- An `include` or `require` of a file that does not end in `.php`.
+  Method calls such as `$pdo->exec(` or `Foo::exec(` are not flagged. A `\` in front of the
+  name, or a line break or comment before the bracket, changes nothing.
+- An `include` or `require` of a file that does not end in `.php`, or of a path that is not
+  fixed text. `require __DIR__.'/helpers.php';` is fine. `require $file;` is flagged.
 - Backtick shell commands with a `$` variable inside.
+- A call to a function that writes files, decodes text or calls another function by its name:
+  `file_put_contents`, `fwrite`, `fputs`, `call_user_func`, `call_user_func_array`,
+  `base64_decode`, `gzinflate`, `gzuncompress`, `gzdecode`, `str_rot13`, `hex2bin`.
+- The classes `ZipArchive`, `PharData` and `Phar`.
+- A call through a variable, such as `$callback(...)`.
 
-A warning does not block you, but the reviewer will ask why. Use Laravel's `Http` client with a
-short timeout instead of `curl_exec`, and `json_decode` instead of `unserialize`.
+Honest code uses many of these, so most packages get this warning. It does not block you. It
+tells the reviewer where to look, and a short message that explains each one saves a round of
+review. Use Laravel's `Http` client with a short timeout instead of `curl_exec`, and
+`json_decode` instead of `unserialize`.
+
+The scan is only a help. A person reads your code as well.
 
 ### Outside connections (warning)
 
@@ -465,19 +498,26 @@ If one step fails, nothing is installed.
 
 1. The download address must use `https://`, and the slug must match `^[a-z0-9][a-z0-9_-]{1,63}$`.
 2. The site must have the marketplace public key. Without it, nothing can be checked.
-3. The SHA-256 of the downloaded zip must match the one the store sent.
-4. The store's Ed25519 signature must be valid. It covers the slug, the version and the SHA-256
-   of the exact zip. When step 3 or 4 fails, the activity log says the package "failed the
+3. The store's answer must be about the item staff asked for. An item that was installed before
+   the store gave it a new slug keeps its old slug on the site, so that slug is fine too.
+4. The version must not be older than the one installed. An installed item never goes back to an
+   older version.
+5. The SHA-256 of the downloaded zip must match the one the store sent.
+6. The store's Ed25519 signature must be valid. It covers the slug, the version and the SHA-256
+   of the exact zip. When step 5 or 6 fails, the activity log says the package "failed the
    signature check".
-5. The zip passes the same safety checks as on upload (paths, links, file count, unpacked size),
-   and the manifest passes the slug and version rules. The site does not repeat the code checks.
-6. The slug, version and type in the manifest must be exactly what the store said.
-7. The `requires` version must not be newer than the site's Nuvabill.
-8. A package with `.php` files under `database/migrations/` must be an extension and list
-   `database`.
-9. For extensions, `extension.json` must have every required field, a known `type`, and a valid
-   slug.
-10. The files are swapped into the install folder. Then the migrations run. If they fail, the old
+7. The zip passes the same safety checks as on upload (file names, links, file count, unpacked
+   size, plain zip), and the manifest passes the slug and version rules. The site does not
+   repeat the code checks.
+8. The slug, version and type in the manifest must be exactly what the store said.
+9. The `requires` version must not be newer than the site's Nuvabill.
+10. The files are unpacked into a temporary folder. The site reads the manifest again from there,
+    and the slug, version and type must still be the same.
+11. A package with `.php` files under `database/migrations/` must be an extension and list
+    `database`.
+12. For extensions, `extension.json` must have every required field, a known `type`, and a valid
+    slug.
+13. The files are swapped into the install folder. Then the migrations run. If they fail, the old
     files are put back.
 
 Because of the signature, any change to the zip after approval, even one byte, makes the install
@@ -493,6 +533,8 @@ fail. So you cannot fix a file after review. Upload a new version instead.
 - [ ] Every permission you use is listed, and spelled right.
 - [ ] Every outside host your code calls is listed as `http:{host}`.
 - [ ] No refused file types, no `.htaccess`, no `.nuvabill-license`, no `.env`, no `.git`.
+- [ ] No archives inside the zip, and every image is a real image.
+- [ ] File names use `/` in paths, and no name is in the zip twice.
 - [ ] No PHP outside `.php` files (Markdown examples are fine).
 - [ ] No encoded or hidden code.
 - [ ] Migrations, if any, are in `database/migrations/`, use your own table prefix, and you

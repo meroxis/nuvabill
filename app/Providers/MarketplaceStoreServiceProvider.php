@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Events\InvoicePaid;
 use App\Events\ServiceActivated;
+use App\Health\Checks\SigningKeyChecks;
+use App\Health\SiteHealth;
 use App\Marketplace\Store\EarningsRecorder;
 use App\Marketplace\Store\LicenseService;
 use App\Models\CreditNote;
@@ -45,6 +47,9 @@ class MarketplaceStoreServiceProvider extends ServiceProvider
 
             return $license === null ? null : ['view' => 'theme::developer.license-panel', 'data' => ['license' => $license]];
         });
+
+        // Site health on the store also looks at where the signing key is kept and who can read it.
+        $this->callAfterResolving(SiteHealth::class, fn (SiteHealth $health) => $health->extend($this->app->make(SigningKeyChecks::class)));
 
         $this->loadRoutesFrom(base_path('routes/store-api.php'));
         $this->loadRoutesFrom(base_path('routes/store.php'));

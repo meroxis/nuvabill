@@ -11,5 +11,5 @@ class MarketplaceDownload extends Model
 {
     public const UPDATED_AT = null;
 
-    protected $fillable = ['marketplace_item_id', 'marketplace_version_id', 'license_id', 'site', 'ip'];
+    protected $fillable = ['marketplace_item_id', 'marketplace_version_id', 'license_id', 'marketplace_site_id', 'site', 'ip', 'network'];
 }
