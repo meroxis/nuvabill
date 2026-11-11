@@ -62,7 +62,10 @@ class ReversedPaymentsTest extends TestCase
 
         $refund = $invoice->transactions()->where('type', 'refund')->sole();
         $this->assertSame([-2000, 'stripe', 'ch_1-refunded-2000', 'USD'], [$refund->amount, $refund->gateway, $refund->reference, $refund->currency]);
-        $this->assertSame(['refund_of' => $payment->id, 'through_gateway' => true, 'reported_by_gateway' => true, 'kind' => PaymentReversal::REFUND], $refund->meta);
+        // MySQL keeps JSON keys in its own order, so the keys are sorted before comparing.
+        $meta = $refund->meta;
+        ksort($meta);
+        $this->assertSame(['kind' => PaymentReversal::REFUND, 'refund_of' => $payment->id, 'reported_by_gateway' => true, 'through_gateway' => true], $meta);
 
         // Nothing else changes by itself.
         $this->assertSame(InvoiceStatus::Paid, $invoice->fresh()->status);
