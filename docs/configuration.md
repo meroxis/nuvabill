@@ -50,7 +50,9 @@ Articles, categories and announcements have a tab for each other language you of
   for a date range.
 - **Privacy**: on a client's page, **Download their data** (JSON) and **Erase personal data**. Invoices, payments and
   credit notes are kept, as tax law requires. Clients can download their own data and ask for erasure under **Your
-  details**.
+  details**. The staff download holds what the staff member may see: without the permissions to view invoices, manage
+  orders or answer tickets, the file leaves out billing, orders or ticket messages and says so in `left_out`. An owner
+  always gets the full file.
 
 ## Currencies and exchange rates
 

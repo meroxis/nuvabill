@@ -6,6 +6,7 @@ use App\Contracts\DomainRegistrar;
 use App\Contracts\PaymentGateway;
 use App\Contracts\ServerModule;
 use App\Extensions\Addons\Addon;
+use App\Http\Middleware\EnsureAdminPermission;
 use App\Models\Extension;
 use App\Support\Installation;
 use App\Support\Settings;
@@ -414,12 +415,18 @@ class ExtensionManager
 
     /**
      * Admin pages of active add-ons, under /admin/addons/{slug}/. Call inside the admin route group.
+     *
+     * An add-on that copies the whole site (the "backups" permission) decides where every client and
+     * every saved password goes, so its pages are for owners only, whatever the add-on checks itself.
      */
     public function registerAddonRoutes(): void
     {
         foreach ($this->activeAddons() as $slug => $addon) {
             $this->tryMake(function () use ($slug, $addon): bool {
-                Route::prefix($slug)->name($slug.'.')->group(fn () => $addon->adminRoutes());
+                $ownerOnly = in_array('backups', (array) $this->find($slug)?->permissions, true);
+
+                Route::prefix($slug)->name($slug.'.')->middleware($ownerOnly ? ['admin.can:'.EnsureAdminPermission::OWNER] : [])
+                    ->group(fn () => $addon->adminRoutes());
 
                 return true;
             });

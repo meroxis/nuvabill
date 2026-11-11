@@ -87,6 +87,21 @@ class Admin extends Authenticatable
         return $this->is_active && $this->role?->allows($permission) === true;
     }
 
+    /**
+     * Whether this staff member has every permission of the role themselves, so giving the role to
+     * someone hands out nothing they lack. Only owners hold all of the Owner role.
+     */
+    public function holdsAllOf(?Role $role): bool
+    {
+        foreach ($role?->permissions ?? [] as $permission) {
+            if (! $this->hasPermission((string) $permission)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public function hasTwoFactorEnabled(): bool
     {
         return $this->two_factor_secret !== null && $this->two_factor_confirmed_at !== null;

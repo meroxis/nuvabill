@@ -49,6 +49,11 @@ class AddFee extends Step
         ];
     }
 
+    public function permissions(string $subject): array
+    {
+        return ['billing.manage'];
+    }
+
     public function summary(array $config): string
     {
         $maximum = Money::toMinor($config['maximum'] ?? 0);

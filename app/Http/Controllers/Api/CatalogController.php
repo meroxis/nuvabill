@@ -30,9 +30,14 @@ class CatalogController extends Controller
         ]);
     }
 
-    public function products(): AnonymousResourceCollection
+    public function products(Request $request): AnonymousResourceCollection
     {
-        return ProductResource::collection(Product::query()->with('prices')->orderBy('sort_order')->orderBy('id')->get());
+        // Products that the store does not list are only for staff who manage products.
+        $all = (bool) $request->user('admin')?->hasPermission('products.manage');
+
+        return ProductResource::collection(Product::query()->with('prices')
+            ->unless($all, fn ($query) => $query->listedInStore())
+            ->orderBy('sort_order')->orderBy('id')->get());
     }
 
     public function orders(Request $request): AnonymousResourceCollection

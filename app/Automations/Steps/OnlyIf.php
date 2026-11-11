@@ -33,6 +33,11 @@ class OnlyIf extends Step
         return [self::field('condition', 'Condition', 'condition', ['required' => true])];
     }
 
+    public function permissions(string $subject): array
+    {
+        return [];
+    }
+
     public function summary(array $config): string
     {
         return __('Only go on if :condition', ['condition' => $this->describe($config)]);

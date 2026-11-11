@@ -159,7 +159,7 @@ class UpkeepChecks extends CheckGroup
 
         if (! $encrypted) {
             return $check->warning('The last backup was not encrypted',
-                advice: 'A backup holds every client and the .env file. Set a backup password so nobody else can open it.',
+                advice: 'Anyone who gets a backup without a password can read every client in it. A whole-site backup without a password also leaves out the .env file. Set a backup password.',
             );
         }
 

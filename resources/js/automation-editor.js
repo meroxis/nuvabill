@@ -53,12 +53,17 @@ export default function automationEditor({ defs, value }) {
             return Object.entries(this.defs.conditions).filter(([, field]) => this.fits(field));
         },
 
-        /** Step types for the chosen trigger, grouped: [[group, [[key, definition], …]], …]. */
+        /** Whether the staff member's role allows the step for the chosen trigger (the server checks again). */
+        allowed(step) {
+            return !(step.denied || []).includes(this.subject);
+        },
+
+        /** Step types the staff member can add for the chosen trigger, grouped: [[group, [[key, definition], …]], …]. */
         stepGroups() {
             const groups = {};
 
             Object.entries(this.defs.steps).forEach(([key, step]) => {
-                if (this.fits(step)) {
+                if (this.fits(step) && this.allowed(step)) {
                     (groups[step.group] ??= []).push([key, step]);
                 }
             });

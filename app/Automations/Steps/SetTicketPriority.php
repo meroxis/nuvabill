@@ -40,6 +40,11 @@ class SetTicketPriority extends Step
         ])];
     }
 
+    public function permissions(string $subject): array
+    {
+        return ['support.manage'];
+    }
+
     public function summary(array $config): string
     {
         return __('Priority :priority', ['priority' => mb_strtolower($this->priority($config)->label())]);

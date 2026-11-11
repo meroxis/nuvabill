@@ -2,7 +2,8 @@
 
 An automation is a rule: **when this happens, and these conditions are true, do these steps.** Nuvabill runs it for
 you and logs what it did. Open **Automations** in the admin area. Staff need the **Create and switch automations on
-and off** permission, which roles that can manage settings have.
+and off** permission, which roles that can manage settings have. Each step also needs the permission for doing the
+same thing by hand (see [Permissions](#permissions)).
 
 ## Start with a template
 
@@ -78,6 +79,34 @@ the log says why.
 
 Automations do not start other automations. A **Suspend the service** step, for example, does not start your
 "a service is suspended" automations.
+
+## Permissions
+
+An automation does not give staff more than their role allows. To save an automation, switch it on or try it, a
+staff member needs the permission of every step in it:
+
+| Step | Permission |
+|---|---|
+| Email the client | Create and edit clients |
+| Tag the client, Take a tag off the client | Create and edit clients, and the permission to see what the automation is about |
+| Add a fee to the invoice, Add wallet credit | Create invoices and record payments |
+| Suspend the service, Unsuspend the service | Manage services and run module actions |
+| Open a ticket | Answer tickets, and the permission to see what the automation is about |
+| Assign the ticket, Change the ticket priority | Answer tickets |
+| Email staff, Send to a web address | View clients, and the permission to see what the automation is about |
+| Wait, Only go on if | None |
+| A step from an add-on that names no permission | Change system settings, gateways and email templates |
+
+The permission to see what the automation is about depends on its trigger: clients (View clients), invoices and
+quotes (View invoices and payments), orders, services, domains or tickets. A ticket, a tag, an email to staff and a
+web address all show what happened to that record, so a staff member who may not see it cannot set them up.
+
+The editor only offers the steps a staff member may use. **Try it** also needs the permission to see the invoice,
+client, service, ticket, order, domain or quote it is tried with. The list of runs shows what a run was about, and
+what its steps did, only to staff who may see that kind of record.
+
+Automations that are switched on keep running, whoever made them. Any staff member with the automations permission
+can switch one off or delete it. Owners can do everything.
 
 ## Placeholders
 

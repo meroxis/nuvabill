@@ -34,6 +34,11 @@ class Wait extends Step
         ];
     }
 
+    public function permissions(string $subject): array
+    {
+        return [];
+    }
+
     public function summary(array $config): string
     {
         $amount = max(1, (int) ($config['amount'] ?? 1));

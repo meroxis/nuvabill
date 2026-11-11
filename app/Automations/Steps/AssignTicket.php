@@ -39,6 +39,11 @@ class AssignTicket extends Step
         ])];
     }
 
+    public function permissions(string $subject): array
+    {
+        return ['support.manage'];
+    }
+
     public function summary(array $config): string
     {
         return __('Assign to :name', ['name' => Admin::query()->find((int) ($config['admin'] ?? 0))?->name ?? '—']);

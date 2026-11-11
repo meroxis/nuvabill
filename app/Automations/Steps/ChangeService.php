@@ -38,6 +38,11 @@ class ChangeService extends Step
         return $this->unsuspend ? [] : [self::field('reason', 'Reason', 'text', ['required' => true, 'max' => 190, 'default' => 'Suspended by an automation'])];
     }
 
+    public function permissions(string $subject): array
+    {
+        return ['services.manage'];
+    }
+
     public function summary(array $config): string
     {
         return __($this->label());

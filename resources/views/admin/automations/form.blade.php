@@ -81,6 +81,7 @@
                                 <b x-text="stepDef(step).label"></b>
                                 <span class="muted" x-text="preview(step)"></span>
                                 <span class="pill" data-tone="warn" x-show="! fits(stepDef(step))">{{ __('Does not work with this trigger') }}</span>
+                                <span class="pill" data-tone="warn" x-show="fits(stepDef(step)) && ! allowed(stepDef(step))">{{ __('Your role does not allow this step') }}</span>
                             </button>
                             <div style="display:flex;gap:4px">
                                 <button type="button" class="btn btn-sm btn-ghost" @click="moveStep(index, -1)" :disabled="index === 0" aria-label="{{ __('Move up') }}">↑</button>
@@ -157,8 +158,12 @@
                         <h2 style="font-size:1.05rem">{{ __('Try it first') }}</h2>
                         <p class="muted" style="margin:.3rem 0 0;font-size:.88rem">{{ __('See what the saved automation would do. Nothing is changed and nothing is sent.') }}</p>
                     </div>
-                    <x-input name="subject" :label="__('Test with')" :value="old('subject')" :help="$subjectHint" required />
-                    <div><button class="btn" type="submit">{{ __('Test') }}</button></div>
+                    @if ($canTry)
+                        <x-input name="subject" :label="__('Test with')" :value="old('subject')" :help="$subjectHint" required />
+                        <div><button class="btn" type="submit">{{ __('Test') }}</button></div>
+                    @else
+                        <p class="muted" style="margin:0;font-size:.88rem">{{ __('You cannot try this automation. It needs permissions you do not have.') }}</p>
+                    @endif
                     @if (is_array($preview))
                         <div class="automation-preview">
                             <b>{{ $preview['subject'] }}</b>

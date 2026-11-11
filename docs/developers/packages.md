@@ -258,7 +258,7 @@ List every code that fits your package. Do not list codes you do not use.
 | `database` | Adds its own database tables | Keeps its own data. Needed for migrations. | 0.4.5 |
 | `schedule` | Runs on a schedule | Does its work at set times through the site's cron job. | 0.4.2 |
 | `hardware` | Controls your dedicated server hardware | An add-on switches power, network ports or installs of the host's own machines, and adds to the Hardware pages. | 0.7.0 |
-| `backups` | Copies your whole site | Reads the database and every file of the site, including `.env`, to make backups. | 0.4.2 |
+| `backups` | Copies your whole site | Reads the database and every file of the site, including `.env`, to make backups. Since 0.7.3 the add-on's admin pages are open to owners only. | 0.4.2 |
 | `http:{host}` | Connects to {host} | Sends and receives data from this address. One code per host, for example `http:api.acme.example`. | - |
 
 A dash means no version is recorded for that code. It works on every current release.

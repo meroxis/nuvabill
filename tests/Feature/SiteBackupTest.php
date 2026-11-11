@@ -56,7 +56,7 @@ class SiteBackupTest extends TestCase
         $this->assertSame(file_get_contents(base_path('artisan')), $zip->getFromName('site/artisan'));
         $this->assertNotFalse($zip->getFromName('site/app/Support/SiteBackup.php'));
         $this->assertNotFalse($zip->getFromName('site/extensions/gateways/stripe/extension.json'));
-        $this->assertSame(file_get_contents(base_path('.env')), $zip->getFromName('site/.env'));
+        $this->assertFalse($zip->locateName('site/.env'), 'A backup without a password never holds the .env file.');
         $this->assertStringContainsString('Upload everything in the "site" folder', (string) $zip->getFromName('RESTORE.txt'));
 
         foreach ($this->names($zip) as $name) {
@@ -64,6 +64,64 @@ class SiteBackupTest extends TestCase
         }
 
         $this->assertSame('Mer Las', $this->adminNameIn($zip));
+    }
+
+    public function test_the_env_file_is_only_in_a_whole_site_backup_with_a_password(): void
+    {
+        // A small site folder, so two whole-site backups stay quick.
+        $site = $this->folder.DIRECTORY_SEPARATOR.'small-site';
+        $files = [
+            '.env' => 'APP_KEY=probe-key',
+            '.env.backup' => 'APP_KEY=older-key',
+            '.env.example' => 'APP_KEY=',
+            'bootstrap/cache/config.php' => "<?php return ['app' => ['key' => 'probe-key']];",
+            'artisan' => 'program',
+        ];
+
+        foreach ($files as $name => $body) {
+            File::ensureDirectoryExists(dirname($site.'/'.$name));
+            file_put_contents($site.'/'.$name, $body);
+        }
+
+        $base = base_path();
+        $this->app->setBasePath($site);
+
+        try {
+            $plain = $this->open(app(SiteBackup::class)->create(SiteBackup::TYPE_SITE));
+            $names = $this->names($plain);
+            $notes = (string) $plain->getFromName('RESTORE.txt');
+            $plain->close();
+
+            $this->assertContains('site/artisan', $names);
+            $this->assertContains('site/.env.example', $names);
+            $this->assertContains($this->databaseEntry(), $names);
+            $this->assertNotContains('site/.env', $names);
+            $this->assertNotContains('site/.env.backup', $names);
+            $this->assertNotContains('site/bootstrap/cache/config.php', $names);
+            $this->assertStringContainsString('the .env file is NOT in it', $notes);
+
+            $this->travel(2)->seconds();
+            $safe = $this->open(app(SiteBackup::class)->create(SiteBackup::TYPE_SITE, 'long-backup-password'));
+
+            $this->assertFalse($safe->getFromName('site/.env'), 'It is encrypted.');
+            $safe->setPassword('long-backup-password');
+            $this->assertSame('APP_KEY=probe-key', $safe->getFromName('site/.env'));
+            $this->assertSame('APP_KEY=older-key', $safe->getFromName('site/.env.backup'));
+            $this->assertNotFalse($safe->getFromName('site/bootstrap/cache/config.php'));
+            $this->assertStringNotContainsString('NOT in it', (string) $safe->getFromName('RESTORE.txt'));
+            $safe->close();
+
+            $this->travel(2)->seconds();
+            $this->artisan('nuvabill:backup')
+                ->expectsOutputToContain('This backup has no password, so the .env file is not in it.')
+                ->assertSuccessful();
+            $this->travel(2)->seconds();
+            $this->artisan('nuvabill:backup', ['--password' => 'long-backup-password'])
+                ->doesntExpectOutputToContain('the .env file is not in it')
+                ->assertSuccessful();
+        } finally {
+            $this->app->setBasePath($base);
+        }
     }
 
     public function test_a_database_backup_has_only_the_database(): void

@@ -41,9 +41,11 @@ abstract class Addon
     }
 
     /**
-     * Fields shown on the add-on's settings page, in the same format as gateway settings.
+     * Fields shown on the add-on's settings page, in the same format as gateway settings. A field
+     * with 'owner' => true can only be changed by staff with the Owner role (since Nuvabill 0.7.3):
+     * use it for settings that decide where data goes, such as a backup password or a connection key.
      *
-     * @return array<string, array{label: string, type: string, help?: string, required?: bool, options?: array<string, string>}>
+     * @return array<string, array{label: string, type: string, help?: string, required?: bool, options?: array<string, string>, owner?: bool}>
      */
     public function settingsFields(): array
     {
@@ -109,7 +111,9 @@ abstract class Addon
      * Admin pages, registered under /admin/addons/{slug}/ for staff who may manage the marketplace.
      * Give them short names, for example Route::get('connect', ...)->name('connect'), and link to them
      * with route($this->routeName('connect')).
-     * List "admin-page" in the manifest's permissions.
+     * List "admin-page" in the manifest's permissions. That permission alone must never be enough to
+     * send site data somewhere new: check for an owner in such a page (see docs/developers/addons.md).
+     * The pages of an add-on that lists "backups" are for owners only (since Nuvabill 0.7.3).
      */
     public function adminRoutes(): void {}
 

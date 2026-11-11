@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Billing\Wallet;
 use App\Enums\ClientStatus;
 use App\Enums\QuoteStatus;
 use App\Enums\ServiceStatus;
@@ -11,6 +12,7 @@ use App\Models\Admin;
 use App\Models\Client;
 use App\Models\ImportMapping;
 use App\Models\Invoice;
+use App\Models\Order;
 use App\Models\PaymentMethod;
 use App\Models\Quote;
 use App\Models\Service;
@@ -47,17 +49,78 @@ class PrivacyTest extends TestCase
         Invoice::factory()->for($client)->create(['number' => 'INV-0042']);
         app(TicketDesk::class)->open($client, TicketDepartment::query()->firstOrFail(), 'Email problem', 'My email does not work.');
 
-        $this->signInAdmin(Admin::factory()->withPermissions(['clients.manage'])->create());
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.manage', 'billing.view', 'orders.manage', 'support.manage'])->create());
         $staffCopy = json_decode($this->get(route('admin.clients.data', $client))->assertOk()->streamedContent(), true);
 
         $this->assertSame('Raz', $staffCopy['profile']['first_name']);
         $this->assertSame('Prefers phone calls', $staffCopy['profile']['staff_notes']);
         $this->assertSame('INV-0042', $staffCopy['invoices'][0]['number']);
         $this->assertSame('My email does not work.', $staffCopy['tickets'][0]['messages'][0]['message']);
+        $this->assertArrayNotHasKey('left_out', $staffCopy);
         $this->assertStringNotContainsString('password', json_encode($staffCopy['profile']));
 
         $ownCopy = json_decode($this->actingAs($client, 'web')->get(route('client.account.data'))->assertOk()->streamedContent(), true);
         $this->assertArrayNotHasKey('staff_notes', $ownCopy['profile']);
+        $this->assertArrayNotHasKey('left_out', $ownCopy);
+        $this->assertSame('INV-0042', $ownCopy['invoices'][0]['number']);
+    }
+
+    public function test_the_staff_copy_only_holds_what_the_staff_member_may_see(): void
+    {
+        $client = Client::factory()->create(['first_name' => 'Raz', 'notes' => 'Prefers phone calls']);
+        Invoice::factory()->for($client)->create(['number' => 'INV-0042']);
+        Quote::factory()->for($client)->create(['subject' => 'Bigger server offer', 'status' => QuoteStatus::Sent]);
+        Order::factory()->for($client)->create(['number' => 'ORD-7001']);
+        app(Wallet::class)->change($client, 2500, 'Goodwill credit');
+        PaymentMethod::query()->create([
+            'client_id' => $client->id, 'gateway' => 'stripe', 'type' => PaymentMethod::TYPE_CARD, 'reference' => 'pm_visa',
+            'brand' => 'visa', 'last4' => '4242', 'expires_month' => 12, 'expires_year' => 2031,
+        ]);
+        app(TicketDesk::class)->open($client, TicketDepartment::query()->firstOrFail(), 'Email problem', 'My email does not work.');
+        Activity::log('wallet.adjusted', 'Wallet of client changed by 25.00: Goodwill credit', $client, $client);
+        Activity::log('client.updated', 'Client details changed', $client, $client);
+
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.manage'])->create(['name' => 'Las']));
+        $json = $this->get(route('admin.clients.data', $client))->assertOk()->streamedContent();
+        $copy = json_decode($json, true);
+
+        // The client page hides billing, orders and ticket messages from this role, so the file does too.
+        foreach (['invoices', 'quotes', 'orders', 'wallet_history', 'saved_payment_methods'] as $part) {
+            $this->assertArrayNotHasKey($part, $copy);
+        }
+
+        $this->assertArrayNotHasKey('wallet', $copy['profile']);
+        $this->assertSame('Email problem', $copy['tickets'][0]['subject']);
+        $this->assertArrayNotHasKey('messages', $copy['tickets'][0]);
+        $this->assertContains('client.updated', array_column($copy['activity'], 'action'));
+        $this->assertNotContains('wallet.adjusted', array_column($copy['activity'], 'action'));
+        $this->assertSame(['invoices', 'quotes', 'wallet', 'wallet_history', 'saved_payment_methods', 'billing activity', 'orders', 'ticket messages'], $copy['left_out']);
+
+        foreach (['INV-0042', 'Bigger server offer', 'ORD-7001', 'Goodwill credit', '4242', 'My email does not work.'] as $hidden) {
+            $this->assertStringNotContainsString($hidden, $json);
+        }
+
+        // What the role does see is still there, and the log says the file was not complete.
+        $this->assertSame('Prefers phone calls', $copy['profile']['staff_notes']);
+        $this->assertStringContainsString('without: invoices', ActivityLog::query()->where('action', 'client.data_exported')->sole()->description);
+        $this->get(route('admin.clients.show', $client))->assertOk()->assertSee('The download leaves out what your role cannot see');
+
+        // Each permission brings its own part back.
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.manage', 'support.manage'])->create(['name' => 'Mer']));
+        $copy = json_decode($this->get(route('admin.clients.data', $client))->assertOk()->streamedContent(), true);
+
+        $this->assertSame('My email does not work.', $copy['tickets'][0]['messages'][0]['message']);
+        $this->assertArrayNotHasKey('invoices', $copy);
+        $this->assertNotContains('ticket messages', $copy['left_out']);
+
+        $this->signInAdmin(Admin::factory()->create(['name' => 'Raz']));
+        $copy = json_decode($this->get(route('admin.clients.data', $client))->assertOk()->streamedContent(), true);
+
+        $this->assertSame('INV-0042', $copy['invoices'][0]['number']);
+        $this->assertSame('ORD-7001', $copy['orders'][0]['number']);
+        $this->assertSame('25.00', $copy['profile']['wallet']);
+        $this->assertArrayNotHasKey('left_out', $copy);
+        $this->get(route('admin.clients.show', $client))->assertOk()->assertDontSee('The download leaves out what your role cannot see');
     }
 
     public function test_erasing_waits_for_active_services_and_keeps_invoices(): void
@@ -132,8 +195,8 @@ class PrivacyTest extends TestCase
         $this->assertStringNotContainsString('WHM API said', $ownJson);
         $this->assertContains('client.login', array_column($own['activity'], 'action'));
 
-        // Staff still get everything.
-        $this->signInAdmin(Admin::factory()->withPermissions(['clients.manage'])->create());
+        // Staff who may see billing still get everything.
+        $this->signInAdmin(Admin::factory()->withPermissions(['clients.manage', 'billing.view'])->create());
         $staffJson = $this->get(route('admin.clients.data', $client))->assertOk()->streamedContent();
         $staff = json_decode($staffJson, true);
 
