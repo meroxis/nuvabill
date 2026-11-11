@@ -2,7 +2,9 @@
  * Admin phone app: installs the admin area on the home screen and turns push alerts on or off for
  * this device. registerAdminApp() runs on every admin page; the rest is the phoneApp component.
  *
- * Usage: x-data="phoneApp(@js($config))" with {key, subscribeUrl, forgetUrl, failed, reload}.
+ * Usage: x-data="phoneApp(@js($config))" with {key, subscribeUrl, forgetUrl, failed, reload, devices}.
+ * "devices" lists the devices of this staff member the server alerts (SHA-256 of each push
+ * address). Turning alerts on sends the password typed into x-model="password".
  */
 let installPrompt = null;
 
@@ -39,6 +41,7 @@ export function phoneApp(config) {
         state: 'checking',
         busy: false,
         error: '',
+        password: '',
         canInstall: Boolean(installPrompt),
         installed: window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true,
         ios: isIos(),
@@ -63,10 +66,23 @@ export function phoneApp(config) {
 
             try {
                 const subscription = await (await this.registration()).pushManager.getSubscription();
-                this.state = subscription ? 'on' : 'off';
+                this.state = subscription && (await this.known(subscription)) ? 'on' : 'off';
             } catch {
                 this.state = 'off';
             }
+        },
+
+        // A device the server no longer alerts (removed on the profile page, or together with an
+        // old password) is off, even when the browser still remembers it.
+        async known(subscription) {
+            if (!Array.isArray(config.devices) || !window.crypto?.subtle) {
+                return true;
+            }
+
+            const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(subscription.endpoint));
+            const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+
+            return config.devices.includes(hash);
         },
 
         registration() {
@@ -105,7 +121,8 @@ export function phoneApp(config) {
                 const subscription = (await registration.pushManager.getSubscription())
                     || (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(config.key) }));
 
-                await this.send('POST', config.subscribeUrl, subscription.toJSON());
+                await this.send('POST', config.subscribeUrl, { ...subscription.toJSON(), current_password: this.password });
+                this.password = '';
                 this.state = 'on';
 
                 if (config.reload) {

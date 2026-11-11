@@ -120,7 +120,7 @@ Route::middleware(['auth:admin', 'auth.session', 'admin.can', 'admin.two-factor'
     Route::post('profile/passkeys/options', [PasskeyController::class, 'options'])->middleware('throttle:staff-reauth')->name('profile.passkeys.options');
     Route::post('profile/passkeys', [PasskeyController::class, 'store'])->middleware('throttle:10,1')->name('profile.passkeys.store');
     Route::delete('profile/passkeys/{passkey}', [PasskeyController::class, 'destroy'])->name('profile.passkeys.destroy');
-    Route::post('profile/push', [PhoneAppController::class, 'subscribe'])->middleware('throttle:20,1')->name('profile.push.store');
+    Route::post('profile/push', [PhoneAppController::class, 'subscribe'])->middleware('throttle:staff-reauth')->name('profile.push.store');
     Route::delete('profile/push', [PhoneAppController::class, 'forget'])->name('profile.push.forget');
     Route::delete('profile/push/{pushSubscription}', [PhoneAppController::class, 'destroy'])->name('profile.push.destroy');
     Route::post('profile/push/test', [PhoneAppController::class, 'test'])->middleware('throttle:6,1')->name('profile.push.test');

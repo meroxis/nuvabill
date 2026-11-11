@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Chat\ChatError;
 use App\Chat\ChatMessages;
 use App\Chat\Telegram;
+use App\Chat\TelegramGroups;
 use App\Chat\WhatsApp;
 use App\Chat\WhatsAppSetup;
 use App\Http\Controllers\Controller;
@@ -25,8 +26,12 @@ use Illuminate\View\View;
  */
 class ChatSettingsController extends Controller
 {
-    public function edit(Request $request, Telegram $telegram, WhatsApp $whatsApp, WhatsAppSetup $setup, Settings $settings): View
+    public function edit(Request $request, Telegram $telegram, WhatsApp $whatsApp, WhatsAppSetup $setup, Settings $settings, TelegramGroups $groups): View
     {
+        // Groups an older version listed without asking staff are not offered any more.
+        if ($telegram->isConnected()) {
+            $groups->dropUnconfirmed();
+        }
         // Proves that the QR connect popup answering this page was opened by this page.
         $state = Str::random(32);
         $request->session()->put('chat.whatsapp_state', $state);
@@ -44,7 +49,10 @@ class ChatSettingsController extends Controller
             'whatsApp' => $whatsApp->isConnected(),
             // An add-on, such as WhatsApp by QR code, that connects WhatsApp instead of Meta's platform.
             'whatsAppAddon' => $whatsApp->isConnected() ? $whatsApp->connectedThrough() : null,
-            'groups' => (array) setting('chat.telegram_groups'),
+            'groups' => $groups->choices(),
+            // What staff send in their group so it shows up in that list, and a link that does it for them.
+            'groupCommand' => $telegram->isConnected() ? $groups->command() : null,
+            'groupLink' => $telegram->isConnected() ? $groups->link() : null,
             'templates' => (array) setting('chat.whatsapp_templates'),
             'templateLanguages' => array_map(fn (string $locale): string => ChatMessages::META_LANGUAGES[$locale], ChatMessages::templateLanguages()),
             'events' => ChatMessages::EVENTS,
@@ -78,9 +86,10 @@ class ChatSettingsController extends Controller
         return back()->with('status', __('Telegram is connected as @:bot.', ['bot' => $bot['username']]));
     }
 
-    public function telegramStaff(Request $request, Telegram $telegram, Settings $settings): RedirectResponse
+    public function telegramStaff(Request $request, Telegram $telegram, Settings $settings, TelegramGroups $groups): RedirectResponse
     {
-        $data = $request->validate(['staff_chat' => ['nullable', Rule::in(array_map('strval', array_keys((array) setting('chat.telegram_groups'))))]]);
+        // Only a group that staff confirmed from inside the group can be chosen.
+        $data = $request->validate(['staff_chat' => ['nullable', Rule::in(array_map('strval', array_keys($groups->choices())))]]);
         $settings->set('chat.telegram_staff_chat', (string) ($data['staff_chat'] ?? ''));
 
         if (filled($data['staff_chat'] ?? null)) {

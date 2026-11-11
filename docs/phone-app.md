@@ -27,8 +27,8 @@ role allows.
 ## Push alerts
 
 1. Install the app (on iPhone and iPad, alerts only work in the installed app, iOS 16.4 or newer).
-2. Open **Your profile → Phone app** in the app and press **Turn on alerts on this device**. Allow notifications when
-   the phone asks.
+2. Open **Your profile → Phone app** in the app, type your password and press **Turn on alerts on this device**.
+   Allow notifications when the phone asks.
 3. Press **Send a test alert** to check.
 
 Choose which alerts you get:
@@ -51,5 +51,7 @@ Alerts need the cron job (they are sent in the background) and a site address th
   encrypted for that one phone, so the push service delivers it but cannot read it.
 - Nuvabill makes its own key pair for push alerts the first time it is needed, and keeps the private key encrypted.
 - Nuvabill only sends alerts to the push services of Chrome, Firefox, Safari and Edge, never to other addresses.
+- Turning alerts on for a device asks for your password. A password reset, or a new password set in staff settings,
+  turns alerts off on all your devices; turn them on again on each one.
 - The app keeps no admin pages on the phone. Without a connection it shows a short "You are offline" page.
 - The public demo shows the app and the Today screen, but it cannot turn on alerts.

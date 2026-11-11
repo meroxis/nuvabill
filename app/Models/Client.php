@@ -6,10 +6,12 @@ use App\Enums\ClientStatus;
 use App\Enums\InvoiceStatus;
 use App\Enums\ServiceStatus;
 use App\Enums\TicketStatus;
+use App\Support\Activity;
 use Database\Factories\ClientFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -256,6 +258,36 @@ class Client extends Authenticatable
     public function socialAccounts(): HasMany
     {
         return $this->hasMany(SocialAccount::class);
+    }
+
+    /**
+     * Telegram chats and WhatsApp numbers linked to the account.
+     *
+     * @return HasMany<ChatLink, $this>
+     */
+    public function chatLinks(): HasMany
+    {
+        return $this->hasMany(ChatLink::class);
+    }
+
+    /**
+     * Remove every way into the account besides the password: passkeys, connected Google, GitHub
+     * or Facebook sign-ins and linked chat apps. A new password (a reset, one set by staff, or the
+     * client's own change) ends them, so only the person who knows the new password stays in.
+     * Writes one activity log entry and returns how many were removed.
+     */
+    public function removeOtherSignIns(string $reason, ?Model $actor = null): int
+    {
+        $passkeys = (int) $this->passkeys()->delete();
+        $connected = (int) $this->socialAccounts()->delete();
+        $chats = (int) $this->chatLinks()->delete();
+        $count = $passkeys + $connected + $chats;
+
+        if ($count > 0) {
+            Activity::log('client.sign_ins_removed', "{$passkeys} passkey(s), {$connected} connected account(s) and {$chats} chat app(s) of {$this->name} removed: {$reason}", $this, $this, $actor);
+        }
+
+        return $count;
     }
 
     /**

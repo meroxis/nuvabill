@@ -64,6 +64,7 @@
             <x-input name="password" type="password" :label="__('New password')" :help="__('At least 10 characters.')" required autocomplete="new-password" />
             <x-input name="password_confirmation" type="password" :label="__('Type it again')" required autocomplete="new-password" />
             <x-checkbox name="revoke_api_keys" id="revoke-api-keys" :checked="true" :label="__('Also delete my API keys')" :help="__('Tools that use them stop working until you make a new key.')" />
+            <x-checkbox name="revoke_passkeys" id="revoke-passkeys" :checked="true" :label="__('Also remove my passkeys and phone alerts')" :help="__('A new password alone does not turn them off. You can add yours again afterwards.')" />
             <div class="form-actions"><button class="btn btn-primary" type="submit">{{ __('Change password') }}</button></div>
         </form>
     </div>

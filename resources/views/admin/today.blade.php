@@ -7,6 +7,7 @@
             'forgetUrl' => route('admin.profile.push.forget'),
             'failed' => __('Alerts could not be turned on. Please try again.'),
             'reload' => true,
+            'devices' => $deviceHashes,
         ];
     @endphp
 
@@ -82,7 +83,9 @@
             @else
                 <span>{{ __('Get alerts about new orders, payments and tickets on this phone.') }} <a href="{{ route('admin.profile.edit') }}#phone-app">{{ __('How it works') }}</a></span>
             @endif
-            <div x-show="state === 'off'" x-cloak>
+            <div x-show="state === 'off'" x-cloak style="display:grid;gap:.5rem;justify-items:start">
+                {{-- A device keeps getting alerts after you sign out, so turning one on needs the password. --}}
+                <x-input name="push_password" id="push-password" type="password" :label="__('Your password')" x-model="password" x-on:keydown.enter.prevent="turnOn" autocomplete="current-password" />
                 <button class="btn btn-sm btn-primary" type="button" @click="turnOn" :disabled="busy">{{ __('Turn on alerts on this device') }}</button>
             </div>
             <p class="muted" x-show="state === 'ios-install'" x-cloak style="margin:0;font-size:.85rem">{{ __('On iPhone and iPad, add the app to your Home Screen first: tap Share, then Add to Home Screen. Then open it from there and turn on alerts.') }}</p>

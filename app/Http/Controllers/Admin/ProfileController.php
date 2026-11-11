@@ -48,6 +48,7 @@ class ProfileController extends Controller
             'current_password' => ['required', 'current_password:admin'],
             'password' => ['required', 'confirmed', Password::min(10)],
             'revoke_api_keys' => ['sometimes', 'boolean'],
+            'revoke_passkeys' => ['sometimes', 'boolean'],
         ]);
         $admin = $request->user('admin');
 
@@ -59,11 +60,19 @@ class ProfileController extends Controller
 
         // API keys do not end with the sessions. The box is ticked by default; untick it to keep
         // a working integration when the password is changed on purpose.
-        $revoked = $request->boolean('revoke_api_keys', true) ? $admin->revokeApiKeys('own password changed') : 0;
+        $keys = $request->boolean('revoke_api_keys', true) && $admin->revokeApiKeys('own password changed') > 0;
 
-        return back()->with('status', $revoked > 0
-            ? __('Password changed. Your API keys were deleted.')
-            : __('Password changed.'));
+        // Passkeys and phone alert devices do not end with the sessions either. Their box is ticked
+        // by default too; untick it to keep them when nobody else could have added one.
+        $signIns = $request->boolean('revoke_passkeys', true)
+            && $admin->revokePasskeys('own password changed') + $admin->revokePushDevices('own password changed') > 0;
+
+        return back()->with('status', match (true) {
+            $keys && $signIns => __('Password changed. Your API keys, passkeys and phone alerts were removed.'),
+            $keys => __('Password changed. Your API keys were deleted.'),
+            $signIns => __('Password changed. Your passkeys and phone alerts were removed.'),
+            default => __('Password changed.'),
+        });
     }
 
     /**

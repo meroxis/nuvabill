@@ -98,6 +98,53 @@ class AccountEmailChangeTest extends TestCase
         $this->assertSame('mer.las@example.test', $client->fresh()->email);
     }
 
+    public function test_wrong_emailed_codes_are_counted_over_all_codes_and_then_none_works_for_an_hour(): void
+    {
+        Mail::fake();
+        $client = Client::factory()->create(['email' => 'raz@example.test']);
+        $client->forceFill(['has_password' => false])->save();
+        $this->actingAs($client, 'web');
+
+        $newCode = function (): string {
+            $this->post(route('client.account.email-code'))->assertSessionHas('status');
+            preg_match('/\b(\d{6})\b/', Mail::sent(TemplatedMessage::class)->last()->bodyHtml, $match);
+
+            return $match[1];
+        };
+        $tryCode = fn (string $code) => $this->put(route('client.account.update'), $this->details($client, ['email' => 'mer.las@example.test', 'details_email_code' => $code]));
+        $wrong = fn (string $right): string => $right === '111111' ? '222222' : '111111';
+
+        // A new code every minute brings new tries, but all wrong codes of the client count together.
+        foreach ([5, 3] as $tries) {
+            $right = $newCode();
+
+            foreach (range(1, $tries) as $try) {
+                $tryCode($wrong($right))->assertSessionHasErrors(['details_email_code' => 'That code is not right, or it is too old. Ask for a new code.']);
+            }
+
+            $this->travel(61)->seconds();
+        }
+
+        $right = $newCode();
+        $tryCode($wrong($right))->assertSessionHasErrors(['details_email_code' => 'That code is not right, or it is too old. Ask for a new code.']);
+        $tryCode($wrong($right))->assertSessionHasErrors(['details_email_code' => 'Too many wrong codes. Wait an hour, then ask for a new code.']);
+
+        // Now also the right code is refused, and no new code is sent, for any change on the page.
+        $tryCode($right)->assertSessionHasErrors(['details_email_code' => 'Too many wrong codes. Wait an hour, then ask for a new code.']);
+        $this->assertSame('raz@example.test', $client->fresh()->email);
+
+        $this->travel(61)->seconds();
+        $sent = Mail::sent(TemplatedMessage::class)->count();
+        $this->post(route('client.account.email-code'))->assertSessionHas('error', 'Too many wrong codes. Wait an hour, then ask for a new code.');
+        $this->post(route('client.account.two-factor.email'))->assertSessionHas('error', 'Too many wrong codes. Wait an hour, then ask for a new code.');
+        $this->assertSame($sent, Mail::sent(TemplatedMessage::class)->count());
+
+        // After the wait a new code works again.
+        $this->travel(1)->hours();
+        $tryCode($newCode())->assertSessionHasNoErrors();
+        $this->assertSame('mer.las@example.test', $client->fresh()->email);
+    }
+
     public function test_a_changed_email_is_no_longer_confirmed_so_google_cannot_take_over_the_account(): void
     {
         Mail::fake();

@@ -57,6 +57,10 @@
                     <x-input name="email_code" id="password-email-code" :label="__('Code from the email')" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
                     <span><button class="btn btn-sm" type="submit" form="account-email-code">{{ __('Email me a code') }}</button></span>
                 @endunless
+                {{-- Passkeys, connected accounts and chat apps outlast a new password, so a change removes them unless the client keeps them. --}}
+                @if ($client->has_password && ($passkeys->isNotEmpty() || $socialAccounts->isNotEmpty() || ($chat && $chat['links']->isNotEmpty())))
+                    <x-checkbox name="remove_other_sign_ins" id="remove-other-sign-ins" :checked="true" :label="__('Also remove my passkeys, connected accounts and chat apps')" :help="__('A new password alone does not turn them off. You can add yours again afterwards.')" />
+                @endif
                 <div class="form-actions"><button class="btn btn-primary" type="submit">{{ $client->has_password ? __('Change password') : __('Set password') }}</button></div>
             </form>
 
@@ -120,14 +124,38 @@
                         <form method="POST" action="{{ route('client.account.two-factor.email') }}">@csrf<button class="btn btn-sm" type="submit">{{ __('Send a new code') }}</button></form>
                     @else
                         <p class="muted" style="margin:0">{{ __('Protect your account: after your password, you also enter a short code. Choose how you want to get it.') }}</p>
-                        <div style="display:flex;gap:8px;flex-wrap:wrap">
-                            @if (in_array(\App\Models\Client::TWO_FACTOR_APP, $twoFactor['methods'], true))
-                                <form method="POST" action="{{ route('client.account.two-factor.app') }}">@csrf<button class="btn btn-primary" type="submit"><x-icon name="shield" />{{ __('Use an authenticator app') }}</button></form>
+                        @php
+                            $useApp = in_array(\App\Models\Client::TWO_FACTOR_APP, $twoFactor['methods'], true);
+                            $useEmail = in_array(\App\Models\Client::TWO_FACTOR_EMAIL, $twoFactor['methods'], true);
+                        @endphp
+                        {{-- Turning it on decides who can sign in later, so it needs the password or an emailed code, like turning it off. --}}
+                        @if ($client->has_password && ($useApp || $useEmail))
+                            <form method="POST" action="{{ route($useApp ? 'client.account.two-factor.app' : 'client.account.two-factor.email') }}" style="display:grid;gap:.8rem">
+                                @csrf
+                                <x-input name="two_factor_current_password" type="password" id="two-factor-on-password" :label="__('Your password')" required autocomplete="current-password" />
+                                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                                    @if ($useApp)
+                                        <button class="btn btn-primary" type="submit" formaction="{{ route('client.account.two-factor.app') }}"><x-icon name="shield" />{{ __('Use an authenticator app') }}</button>
+                                    @endif
+                                    @if ($useEmail)
+                                        <button class="btn" type="submit" formaction="{{ route('client.account.two-factor.email') }}"><x-icon name="mail" />{{ __('Get codes by email') }}</button>
+                                    @endif
+                                </div>
+                            </form>
+                        @elseif (! $client->has_password)
+                            @if ($useApp)
+                                <form method="POST" action="{{ route('client.account.two-factor.app') }}" style="display:grid;gap:.8rem">
+                                    @csrf
+                                    <x-input name="two_factor_email_code" id="two-factor-on-code" :label="__('Code from the email')" :help="__('Needed to use an authenticator app.')" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required />
+                                    <span><button class="btn btn-sm" type="submit" form="account-email-code">{{ __('Email me a code') }}</button></span>
+                                    <div><button class="btn btn-primary" type="submit"><x-icon name="shield" />{{ __('Use an authenticator app') }}</button></div>
+                                </form>
                             @endif
-                            @if (in_array(\App\Models\Client::TWO_FACTOR_EMAIL, $twoFactor['methods'], true))
+                            {{-- Codes by email are set up with a code sent to the same inbox, so that code is the proof. --}}
+                            @if ($useEmail)
                                 <form method="POST" action="{{ route('client.account.two-factor.email') }}">@csrf<button class="btn" type="submit"><x-icon name="mail" />{{ __('Get codes by email') }}</button></form>
                             @endif
-                        </div>
+                        @endif
                     @endif
                 </section>
             @endif

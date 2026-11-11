@@ -13,7 +13,9 @@ use App\Mail\TemplateMailer;
 use App\Models\Client;
 use App\Models\SocialAccount;
 use App\Security\OwnerCheck;
+use App\Security\SignInLimiter;
 use App\Support\Activity;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -27,6 +29,8 @@ use Throwable;
  * provider says it is verified, and the account confirmed it before (a password reset link, a
  * provider sign-up, or connecting a provider with the same verified email). Anyone can sign up
  * with someone else's address, so an unconfirmed account is never handed to the provider's user.
+ * The account must also have exactly the provider's address: the database finds other spellings
+ * of an address too, and those never decide whose account it is.
  */
 class SocialLoginController extends Controller
 {
@@ -99,15 +103,23 @@ class SocialLoginController extends Controller
             return $this->failed($request, __(':provider did not share a confirmed email address. Create an account with a password instead.', ['provider' => $driver->name()]));
         }
 
-        // Older SQLite sites may still have the same address in two spellings: a confirmed one wins.
-        $client = Client::query()->whereRaw('LOWER(email) = ?', [$user->email])->orderByRaw('email_verified_at IS NULL')->orderBy('id')->first();
+        // MySQL and MariaDB also find "raz@example.com" for "ráz@example.com", and older SQLite sites
+        // may still have one address in two letter cases. Only an account with exactly this address,
+        // in any letter case, belongs to the provider's user; a confirmed one wins.
+        $found = Client::query()
+            ->where(fn (Builder $query) => $query->where('email', $user->email)->orWhereRaw('LOWER(email) = ?', [$user->email]))
+            ->orderByRaw('email_verified_at IS NULL')
+            ->orderBy('id')
+            ->get();
+        $client = $found->first(fn (Client $candidate): bool => SignInLimiter::sameEmail($user->email, (string) $candidate->email));
+
+        // Another spelling is never signed in, and the database takes no second account for it either.
+        if ($found->isNotEmpty() && ($client === null || ! $user->emailVerified || $client->email_verified_at === null)) {
+            return $this->failed($request, __('An account with this email already exists. Sign in with your password, then connect :provider on your Account page.', ['provider' => $driver->name()]));
+        }
 
         if ($client !== null) {
-            if (! $user->emailVerified || $client->email_verified_at === null) {
-                return $this->failed($request, __('An account with this email already exists. Sign in with your password, then connect :provider on your Account page.', ['provider' => $driver->name()]));
-            }
-
-            return $this->signIn($request, $client, $this->link($client, $driver, $user), $driver);
+            return $this->signIn($request, $client, $this->linkAfterEmailMatch($client, $driver, $user), $driver);
         }
 
         $client = $this->register($user, $mailer, $driver);
@@ -177,6 +189,21 @@ class SocialLoginController extends Controller
         );
     }
 
+    /**
+     * Connect the provider after a sign-in by email. The two-factor code is only asked after this
+     * step. So nothing is connected here for a client with two-factor sign-in, and another account
+     * of this provider that the client connected before is never replaced here: both take the
+     * Account page and the password.
+     */
+    private function linkAfterEmailMatch(Client $client, Provider $driver, SocialUser $user): ?SocialAccount
+    {
+        if ($client->hasTwoFactorEnabled() || $client->socialAccounts()->where('provider', $driver->slug())->exists()) {
+            return null;
+        }
+
+        return $this->link($client, $driver, $user);
+    }
+
     private function register(SocialUser $user, TemplateMailer $mailer, Provider $driver): Client
     {
         $client = Client::create([
@@ -198,13 +225,13 @@ class SocialLoginController extends Controller
         return $client;
     }
 
-    private function signIn(Request $request, Client $client, SocialAccount $account, Provider $driver, bool $isNew = false): RedirectResponse
+    private function signIn(Request $request, Client $client, ?SocialAccount $account, Provider $driver, bool $isNew = false): RedirectResponse
     {
         if ($client->status === ClientStatus::Closed) {
             return $this->failed($request, __('This account is closed. Contact support if you need help.'));
         }
 
-        $account->forceFill(['last_used_at' => now()])->save();
+        $account?->forceFill(['last_used_at' => now()])->save();
 
         if ($isNew) {
             return LoginController::completeLogin($request, $client, false, 'with '.$driver->name(), route('client.account.edit'))

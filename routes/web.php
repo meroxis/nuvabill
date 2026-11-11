@@ -226,9 +226,11 @@ Route::middleware(['auth:web', 'auth.session', 'client.active', 'client.two-fact
     Route::put('account', [AccountController::class, 'update'])->middleware('throttle:client-reauth')->name('account.update');
     Route::post('account/email-code', [AccountController::class, 'sendCode'])->middleware('throttle:3,1,client-code')->name('account.email-code');
     Route::put('account/password', [AccountController::class, 'password'])->middleware('throttle:client-reauth')->name('account.password');
-    Route::post('account/two-factor/app', [TwoFactorController::class, 'startApp'])->name('account.two-factor.app');
+    // Turning two-factor sign-in on asks for the password or an emailed code, like turning it off.
+    Route::get('account/two-factor/{method}', [TwoFactorController::class, 'proof'])->whereIn('method', ['app', 'email'])->name('account.two-factor.proof');
+    Route::post('account/two-factor/app', [TwoFactorController::class, 'startApp'])->middleware('throttle:client-reauth')->name('account.two-factor.app');
     Route::post('account/two-factor/app/confirm', [TwoFactorController::class, 'confirmApp'])->middleware('throttle:6,1')->name('account.two-factor.app.confirm');
-    Route::post('account/two-factor/email', [TwoFactorController::class, 'startEmail'])->middleware('throttle:3,1')->name('account.two-factor.email');
+    Route::post('account/two-factor/email', [TwoFactorController::class, 'startEmail'])->middleware(['throttle:client-reauth', 'throttle:3,1'])->name('account.two-factor.email');
     Route::post('account/two-factor/email/confirm', [TwoFactorController::class, 'confirmEmail'])->middleware('throttle:6,1')->name('account.two-factor.email.confirm');
     Route::delete('account/two-factor', [TwoFactorController::class, 'destroy'])->middleware('throttle:client-reauth')->name('account.two-factor.destroy');
     Route::get('account/data', [PrivacyController::class, 'export'])->middleware('throttle:3,10')->name('account.data');

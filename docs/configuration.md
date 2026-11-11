@@ -112,6 +112,15 @@ This needs the [cron job](installation.md#the-cron-job).
 
 Every staff member and client can also add **passkeys** (fingerprint, face or phone) under their profile.
 
+Turning two-factor sign-in on or off asks for the password. Clients who signed up with Google, GitHub or Facebook and
+have no password use a code sent to their email instead. After 10 wrong emailed codes, a client waits an hour before
+a new code is sent.
+
+A new password ends the other ways into an account. After a password reset, or a password set by someone else, a
+client's passkeys, connected Google, GitHub or Facebook sign-ins and linked chat apps are removed, and so are a staff
+member's passkeys, API keys and phone alert devices. People who change their own password choose this with a box
+that is ticked by default. They can add everything again afterwards.
+
 **Settings → Staff** and **Roles**: staff accounts and what each role may do.
 
 **Settings → Social login**: let clients sign in with Google, GitHub or Facebook.

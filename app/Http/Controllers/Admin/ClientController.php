@@ -120,14 +120,29 @@ class ClientController extends Controller
         $data = $request->safe()->except(['password', 'send_welcome']);
         $data['tags'] = Client::cleanTags($data['tags'] ?? null);
 
-        if ($request->filled('password')) {
+        $newPassword = $request->filled('password');
+
+        if ($newPassword) {
             $data['password'] = $request->input('password');
         }
 
-        $client->update($data);
+        $client->fill($data);
+
+        // A password set by staff is a reset of the client's sign-in: remember-me logins end (other
+        // sessions end through auth.session), and the client now has a password to sign in with.
+        if ($newPassword) {
+            $client->forceFill(['has_password' => true, 'remember_token' => Str::random(60)]);
+        }
+
+        $client->save();
         Activity::log('client.updated', "Client #{$client->id} {$client->name} updated", $client);
 
-        return redirect()->route('admin.clients.show', $client)->with('status', __('Client saved.'));
+        // So passkeys, connected sign-ins and chat apps stop working too, as after the client's own reset.
+        $removed = $newPassword ? $client->removeOtherSignIns('password set by staff') : 0;
+
+        return redirect()->route('admin.clients.show', $client)->with('status', $removed > 0
+            ? __('Client saved. The new password also removed their passkeys, connected accounts and chat apps.')
+            : __('Client saved.'));
     }
 
     /**

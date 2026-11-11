@@ -342,18 +342,172 @@ class SecurityOptionsTest extends TestCase
         $this->assertFalse($client->fresh()->hasTwoFactorEnabled());
     }
 
-    public function test_clients_turn_on_an_authenticator_app_from_their_account(): void
+    public function test_clients_turn_on_an_authenticator_app_from_their_account_with_their_password(): void
     {
-        $client = Client::factory()->create();
+        $client = Client::factory()->create(['password' => 'right-password-1']);
         $this->actingAs($client, 'web');
 
-        $this->post(route('client.account.two-factor.app'));
+        $this->get(route('client.account.edit'))->assertSee('id="two-factor-on-password"', false);
+
+        // Being signed in is not enough: without the password no key is made.
+        $this->post(route('client.account.two-factor.app'), ['two_factor_current_password' => ''])->assertSessionHasErrors('two_factor_current_password');
+        $this->post(route('client.account.two-factor.app'), ['two_factor_current_password' => 'wrong-password'])->assertSessionHasErrors('two_factor_current_password');
+        $this->assertNull(session()->getOldInput('two_factor_current_password'));
+        $this->assertNull($client->fresh()->two_factor_secret);
+
+        $this->post(route('client.account.two-factor.app'), ['two_factor_current_password' => 'right-password-1'])->assertSessionHasNoErrors();
         $client->refresh();
         $this->get(route('client.account.edit'))->assertSee('Scan this QR code')->assertSee($client->two_factor_secret);
 
         $this->post(route('client.account.two-factor.app.confirm'), ['code' => Totp::codeAt($client->two_factor_secret, intdiv(time(), 30))])
             ->assertSessionHas('recovery_codes');
 
+        $this->assertTrue($client->fresh()->hasTwoFactorEnabled());
+    }
+
+    public function test_an_app_setup_this_browser_did_not_start_is_not_shown_and_cannot_be_finished(): void
+    {
+        // Left unfinished in another browser, or by a version that did not ask for the password.
+        $secret = Totp::generateSecret();
+        $client = Client::factory()->create(['password' => 'right-password-1']);
+        $client->forceFill(['two_factor_method' => 'totp', 'two_factor_secret' => $secret])->save();
+        $this->actingAs($client, 'web');
+
+        $this->get(route('client.account.edit'))->assertOk()->assertDontSee($secret)->assertDontSee('Scan this QR code')->assertSee('Use an authenticator app');
+        $this->post(route('client.account.two-factor.app.confirm'), ['code' => Totp::codeAt($secret, intdiv(time(), 30))])
+            ->assertSessionHas('error', 'Setting up two-factor sign-in took too long. Please start again.')
+            ->assertSessionMissing('recovery_codes');
+        $this->assertFalse($client->fresh()->hasTwoFactorEnabled());
+
+        // Starting again with the password makes a new key. That setup can be finished for 15 minutes.
+        $this->post(route('client.account.two-factor.app'), ['two_factor_current_password' => 'right-password-1'])->assertSessionHasNoErrors();
+        $new = $client->fresh()->two_factor_secret;
+        $this->assertNotSame($secret, $new);
+        $this->get(route('client.account.edit'))->assertSee($new);
+
+        $this->travel(16)->minutes();
+        $this->get(route('client.account.edit'))->assertDontSee($new);
+        $this->post(route('client.account.two-factor.app.confirm'), ['code' => Totp::codeAt($new, intdiv(time(), 30))])->assertSessionHas('error');
+        $this->assertFalse($client->fresh()->hasTwoFactorEnabled());
+    }
+
+    public function test_clients_without_a_password_turn_on_an_authenticator_app_with_a_code_from_their_email(): void
+    {
+        Mail::fake();
+        $client = Client::factory()->create();
+        $client->forceFill(['has_password' => false])->save();
+        $this->actingAs($client, 'web');
+
+        $this->get(route('client.account.edit'))->assertSee('id="two-factor-on-code"', false)->assertDontSee('id="two-factor-on-password"', false);
+        $this->post(route('client.account.two-factor.app'), ['two_factor_email_code' => ''])->assertSessionHasErrors('two_factor_email_code');
+        $this->post(route('client.account.two-factor.app'), ['two_factor_email_code' => '000000'])->assertSessionHasErrors('two_factor_email_code');
+        $this->assertNull($client->fresh()->two_factor_secret);
+
+        $this->post(route('client.account.email-code'))->assertSessionHas('status');
+        preg_match('/\b(\d{6})\b/', Mail::sent(TemplatedMessage::class)->last()->bodyHtml, $match);
+
+        $this->post(route('client.account.two-factor.app'), ['two_factor_email_code' => $match[1]])->assertSessionHasNoErrors();
+        $secret = $client->fresh()->two_factor_secret;
+        $this->assertNotNull($secret);
+
+        $this->post(route('client.account.two-factor.app.confirm'), ['code' => Totp::codeAt($secret, intdiv(time(), 30))])->assertSessionHas('recovery_codes');
+        $this->assertTrue($client->fresh()->hasTwoFactorEnabled());
+    }
+
+    public function test_codes_by_email_are_turned_on_with_the_password_and_the_emailed_code(): void
+    {
+        Mail::fake();
+        $client = Client::factory()->create(['password' => 'right-password-1']);
+        $this->actingAs($client, 'web');
+
+        $this->post(route('client.account.two-factor.email'), ['two_factor_current_password' => ''])->assertSessionHasErrors('two_factor_current_password');
+        $this->post(route('client.account.two-factor.email'), ['two_factor_current_password' => 'wrong-password'])->assertSessionHasErrors('two_factor_current_password');
+        Mail::assertNothingSent();
+
+        $this->post(route('client.account.two-factor.email'), ['two_factor_current_password' => 'right-password-1'])->assertSessionHas('status');
+        $this->assertCount(1, Mail::sent(TemplatedMessage::class));
+        $this->get(route('client.account.edit'))->assertSee('Send a new code');
+
+        // "Send a new code" in the setup this browser just started needs no password again.
+        $this->travel(61)->seconds();
+        $this->post(route('client.account.two-factor.email'))->assertSessionHasNoErrors()->assertSessionHas('status');
+        $this->assertCount(2, Mail::sent(TemplatedMessage::class));
+        preg_match('/\b(\d{6})\b/', Mail::sent(TemplatedMessage::class)->last()->bodyHtml, $match);
+
+        $this->post(route('client.account.two-factor.email.confirm'), ['code' => $match[1]])->assertSessionHas('status');
+        $this->assertTrue($client->fresh()->hasTwoFactorEnabled());
+        $this->assertSame('email', $client->fresh()->two_factor_method);
+    }
+
+    public function test_a_setup_by_email_that_took_too_long_asks_for_the_password_again(): void
+    {
+        Mail::fake();
+        $client = Client::factory()->create(['password' => 'right-password-1']);
+        $this->actingAs($client, 'web');
+        $this->post(route('client.account.two-factor.email'), ['two_factor_current_password' => 'right-password-1'])->assertSessionHas('status');
+
+        $this->travel(9)->minutes();
+        $this->post(route('client.account.two-factor.email'))->assertSessionHas('status');
+        $this->travel(7)->minutes();
+
+        // No new code: the password is asked for first, and the Account page is back at the choice.
+        $this->post(route('client.account.two-factor.email'))->assertRedirect(route('client.account.two-factor.proof', 'email'));
+        $this->assertCount(2, Mail::sent(TemplatedMessage::class));
+        $this->get(route('client.account.edit'))->assertSee('id="two-factor-on-password"', false)->assertDontSee('Send a new code');
+    }
+
+    public function test_a_theme_whose_forms_do_not_ask_for_the_password_sends_clients_to_a_page_that_does(): void
+    {
+        Mail::fake();
+        $client = Client::factory()->create(['password' => 'right-password-1']);
+        $this->actingAs($client, 'web');
+
+        // The form of an older theme: only the button. Nothing is turned on, and the client is asked on a page of its own.
+        $this->post(route('client.account.two-factor.app'))->assertRedirect(route('client.account.two-factor.proof', 'app'));
+        $this->post(route('client.account.two-factor.email'))->assertRedirect(route('client.account.two-factor.proof', 'email'));
+        $this->assertNull($client->fresh()->two_factor_secret);
+        Mail::assertNothingSent();
+
+        $this->get(route('client.account.two-factor.proof', 'app'))->assertOk()
+            ->assertSee('id="two-factor-start-password"', false)
+            ->assertSee('action="'.route('client.account.two-factor.app').'"', false);
+        $this->get(route('client.account.two-factor.proof', 'email'))->assertOk()->assertSee('action="'.route('client.account.two-factor.email').'"', false);
+        $this->get(route('client.account.two-factor.proof', 'other'))->assertNotFound();
+
+        $this->from(route('client.account.two-factor.proof', 'app'))
+            ->post(route('client.account.two-factor.app'), ['two_factor_current_password' => 'wrong-password'])
+            ->assertRedirect(route('client.account.two-factor.proof', 'app'))
+            ->assertSessionHasErrors('two_factor_current_password');
+        $this->from(route('client.account.two-factor.proof', 'app'))
+            ->post(route('client.account.two-factor.app'), ['two_factor_current_password' => 'right-password-1'])
+            ->assertRedirect(route('client.account.edit').'#two-factor');
+        $this->get(route('client.account.edit'))->assertSee('Scan this QR code');
+
+        // Clients without a password get the field for the emailed code there.
+        $client->forceFill(['has_password' => false, 'two_factor_method' => null, 'two_factor_secret' => null])->save();
+        $this->post(route('client.account.two-factor.app'))->assertRedirect(route('client.account.two-factor.proof', 'app'));
+        $this->get(route('client.account.two-factor.proof', 'app'))->assertOk()->assertSee('id="two-factor-start-code"', false)->assertSee('Email me a code');
+
+        // With two-factor sign-in on, or the method switched off by staff, there is nothing to ask.
+        app(Settings::class)->set('security.client_two_factor_methods', ['email']);
+        $this->get(route('client.account.two-factor.proof', 'app'))->assertRedirect(route('client.account.edit').'#two-factor');
+    }
+
+    public function test_clients_without_a_password_turn_on_codes_by_email_with_the_emailed_code_alone(): void
+    {
+        Mail::fake();
+        $client = Client::factory()->create();
+        $client->forceFill(['has_password' => false])->save();
+        $this->actingAs($client, 'web');
+
+        // The setup code goes to the account's own inbox, so it is the proof.
+        $this->post(route('client.account.two-factor.email'))->assertSessionHasNoErrors()->assertSessionHas('status');
+        preg_match('/\b(\d{6})\b/', Mail::sent(TemplatedMessage::class)->last()->bodyHtml, $match);
+
+        $this->post(route('client.account.two-factor.email.confirm'), ['code' => $match[1] === '111111' ? '222222' : '111111'])->assertSessionHasErrors('code');
+        $this->assertFalse($client->fresh()->hasTwoFactorEnabled());
+
+        $this->post(route('client.account.two-factor.email.confirm'), ['code' => $match[1]])->assertSessionHas('status');
         $this->assertTrue($client->fresh()->hasTwoFactorEnabled());
     }
 

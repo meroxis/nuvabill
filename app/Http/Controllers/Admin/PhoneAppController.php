@@ -22,6 +22,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\View\View;
 
 /**
@@ -146,12 +147,26 @@ class PhoneAppController extends Controller
             'attention' => $attention,
             'alerts' => $this->alertNames($admin),
             'devices' => $admin->pushSubscriptions()->count(),
+            'deviceHashes' => $admin->pushSubscriptions()->pluck('endpoint_hash')->all(),
             'pushKey' => rescue(fn (): string => app(WebPush::class)->publicKey(), '', report: false),
         ]);
     }
 
+    /**
+     * A device that gets alerts keeps getting them after the session ends, so turning one on asks
+     * for the password like API keys and passkeys do (and shares their staff-reauth limit): a
+     * signed-in browser alone cannot add a device.
+     */
     public function subscribe(Request $request): JsonResponse
     {
+        /** @var Admin $admin */
+        $admin = $request->user('admin');
+        $password = $request->input('current_password');
+
+        if (! is_string($password) || ! Hash::check($password, $admin->password)) {
+            return response()->json(['message' => __('Your password is not right.')], 422);
+        }
+
         $data = $request->validate([
             'endpoint' => ['required', 'string', 'max:1000', 'url:https'],
             'keys.p256dh' => ['required', 'string', 'max:120'],
@@ -161,9 +176,6 @@ class PhoneAppController extends Controller
         if (! WebPush::isPushEndpoint($data['endpoint']) || strlen(WebPush::decode($data['keys']['p256dh'])) !== 65 || strlen(WebPush::decode($data['keys']['auth'])) !== 16) {
             return response()->json(['message' => __('This browser cannot get alerts from Nuvabill.')], 422);
         }
-
-        /** @var Admin $admin */
-        $admin = $request->user('admin');
 
         // A phone that another staff member used before now alerts only whoever turned it on last.
         PushSubscription::query()->updateOrCreate(['endpoint_hash' => PushSubscription::hashOf($data['endpoint'])], [

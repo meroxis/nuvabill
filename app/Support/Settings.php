@@ -216,7 +216,9 @@ class Settings
         'chat.telegram_bot' => '',
         'chat.telegram_secret' => '',
         'chat.telegram_staff_chat' => '',
+        // Groups confirmed for staff alerts (TelegramGroups), and the one-time code that confirms the next one.
         'chat.telegram_groups' => [],
+        'chat.telegram_group_code' => '',
         'chat.whatsapp_token' => '',
         'chat.whatsapp_waba' => '',
         'chat.whatsapp_phone_id' => '',
@@ -265,7 +267,7 @@ class Settings
      *
      * @var list<string>
      */
-    public const SECRET_KEYS = ['license.white_label_key', 'mail.password', 'import.whmcs', 'import.connection', 'import.password_keys', 'social.google', 'social.github', 'social.facebook', 'security.captcha_secret', 'ai.key', 'chat.telegram_token', 'chat.telegram_secret', 'chat.whatsapp_token', 'chat.whatsapp_app_secret', 'chat.whatsapp_webhook_key', 'push.vapid_private', 'marketplace.site_key', 'marketplace.cloudflare_token'];
+    public const SECRET_KEYS = ['license.white_label_key', 'mail.password', 'import.whmcs', 'import.connection', 'import.password_keys', 'social.google', 'social.github', 'social.facebook', 'security.captcha_secret', 'ai.key', 'chat.telegram_token', 'chat.telegram_secret', 'chat.telegram_group_code', 'chat.whatsapp_token', 'chat.whatsapp_app_secret', 'chat.whatsapp_webhook_key', 'push.vapid_private', 'marketplace.site_key', 'marketplace.cloudflare_token'];
 
     /**
      * @var array<string, mixed>|null

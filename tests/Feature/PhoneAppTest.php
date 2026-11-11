@@ -65,15 +65,17 @@ class PhoneAppTest extends TestCase
         $keys = ['p256dh' => WebPush::encode("\x04".random_bytes(64)), 'auth' => WebPush::encode(random_bytes(16))];
 
         // Only real push services: the server never posts to an address staff choose.
-        $this->postJson(route('admin.profile.push.store'), ['endpoint' => 'https://127.0.0.1/steal', 'keys' => $keys])->assertStatus(422);
+        $this->postJson(route('admin.profile.push.store'), ['endpoint' => 'https://127.0.0.1/steal', 'keys' => $keys, 'current_password' => 'password'])->assertStatus(422);
 
         $this->withHeader('User-Agent', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1')
-            ->postJson(route('admin.profile.push.store'), ['endpoint' => 'https://web.push.apple.com/QGx', 'keys' => $keys])->assertOk();
+            ->postJson(route('admin.profile.push.store'), ['endpoint' => 'https://web.push.apple.com/QGx', 'keys' => $keys, 'current_password' => 'password'])->assertOk();
 
         $subscription = PushSubscription::query()->sole();
         $this->assertSame($admin->id, $subscription->admin_id);
         $this->assertSame('iPhone · Safari', $subscription->device);
-        $this->get(route('admin.profile.edit'))->assertOk()->assertSee('iPhone · Safari');
+        // The page learns which devices the server alerts, so a removed one shows as off again.
+        $this->get(route('admin.profile.edit'))->assertOk()->assertSee('iPhone · Safari')->assertSee(PushSubscription::hashOf('https://web.push.apple.com/QGx'));
+        $this->get(route('admin.today'))->assertOk()->assertSee(PushSubscription::hashOf('https://web.push.apple.com/QGx'));
 
         $other = Admin::factory()->create();
         $theirs = PushSubscription::query()->create(['admin_id' => $other->id, 'endpoint' => 'https://fcm.googleapis.com/fcm/send/x', 'endpoint_hash' => PushSubscription::hashOf('https://fcm.googleapis.com/fcm/send/x'), 'public_key' => $keys['p256dh'], 'auth_token' => $keys['auth']]);
