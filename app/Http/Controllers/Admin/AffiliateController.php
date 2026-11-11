@@ -121,7 +121,7 @@ class AffiliateController extends Controller
         Activity::log('affiliate.commission', "Commission #{$commission->id} of ".money($commission->amount, $commission->currency).": {$action}", client: $commission->affiliate->client);
 
         if ($action === 'release' && $commission->status === AffiliateCommission::STATUS_CANCELLED) {
-            return back()->with('status', __('The invoice was refunded or is not paid, so the commission was cancelled.'));
+            return back()->with('status', __('The money for this invoice went back, or the invoice is not paid, so the commission was cancelled.'));
         }
 
         return back()->with('status', __('Commission updated.'));

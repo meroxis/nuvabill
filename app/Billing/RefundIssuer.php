@@ -6,15 +6,22 @@ use App\Contracts\PaymentGateway;
 use App\Contracts\SendsRefundsOnce;
 use App\Enums\InvoiceStatus;
 use App\Extensions\ExtensionManager;
+use App\Extensions\Gateways\PaymentReversal;
 use App\Extensions\Gateways\RefundResult;
 use App\Extensions\Gateways\RefundUnclear;
+use App\Mail\TemplateMailer;
+use App\Models\ActivityLog;
 use App\Models\CreditNote;
 use App\Models\Invoice;
 use App\Models\Transaction;
+use App\Support\Activity;
+use App\Support\Locales;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use RuntimeException;
@@ -114,6 +121,181 @@ class RefundIssuer
     public function hasUnclearRefund(Transaction $payment): bool
     {
         return $this->pendingRefund($payment) !== null;
+    }
+
+    /**
+     * Record money a gateway says went back without this site sending it: a refund made at the
+     * payment service, or a dispute. A refund line is written for the payment, once, and staff are
+     * told. The invoice, its services and the wallet stay as they are; a commission still on hold
+     * for the invoice is cancelled when nothing of the invoice is kept. Safe to call twice for the
+     * same notice, and for a refund this site sent itself.
+     *
+     * @return Transaction|null The line that was written, or null when there was nothing new to record.
+     */
+    public function recordReversal(PaymentReversal $reversal, string $gateway): ?Transaction
+    {
+        $name = rescue(fn (): ?string => $this->extensions->find($gateway)?->name, null, false) ?? $gateway;
+
+        try {
+            // The line and its log entry are saved together, so staff always see what was recorded.
+            $line = DB::transaction(function () use ($reversal, $gateway, $name): ?Transaction {
+                $line = $this->storeReversal($reversal, $gateway);
+
+                if ($line !== null) {
+                    $this->logReversal($line, $reversal, $name);
+                }
+
+                return $line;
+            });
+        } catch (UniqueConstraintViolationException) {
+            // The same notice arrived twice at once (the reference is unique); the first one counts.
+            return null;
+        }
+
+        $invoice = $line?->invoice()->first();
+
+        // Money that came back after a dispute is only logged.
+        if ($invoice !== null && $reversal->kind !== PaymentReversal::CHARGEBACK_UNDONE) {
+            rescue(fn () => app(Affiliates::class)->onPaymentReversed($invoice));
+            rescue(fn () => $this->emailStaff($invoice, $reversal, $name, money(abs($line->amount), $line->currency)));
+        }
+
+        return $line;
+    }
+
+    /**
+     * Write the refund line for a reversal. Call it inside a database transaction: the payment's
+     * row is locked until it ends, so two notices about one payment are handled in turn.
+     */
+    private function storeReversal(PaymentReversal $reversal, string $gateway): ?Transaction
+    {
+        // Only a payment recorded here with exactly this ID counts (the database may compare
+        // without letter case), so notices about other payments on the same account change nothing.
+        $payment = Transaction::query()
+            ->where('gateway', $gateway)
+            ->where('reference', $reversal->paymentReference)
+            ->where('type', 'payment')
+            ->lockForUpdate()
+            ->get()
+            ->first(fn (Transaction $payment): bool => $payment->reference === $reversal->paymentReference);
+
+        if ($payment === null || $reversal->amount <= 0 || $reversal->reference === '') {
+            return null;
+        }
+
+        if (strtoupper($reversal->currency) !== $payment->currency) {
+            Log::warning("Gateway {$gateway} reported a {$reversal->kind} in {$reversal->currency} for payment {$payment->id} in {$payment->currency}; not recorded.");
+
+            return null;
+        }
+
+        $undone = $reversal->kind === PaymentReversal::CHARGEBACK_UNDONE;
+        $reference = $undone ? $reversal->reference.'-undone' : $reversal->reference;
+
+        // Recorded before: by an earlier notice, or by this site when it sent the refund itself.
+        if (Transaction::query()->where('gateway', $gateway)->where('reference', $reference)->exists()) {
+            return null;
+        }
+
+        $lines = Transaction::query()
+            ->where('client_id', $payment->client_id)
+            ->where('gateway', $gateway)
+            ->where('type', 'refund')
+            ->get()
+            ->filter(fn (Transaction $line): bool => ($line->meta['refund_of'] ?? null) === $payment->id);
+        $disputes = $lines->filter(fn (Transaction $line): bool => in_array($line->meta['kind'] ?? null, [PaymentReversal::CHARGEBACK, PaymentReversal::CHARGEBACK_UNDONE], true));
+        // What has not gone back yet: a payment never goes back more than once.
+        $left = $payment->amount + (int) $lines->sum('amount');
+
+        $amount = match ($reversal->kind) {
+            PaymentReversal::REFUND => min($this->refundNotRecorded($reversal, $payment, -(int) $lines->diff($disputes)->sum('amount')), $left),
+            PaymentReversal::CHARGEBACK => min($reversal->amount, $left),
+            // Only what the recorded dispute took comes back.
+            PaymentReversal::CHARGEBACK_UNDONE => min($reversal->amount, -(int) $disputes->whereStrict('reference', $reversal->reference)->sum('amount')),
+            default => 0,
+        };
+
+        if ($amount <= 0) {
+            return null;
+        }
+
+        return Transaction::create([
+            'client_id' => $payment->client_id,
+            'invoice_id' => $payment->invoice_id,
+            'gateway' => $gateway,
+            'reference' => $reference,
+            'type' => 'refund',
+            'amount' => $undone ? $amount : -$amount,
+            'currency' => $payment->currency,
+            'meta' => ['refund_of' => $payment->id, 'through_gateway' => true, 'reported_by_gateway' => true, 'kind' => $reversal->kind],
+            'paid_at' => now(),
+        ]);
+    }
+
+    /**
+     * How much of a refund the gateway reports is not recorded here yet, in minor units. With the
+     * gateway's total, it is the total less every refund of the payment already recorded (sent from
+     * here, or written down by staff) and less a refund this site is sending right now. Without
+     * the total, a refund of the same amount this site is sending right now is that refund.
+     *
+     * @param  int  $recorded  Refunds of the payment recorded so far, without disputes.
+     */
+    private function refundNotRecorded(PaymentReversal $reversal, Transaction $payment, int $recorded): int
+    {
+        $sending = $this->pendingRefund($payment)['amount'] ?? 0;
+
+        if ($reversal->refundedSoFar !== null) {
+            return min($reversal->amount, $reversal->refundedSoFar - $recorded - $sending);
+        }
+
+        return $sending === $reversal->amount ? 0 : $reversal->amount;
+    }
+
+    /**
+     * Write a recorded reversal to the activity log, on its invoice. The dashboard lists the
+     * invoice for staff until a credit note covers the money.
+     *
+     * @param  string  $gateway  The gateway's name for staff.
+     */
+    private function logReversal(Transaction $line, PaymentReversal $reversal, string $gateway): void
+    {
+        $invoice = $line->invoice()->first();
+        $amount = money(abs($line->amount), $line->currency);
+        $number = $invoice?->displayNumber() ?? '—';
+
+        Activity::log(ActivityLog::PAYMENT_REVERSED, match ($reversal->kind) {
+            PaymentReversal::REFUND => "{$gateway} says {$amount} of payment {$reversal->paymentReference} on invoice {$number} was refunded there. It is recorded here. Make a credit note (send it back) to finish it; no money is sent again.",
+            PaymentReversal::CHARGEBACK => "{$gateway} says payment {$reversal->paymentReference} on invoice {$number} was disputed and {$amount} was taken back. It is recorded here. Check the client's services and wallet.",
+            default => "{$gateway} says the dispute of payment {$reversal->paymentReference} on invoice {$number} ended well and {$amount} came back. It is recorded here.",
+        }, $invoice ?? $line);
+    }
+
+    /**
+     * Tell the company address about a refund made at the payment service, or a dispute. The text
+     * holds no words a client chose.
+     */
+    private function emailStaff(Invoice $invoice, PaymentReversal $reversal, string $gateway, string $amount): void
+    {
+        $email = (string) setting('company.email');
+
+        if ($email === '') {
+            return;
+        }
+
+        Locales::in(Locales::default(), function () use ($invoice, $reversal, $gateway, $amount, $email): void {
+            $replace = ['gateway' => $gateway, 'amount' => $amount, 'number' => $invoice->displayNumber(), 'url' => route('admin.invoices.show', $invoice)];
+            [$subject, $body] = $reversal->kind === PaymentReversal::CHARGEBACK
+                ? [
+                    __('A payment for invoice :number was disputed at :gateway', $replace),
+                    __(":gateway says the client disputed a payment for invoice :number, and :amount was taken back. It is now recorded on the invoice. Nothing else changed: the services and the wallet are as they were, so check them.\n\nIf the money stays gone, open the invoice and make a credit note for this amount with \"Send it back to the client\". No money is sent again.\n\n:url", $replace),
+                ]
+                : [
+                    __('A payment for invoice :number was refunded at :gateway', $replace),
+                    __(":gateway says :amount of a payment for invoice :number was sent back to the client there. The refund is now recorded on the invoice. Nothing else changed: the services and the wallet are as they were.\n\nTo finish it, open the invoice and make a credit note for this amount with \"Send it back to the client\". No money is sent again.\n\n:url", $replace),
+                ];
+
+            app(TemplateMailer::class)->sendText($email, (string) setting('company.name'), $subject, $body);
+        });
     }
 
     /**
@@ -236,6 +418,16 @@ class RefundIssuer
 
     private function recordRefund(Transaction $payment, int $amount, ?RefundResult $result, ?string $attemptKey = null): Transaction
     {
+        // The gateway's own notice of this refund may have arrived first (see recordReversal):
+        // that line is the refund, so it is not written again.
+        $known = filled($result?->reference)
+            ? Transaction::query()->where('gateway', $payment->gateway)->where('reference', $result->reference)->where('type', 'refund')->first()
+            : null;
+
+        if ($known !== null) {
+            return $known;
+        }
+
         return Transaction::create([
             'client_id' => $payment->client_id,
             'invoice_id' => $payment->invoice_id,

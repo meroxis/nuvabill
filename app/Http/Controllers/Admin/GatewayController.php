@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Extensions\ExtensionManager;
 use App\Extensions\ExtensionManifest;
+use App\Extensions\Gateways\Gateway;
 use App\Extensions\SettingsForm;
 use App\Http\Controllers\Controller;
 use App\Support\Activity;
@@ -24,13 +25,16 @@ class GatewayController extends Controller
     public function edit(string $gateway, ExtensionManager $extensions): View
     {
         $manifest = $this->manifest($gateway, $extensions);
+        $instance = $extensions->gateway($gateway);
 
         return view('admin.settings.gateways.edit', [
             'manifest' => $manifest,
-            'fields' => $extensions->gateway($gateway)->settingsFields(),
+            'fields' => $instance->settingsFields(),
             'values' => $extensions->settings($gateway),
             'enabled' => $extensions->isEnabled($gateway),
             'webhookUrl' => route('webhooks.gateway', $gateway),
+            // Shown also when the settings are saved, where the help under a secret is hidden.
+            'webhookEvents' => $instance instanceof Gateway ? $instance->webhookEvents() : [],
         ]);
     }
 

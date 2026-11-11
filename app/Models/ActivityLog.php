@@ -33,6 +33,13 @@ class ActivityLog extends Model
      */
     public const PAYMENT_REVIEW = 'payment.review';
 
+    /**
+     * A gateway says money of a payment went back without this site sending it: a refund made at
+     * the payment service, or a dispute. Logged on the invoice; the dashboard lists these invoices
+     * until a credit note covers the money.
+     */
+    public const PAYMENT_REVERSED = 'payment.reversed';
+
     protected $fillable = ['actor_type', 'actor_id', 'subject_type', 'subject_id', 'client_id', 'action', 'description', 'ip_address'];
 
     protected function casts(): array

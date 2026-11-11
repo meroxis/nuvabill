@@ -121,6 +121,26 @@ class Service extends Model
     }
 
     /**
+     * The coupon that takes money off the next renewal, or null: it must still have payments left
+     * and be made for the plan and billing cycle the renewal bills. A coupon made for other plans
+     * gives nothing while the service is on one of them; it stays on the service and counts again
+     * once the service is back on a plan it covers.
+     *
+     * @param  Product|null  $product  The plan the renewal bills, when it is not the service's own (a planned move).
+     */
+    public function renewalCoupon(?Product $product = null): ?Coupon
+    {
+        $coupon = $this->coupon;
+        $product ??= $this->product;
+
+        if ($coupon === null || $product === null || ($this->coupon_payments_left !== null && $this->coupon_payments_left <= 0)) {
+            return null;
+        }
+
+        return $coupon->appliesToProduct($product, $this->billing_cycle) ? $coupon : null;
+    }
+
+    /**
      * @return HasMany<ServiceAddon, $this>
      */
     public function addons(): HasMany

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Billing\Wallet;
+use App\Extensions\Gateways\PaymentReversal;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -52,10 +53,32 @@ class Transaction extends Model
     }
 
     /**
+     * Whether this payment was made in another currency and counted at a newer exchange rate than
+     * the one it was started at, so it paid less of the invoice than it was started for.
+     */
+    public function countedAtNewRate(): bool
+    {
+        return $this->type === 'payment' && isset($this->meta['quoted_amount']);
+    }
+
+    /**
      * The payment method for lists: "Wallet" for wallet payments, otherwise the gateway name.
      */
     public function gatewayLabel(): string
     {
         return $this->gateway === Wallet::GATEWAY ? __('Wallet') : $this->gateway;
+    }
+
+    /**
+     * What a refund line is, for staff: a dispute the payment service reported, money that came
+     * back after one, or a refund.
+     */
+    public function refundLabel(): string
+    {
+        return match ($this->meta['kind'] ?? null) {
+            PaymentReversal::CHARGEBACK => __('Dispute'),
+            PaymentReversal::CHARGEBACK_UNDONE => __('Dispute won'),
+            default => __('Refund'),
+        };
     }
 }

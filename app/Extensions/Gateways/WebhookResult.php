@@ -11,11 +11,21 @@ final readonly class WebhookResult
         public int $status,
         public string $message,
         public ?PaymentResult $payment = null,
+        public ?PaymentReversal $reversal = null,
     ) {}
 
     public static function paid(PaymentResult $payment): self
     {
         return new self(200, 'ok', $payment);
+    }
+
+    /**
+     * Money of a payment went back without this site sending it: a refund made at the payment
+     * service, or a dispute. It is recorded once on the payment's invoice.
+     */
+    public static function reversed(PaymentReversal $reversal): self
+    {
+        return new self(200, 'ok', reversal: $reversal);
     }
 
     /**

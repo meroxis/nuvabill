@@ -8,6 +8,7 @@ use App\Contracts\SendsRefundsOnce;
 use App\Extensions\Gateways\ChargeResult;
 use App\Extensions\Gateways\Gateway;
 use App\Extensions\Gateways\PaymentResult;
+use App\Extensions\Gateways\PaymentReversal;
 use App\Extensions\Gateways\PaymentStart;
 use App\Extensions\Gateways\RefundResult;
 use App\Extensions\Gateways\RefundUnclear;
@@ -65,6 +66,11 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
      */
     private const SIGNATURE_TOLERANCE = 300;
 
+    /**
+     * Events that say money of a payment went back, or came back after a dispute.
+     */
+    private const REVERSAL_EVENTS = ['charge.refunded', 'charge.dispute.created', 'charge.dispute.funds_withdrawn', 'charge.dispute.funds_reinstated'];
+
     public function settingsFields(): array
     {
         return [
@@ -83,7 +89,7 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
                 'label' => 'Webhook signing secret',
                 'type' => 'password',
                 'required' => true,
-                'help' => 'Add a webhook for the URL shown on this page with the events checkout.session.completed, checkout.session.async_payment_succeeded and payment_intent.succeeded, then paste its signing secret (whsec_...).',
+                'help' => 'Add a webhook for the URL shown on this page with the events checkout.session.completed, checkout.session.async_payment_succeeded and payment_intent.succeeded, then paste its signing secret (whsec_...). Add charge.refunded, charge.dispute.created, charge.dispute.funds_withdrawn and charge.dispute.funds_reinstated too, so refunds and disputes made in Stripe are recorded here.',
             ],
         ];
     }
@@ -172,6 +178,12 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
 
         $event = json_decode($payload, true);
 
+        if (in_array($event['type'] ?? null, self::REVERSAL_EVENTS, true)) {
+            $reversal = $this->reversalFromEvent((string) $event['type'], (array) ($event['data']['object'] ?? []));
+
+            return $reversal ? WebhookResult::reversed($reversal) : WebhookResult::ignored('No money went back on a payment.');
+        }
+
         if (($event['type'] ?? null) === 'payment_intent.succeeded') {
             $result = $this->resultFromSavedCharge((array) ($event['data']['object'] ?? []));
 
@@ -185,6 +197,53 @@ class StripeGateway extends Gateway implements ChecksSavedCharges, SavesPaymentM
         $result = $this->resultFromSession($event['data']['object'] ?? []);
 
         return $result ? WebhookResult::paid($result) : WebhookResult::ignored('Session not paid yet, or not started by this site.');
+    }
+
+    public function webhookEvents(): array
+    {
+        return ['checkout.session.completed', 'checkout.session.async_payment_succeeded', 'payment_intent.succeeded', ...self::REVERSAL_EVENTS];
+    }
+
+    /**
+     * A refund made in Stripe, or a dispute, as Stripe reports it. Stripe sends these for the whole
+     * account; only a payment recorded here with the same payment ID is touched when it is saved.
+     *
+     * @param  array<string, mixed>  $object  The charge (refunds) or the dispute.
+     */
+    private function reversalFromEvent(string $type, array $object): ?PaymentReversal
+    {
+        $intent = $object['payment_intent'] ?? null;
+        $intent = is_array($intent) ? ($intent['id'] ?? null) : $intent;
+        $id = $object['id'] ?? null;
+        $currency = strtoupper((string) ($object['currency'] ?? ''));
+
+        if (! is_string($intent) || ! str_starts_with($intent, 'pi_') || ! is_string($id) || $id === '') {
+            return null;
+        }
+
+        if ($type === 'charge.refunded') {
+            // The charge says how much was refunded in all, so a refund sent from here is not counted twice.
+            $refunded = (int) ($object['amount_refunded'] ?? 0);
+
+            return $refunded > 0 ? PaymentReversal::refund($intent, $refunded, $currency, $id.'-refunded-'.$refunded, $refunded) : null;
+        }
+
+        $amount = (int) ($object['amount'] ?? 0);
+
+        if ($amount <= 0) {
+            return null;
+        }
+
+        if ($type === 'charge.dispute.funds_reinstated') {
+            return PaymentReversal::chargebackUndone($intent, $amount, $currency, $id);
+        }
+
+        // A question from the bank (Stripe calls it an inquiry) takes no money yet.
+        if ($type === 'charge.dispute.created' && str_starts_with((string) ($object['status'] ?? ''), 'warning_')) {
+            return null;
+        }
+
+        return PaymentReversal::chargeback($intent, $amount, $currency, $id);
     }
 
     public function supportsRefunds(): bool

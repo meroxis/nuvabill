@@ -14,6 +14,10 @@ Every gateway has a **Name shown to clients** field, so you can call it, for exa
   `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `payment_intent.succeeded`, and paste
   its signing secret (`whsec_…`). Without `checkout.session.async_payment_succeeded`, payments that take a few days
   (for example SEPA Direct Debit) are never marked paid.
+- Add the events `charge.refunded`, `charge.dispute.created`, `charge.dispute.funds_withdrawn` and
+  `charge.dispute.funds_reinstated` to the same webhook too. A refund made in the Stripe dashboard, or a dispute, is
+  then recorded on the invoice and staff are told (see [Refunds and disputes made at the payment
+  service](#refunds-and-disputes-made-at-the-payment-service)).
 - Refunds can be made from the invoice page.
 - Clients can save a card for [automatic payments](../automatic-payments.md). Nothing extra to set up.
 
@@ -25,6 +29,8 @@ Every gateway has a **Name shown to clients** field, so you can call it, for exa
 - **Webhook ID** (recommended): add a webhook for the URL shown on the settings page with the event
   `PAYMENT.CAPTURE.COMPLETED` and paste its ID. Without it, a checkout payment PayPal finishes later (for example an
   eCheck) must be marked paid by hand.
+- Add the events `PAYMENT.CAPTURE.REFUNDED` and `PAYMENT.CAPTURE.REVERSED` to the same webhook too. A refund made in
+  PayPal, or a payment PayPal takes back, is then recorded on the invoice and staff are told.
 - Refunds can be made from the invoice page.
 - Clients can save their PayPal account for [automatic payments](../automatic-payments.md). Turn on **Save payment
   methods** for your app in **Apps & Credentials** first.
@@ -61,6 +67,21 @@ stays in dollars, the client pays the converted amount in dinar, and the invoice
 
 Stripe and PayPal never convert: they always charge the invoice's own currency. A rate does not make them work for a
 currency they do not take (PayPal does not take dinar, for example), so clients do not see them on those invoices.
+
+## Refunds and disputes made at the payment service
+
+When money goes back at Stripe or PayPal without Nuvabill sending it (a refund made in their dashboard, or a
+dispute), the webhook records it on the invoice as a refund line, once. Staff see it in the activity log and under
+**Needs attention** on the dashboard, and the company address gets an email.
+
+Nothing else changes by itself: the invoice stays paid, and the services and the client's wallet stay as they are. To
+finish it, open the invoice and make a credit note with **Send it back to the client**; no money is sent again. An
+affiliate commission still on hold for the invoice is cut by the part that went back, or cancelled when nothing is
+left. When a dispute ends well and Stripe gives the money back, that is recorded too.
+
+A site that used Stripe or PayPal before must add the new events to its webhook at Stripe or PayPal (see above).
+Without them nothing is recorded, as before. The gateway's settings page lists every event the webhook needs under
+the webhook URL.
 
 ## Not listed here?
 

@@ -60,6 +60,9 @@ places, so not for JPY, KWD, ISK or currencies Stripe does not take, and FIB, Fa
 
 **Settings → Currencies**: your main currency, and exchange rates to other currencies. With a rate set you can, for
 example, show prices in US dollars and charge in Iraqi dinar: the invoice stays in dollars and is marked paid in full.
+The amount is worked out when the client starts the payment. If you change the rate before the money arrives and the
+payment is more than 1% short at the new rate, it counts for what it is worth at the new rate and the rest of the
+invoice stays to pay.
 
 ## Taxes
 
@@ -89,6 +92,11 @@ turn single tabs off too. See [the client server panel](integrations/servers.md#
 **Coupons**: percent or fixed amounts, for the first payment, every payment or a number of payments, limited by
 product, billing cycle, dates, uses and new clients. A link like `yourhost.com/?coupon=WELCOME20` applies the coupon
 for the client.
+
+- A coupon that keeps its discount on renewals gives it only while the service is on a product and billing cycle the
+  coupon is made for. After a move to another plan the renewals are full price; the coupon stays on the service and
+  counts again when the service moves back.
+- A use is counted when the order is placed. When the unpaid order or its invoice is cancelled, the use is free again.
 
 ## Sending email
 

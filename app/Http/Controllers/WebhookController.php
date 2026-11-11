@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Billing\PaymentRecorder;
+use App\Billing\RefundIssuer;
 use App\Extensions\ExtensionManager;
 use App\Extensions\ExtensionManifest;
 use Illuminate\Http\Request;
@@ -15,7 +16,7 @@ use Throwable;
  */
 class WebhookController extends Controller
 {
-    public function __invoke(Request $request, string $gateway, ExtensionManager $extensions, PaymentRecorder $payments): Response
+    public function __invoke(Request $request, string $gateway, ExtensionManager $extensions, PaymentRecorder $payments, RefundIssuer $refunds): Response
     {
         $manifest = $extensions->find($gateway);
 
@@ -37,6 +38,11 @@ class WebhookController extends Controller
 
         if ($result->payment !== null) {
             $payments->recordGatewayResult($result->payment, $gateway);
+        }
+
+        // A refund made at the payment service, or a dispute: recorded once, and staff are told.
+        if ($result->reversal !== null) {
+            $refunds->recordReversal($result->reversal, $gateway);
         }
 
         return response($result->message, $result->status);

@@ -55,7 +55,8 @@ final class Proration
 
     /**
      * The part of a paid invoice the client still pays for, from 0 to 1: less after a partial credit
-     * note, and 0 once it was refunded.
+     * note or after money went back without one (a refund or dispute at the payment service), and 0
+     * once it was refunded. Unused time is never credited for money that already went back.
      */
     public static function keptShare(Invoice $invoice): float
     {
@@ -67,7 +68,7 @@ final class Proration
             return 1.0;
         }
 
-        return max(0.0, min(1.0, $invoice->creditableAmount() / $invoice->total));
+        return max(0.0, min(1.0, $invoice->keptAmount() / $invoice->total));
     }
 
     /**

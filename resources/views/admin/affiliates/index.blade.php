@@ -35,7 +35,7 @@
             @method('PUT')
             <div class="card-header" style="margin:0"><h2>{{ __('Program settings') }}</h2></div>
             <x-checkbox name="enabled" :label="__('Affiliate program is open')" :help="__('Clients can join and share their link.')" :checked="setting('affiliates.enabled')" />
-            <x-input name="percent" type="number" step="0.01" min="0" max="100" :label="__('Commission %')" :value="setting('affiliates.percent')" required :help="__('Of what the referred client pays, without tax. You can set a different rate for one affiliate.')" />
+            <x-input name="percent" type="number" step="0.01" min="0" max="100" :label="__('Commission %')" :value="setting('affiliates.percent')" required :help="__('Of what the referred client pays through a payment method, without tax. Money paid from the wallet earns nothing. You can set a different rate for one affiliate.')" />
             <x-checkbox name="recurring" :label="__('Also pay on renewals')" :help="__('Off: only the first order of each referred client earns a commission.')" :checked="setting('affiliates.recurring')" />
             <x-input name="hold_days" type="number" min="0" max="365" :label="__('Days on hold')" :value="setting('affiliates.hold_days')" required :help="__('Commissions wait this long, so a refund can cancel them.')" />
             <x-input name="cookie_days" type="number" min="1" max="365" :label="__('Days a link is remembered')" :value="setting('affiliates.cookie_days')" required />

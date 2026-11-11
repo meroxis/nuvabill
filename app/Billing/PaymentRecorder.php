@@ -261,6 +261,13 @@ class PaymentRecorder
         unset($meta['saved_method']);
         $transaction = $this->record($invoice, $result->amount, $gateway, $result->reference, $result->fee, $meta);
 
+        // Said once, when the payment is first saved: staff see why a part of the invoice is still due.
+        if ($transaction->wasRecentlyCreated && isset($meta['quoted_amount'], $meta['paid_amount'], $meta['paid_currency'])) {
+            rescue(fn () => Activity::log('payment.rate_changed', 'The exchange rate changed after a payment for invoice '.$invoice->displayNumber().' was started. The '
+                .money((int) $meta['paid_amount'], (string) $meta['paid_currency']).' that arrived counts as '.money($result->amount, $invoice->currency)
+                ." at today's rate, not ".money((int) $meta['quoted_amount'], $invoice->currency).'.', $invoice));
+        }
+
         rescue(fn () => app(SavedMethods::class)->rememberFromPayment($result, $gateway));
 
         return $transaction;

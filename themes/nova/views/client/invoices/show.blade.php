@@ -38,6 +38,10 @@
             @if ($invoice->isPayable())
                 <div class="summary-row total" style="border:0;padding:0"><span>{{ __('Amount due') }}</span><span class="num">{{ money($invoice->balance(), $invoice->currency) }}</span></div>
 
+                @if ($invoice->transactions->contains(fn (\App\Models\Transaction $transaction): bool => $transaction->countedAtNewRate()))
+                    <div class="flash" data-tone="info" style="margin:0"><span>{{ __('The exchange rate changed after a payment for this invoice was started, so that payment did not cover the full amount. The rest is still to pay.') }}</span></div>
+                @endif
+
                 @if (! empty($autoPay))
                     <div class="flash" data-tone="{{ $autoPay['failed'] ? 'warn' : 'info' }}" style="margin:0">
                         <span>
@@ -71,7 +75,7 @@
                 @endif
 
                 @if ($qr)
-                    <div class="qr-pay" x-data="{ paid: false }" x-init="setInterval(() => { if (paid) return; fetch(@js(route('client.invoices.payment-status', $invoice)), { headers: { Accept: 'application/json' } }).then(r => r.ok ? r.json() : {}).then(d => { if (d.paid) { paid = true; window.location.reload(); } }).catch(() => {}); }, 5000)">
+                    <div class="qr-pay" x-data="{ paid: false }" x-init="setInterval(() => { if (paid) return; fetch(@js(route('client.invoices.payment-status', $invoice)), { headers: { Accept: 'application/json' } }).then(r => r.ok ? r.json() : {}).then(d => { if (d.paid || d.received) { paid = true; window.location.reload(); } }).catch(() => {}); }, 5000)">
                         <strong>{{ __('Pay with :gateway', ['gateway' => $qr['gateway']]) }}</strong>
                         <img src="{{ $qr['image'] }}" alt="{{ __('QR code to pay invoice :number', ['number' => $invoice->displayNumber()]) }}" width="220" height="220">
                         <span class="muted">{{ __('Scan the code with your banking app, or enter this code:') }}</span>

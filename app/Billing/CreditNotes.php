@@ -180,6 +180,12 @@ class CreditNotes
             throw new InvalidArgumentException(__('A refund of this invoice got no answer from the payment service and may have gone through. Settle that refund before you credit the wallet.'));
         }
 
+        // Money that already went back (a refund or dispute at the payment service, or a refund that
+        // stopped halfway) cannot go into the wallet as well.
+        if ($method === CreditNote::METHOD_WALLET && $amount > ($kept = $invoice->keptAmount())) {
+            throw new InvalidArgumentException(__('Part of this invoice already went back to the client. At most :amount can go into the wallet.', ['amount' => money($kept, $invoice->currency)]));
+        }
+
         if ($method === CreditNote::METHOD_WALLET && $invoice->currency !== $invoice->client->currency) {
             throw new InvalidArgumentException(__('The client\'s wallet is in :currency, so this credit cannot go into it.', ['currency' => $invoice->client->currency]));
         }
