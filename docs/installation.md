@@ -31,10 +31,17 @@ Every download is checked against the release signature before anything is unpac
 2. Upload it to your hosting account and unzip it.
 3. Point your domain or subdomain to the **`public`** folder. Never make the main Nuvabill folder public.
 4. Create an empty MySQL or MariaDB database and a user for it in your hosting panel.
-5. Open your domain in a browser. The installer checks your server, connects the database and creates your owner account.
+5. Open your domain in a browser. The installer checks your server, asks for the **setup code**, connects the database
+   and creates your owner account.
+
+**The setup code** shows that the site is yours. The first time the installer opens, it writes the code to the file
+`storage/app/setup-code.txt` in the Nuvabill folder. Open that file in the File Manager of your hosting panel (or over
+FTP or SSH) and copy the code into the installer. Visitors cannot open the file, so nobody else can finish the
+installation of your site. The file is deleted when the installation is done.
 
 Already unpacked Nuvabill yourself? Run `php artisan nuvabill:install` in its folder to install from the terminal.
 It asks the same questions as the web installer, or takes options such as `--db=sqlite --email=you@example.com`.
+The terminal (and the one command of option 1) never asks for a setup code.
 
 ## The cron job
 

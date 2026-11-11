@@ -33,7 +33,9 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // Private files are never given a web address: nothing here is meant to be opened or
+            // uploaded through a link.
+            'serve' => false,
             'throw' => false,
             'report' => false,
         ],

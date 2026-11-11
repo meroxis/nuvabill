@@ -77,6 +77,7 @@ class OutsideChecks extends CheckGroup
 
         $results[] = $this->listing($base);
         $results[] = $this->headers($base);
+        $results[] = $this->httpsSeen($base);
         $results[] = $this->proxy();
 
         return $results;
@@ -150,6 +151,69 @@ class OutsideChecks extends CheckGroup
         return $check->warning('Missing: :headers', ['headers' => implode(', ', $missing)],
             advice: 'Nuvabill sends these headers itself, so something between Nuvabill and the visitor removes them: a proxy, a cache or the web server. Check its settings.',
         );
+    }
+
+    /**
+     * Nuvabill marks sign-in cookies HTTPS-only and tells browsers to always use HTTPS when it sees
+     * that the visitor came over HTTPS. A proxy in front that takes the HTTPS connection, and that
+     * Nuvabill does not trust, hides that: both are then left out without any error.
+     */
+    private function httpsSeen(string $base): CheckResult
+    {
+        $check = $this->check('outside.https_seen', 'Nuvabill sees that visitors use HTTPS');
+
+        if (! str_starts_with($base, 'https://')) {
+            return $check->skipped('The site does not use HTTPS yet.');
+        }
+
+        $home = $this->get($base.'/');
+
+        if (is_string($home)) {
+            return $check->skipped('Your site could not be reached: :error', ['error' => $home]);
+        }
+
+        if (! $this->answeredAsPlainHttp($home)) {
+            return $check->passed();
+        }
+
+        return $check->warning('The site uses HTTPS, but Nuvabill sees its visitors on plain HTTP',
+            advice: filled(config('trustedproxy.proxies'))
+                ? 'NUVABILL_TRUSTED_PROXIES is set, but Nuvabill still sees visitors on plain HTTP. Check that the list has the IP address your proxy connects from, and that the proxy sends the X-Forwarded-Proto header.'
+                : 'A proxy or load balancer in front of Nuvabill takes the HTTPS connection, and Nuvabill does not trust it. So Nuvabill does not tell browsers to always use HTTPS, and it marks sign-in cookies HTTPS-only only when you turn that on. Add NUVABILL_TRUSTED_PROXIES to the .env file: "cloudflare" behind Cloudflare, or the IP addresses of your proxy.',
+            fix: config('session.secure') === true ? null : $this->fix('settings.secure_cookies', 'Make sign-in cookies HTTPS-only', confirm: 'SESSION_SECURE_COOKIE=true is written to the .env file.'),
+        );
+    }
+
+    /**
+     * Whether Nuvabill answered an HTTPS visit the way it answers plain HTTP. The sign-in cookie
+     * tells, unless .env fixes its HTTPS-only mark either way. So do the two headers Nuvabill only
+     * sends over HTTPS, for an answer that sets no cookie (a cache in front, for example).
+     */
+    private function answeredAsPlainHttp(Response $home): bool
+    {
+        if (config('session.secure') === null && $this->signInCookieIsHttpsOnly($home) === false) {
+            return true;
+        }
+
+        $policy = strtolower($home->header('Content-Security-Policy'));
+
+        return $home->header('Strict-Transport-Security') === '' && $policy !== '' && ! str_contains($policy, 'upgrade-insecure-requests');
+    }
+
+    /**
+     * Null when the answer sets no sign-in cookie.
+     */
+    private function signInCookieIsHttpsOnly(Response $response): ?bool
+    {
+        foreach ($response->toPsrResponse()->getHeader('Set-Cookie') as $cookie) {
+            $parts = array_map(trim(...), explode(';', $cookie));
+
+            if (Str::before((string) array_shift($parts), '=') === (string) config('session.cookie')) {
+                return in_array('secure', array_map(strtolower(...), $parts), true);
+            }
+        }
+
+        return null;
     }
 
     /**

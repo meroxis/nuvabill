@@ -1,5 +1,6 @@
 <?php
 
+use App\Auth\LegacyPassword;
 use App\Chat\WhatsAppSetup;
 use App\Extensions\ExtensionManager;
 use App\Extensions\Servers\ModuleHooks;
@@ -72,6 +73,12 @@ if (Installation::isInstalled()) {
             ->when(fn (): bool => setting('health.nightly') && setting('health.check_requested'));
         Schedule::command('nuvabill:database --clean --scheduled')->dailyAt('04:40')->withoutOverlapping(60);
         Schedule::command('nuvabill:database --optimize --scheduled')->weeklyOn(0, '04:50')->withoutOverlapping(60);
+
+        // Imported clients: old MD5 password hashes are wrapped in Nuvabill's own slow hash, a few at a
+        // time, until none is left. After that the clients table is only looked at once an hour.
+        Schedule::call(fn () => rescue(fn () => LegacyPassword::wrapStored()))
+            ->everyMinute()->name('nuvabill:imported-passwords')->withoutOverlapping(10)
+            ->when(fn (): bool => LegacyPassword::mayHaveFastHashes());
 
         // WhatsApp: Meta only tells its own app about template decisions, so ask until all are decided.
         Schedule::call(fn () => rescue(fn () => app(WhatsAppSetup::class)->refreshTemplates(), report: false))

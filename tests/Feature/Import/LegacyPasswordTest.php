@@ -19,6 +19,7 @@ class LegacyPasswordTest extends TestCase
 
         $hashes = [
             'md5-salt:'.md5('ab1secret-1').':ab1' => 'secret-1',
+            (string) LegacyPassword::wrap('md5-salt:'.md5('ab1secret-1').':ab1') => 'secret-1',
             'hmac-bcrypt:blesta:'.password_hash(hash_hmac('sha256', 'secret-1', 'system-key'), PASSWORD_BCRYPT, ['cost' => 4]) => 'secret-1',
             $pbkdf2 => 'secret-1',
             'native:'.password_hash('secret-1', PASSWORD_ARGON2ID) => 'secret-1',

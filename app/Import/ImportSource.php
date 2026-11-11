@@ -161,6 +161,11 @@ abstract class ImportSource
     private ?string $placeholderPassword = null;
 
     /**
+     * Whether this batch saved a fast (MD5) password hash, which the scheduler then wraps.
+     */
+    private bool $savedFastHash = false;
+
+    /**
      * @param  string|null  $secret  The source's own encryption key, when staff gave it.
      */
     public function __construct(
@@ -311,6 +316,12 @@ abstract class ImportSource
 
         if ($rows->isNotEmpty()) {
             $this->importBatch($step, $rows);
+        }
+
+        // After the batch is saved, so the scheduler finds its rows at its next minute.
+        if ($this->savedFastHash) {
+            $this->savedFastHash = false;
+            LegacyPassword::wrapSoon();
         }
 
         return ['last_id' => (int) ($rows->last()->{$key} ?? $afterId), 'done' => $rows->count() < $limit, 'errors' => $this->errors] + $this->counts;
@@ -742,6 +753,9 @@ abstract class ImportSource
     /**
      * Give a newly imported client their old password: a bcrypt hash works as it is; other kinds
      * Nuvabill knows are checked at their first sign-in and then replaced (see {@see LegacyPassword}).
+     *
+     * A fast (MD5) hash is saved as it is here, because a slow hash for every row made a batch slower
+     * than a job may run. The scheduler wraps it in Nuvabill's own hash within minutes.
      */
     protected function applyPassword(Client $client, ?string $hash): void
     {
@@ -751,6 +765,7 @@ abstract class ImportSource
             DB::table('clients')->where('id', $client->id)->update(['password' => LegacyPassword::normalizeBcrypt($hash), 'legacy_password' => null]);
         } elseif (($legacy = $this->legacyPassword($hash)) !== null) {
             DB::table('clients')->where('id', $client->id)->update(['legacy_password' => $legacy]);
+            $this->savedFastHash = $this->savedFastHash || LegacyPassword::isFast($legacy);
         }
     }
 

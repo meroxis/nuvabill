@@ -138,7 +138,8 @@ Most cPanel, DirectAdmin and Plesk hosting accounts already have all of this.
 1. Download `nuvabill-x.y.z.zip` from the [latest release](https://github.com/meroxis/nuvabill/releases/latest).
 2. Upload it to your hosting account and unzip it. Point your domain or subdomain (for example `billing.yourhost.com`) to the `public` folder.
 3. Create an empty MySQL database and user in your hosting panel.
-4. Open your domain in a browser. The installer checks your server, connects the database and creates your owner account.
+4. Open your domain in a browser. The installer checks your server, asks for the setup code, connects the database and creates your owner account.
+   The setup code is in the file `storage/app/setup-code.txt`, which the installer writes when it first opens: copy it from your hosting File Manager. It shows that the site is yours.
 
 Using **Cloudflare**? Add `NUVABILL_TRUSTED_PROXIES=cloudflare` to `.env`, so sign-in limits and logs see your visitors' real IP addresses.
 
@@ -487,6 +488,9 @@ falls back to Nova. Choose the theme in **Settings → Look and feel**.
 3. Commit, then push a tag with the same version: `git tag v0.1.1 && git push origin v0.1.1`.
 4. The release workflow builds the zip, signs it with the `NUVABILL_SIGNING_KEY` secret and publishes the GitHub release with that section as its notes.
 5. For security releases, add `[security]` to the section so installs can apply them automatically.
+
+Before you tag, run `composer audit --locked` and `npm audit`, and update any package they name. A release then never
+ships a library with a known security problem.
 
 The public half of the signing key is in `config/nuvabill.php`. Never commit the secret half.
 </details>

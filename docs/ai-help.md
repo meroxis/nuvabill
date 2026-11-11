@@ -73,7 +73,9 @@ passwords written after a label (like "password: …"), private keys and long se
 `[email]` in their place. Dates, IP addresses, ticket and invoice numbers stay, because answers need them. When your
 reply contains such details and is translated, they are masked before and put back after, so they never reach the AI.
 
-The prompts tell Claude that ticket text is written by clients and is data, not instructions to follow.
+The prompts tell Claude that ticket text is written by clients and is data, not instructions to follow. Ticket text
+and the client's first name are passed in a marked form, so a message cannot pass for a message from your team or for
+one of the rules Claude works by.
 
 ## The demo
 

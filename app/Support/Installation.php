@@ -12,6 +12,16 @@ use Throwable;
  */
 class Installation
 {
+    /**
+     * Session key: the mark of the setup code this visitor typed (see setupCodeMark()).
+     */
+    public const SETUP_CODE_SESSION = 'install.setup_code';
+
+    /**
+     * Letters and digits that are hard to mix up when read or typed: no 0, O, 1 or I.
+     */
+    private const SETUP_CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
     public static function isInstalled(): bool
     {
         $override = config('nuvabill.installed');
@@ -59,6 +69,66 @@ class Installation
             'version' => config('nuvabill.version'),
             'installed_at' => now()->toIso8601String(),
         ], JSON_PRETTY_PRINT));
+
+        // The setup code has done its work. A reopened installer makes a new one.
+        @unlink(self::setupCodePath());
+    }
+
+    public static function setupCodePath(): string
+    {
+        return storage_path('app/setup-code.txt');
+    }
+
+    /**
+     * The web installer only goes on for someone who can read this site's files: it asks for the
+     * code in a file that is never served to visitors. The file is made the first time the
+     * installer opens. False when it could not be written.
+     */
+    public static function ensureSetupCode(): bool
+    {
+        if (self::setupCode() !== null) {
+            return true;
+        }
+
+        $groups = array_map(fn (): string => implode('', array_map(
+            fn (): string => self::SETUP_CODE_LETTERS[random_int(0, strlen(self::SETUP_CODE_LETTERS) - 1)],
+            range(1, 4),
+        )), range(1, 5));
+
+        return @file_put_contents(self::setupCodePath(), implode('-', $groups).PHP_EOL, LOCK_EX) !== false
+            && self::setupCode() !== null;
+    }
+
+    /**
+     * The code in the file, or null when there is none (yet).
+     */
+    public static function setupCode(): ?string
+    {
+        $code = is_file(self::setupCodePath()) ? trim((string) @file_get_contents(self::setupCodePath())) : '';
+
+        return preg_match('/^['.self::SETUP_CODE_LETTERS.']{4}(-['.self::SETUP_CODE_LETTERS.']{4}){4}$/D', $code) === 1 ? $code : null;
+    }
+
+    /**
+     * Whether $given is the setup code. Dashes, spaces and small letters make no difference.
+     */
+    public static function isSetupCode(string $given): bool
+    {
+        $code = self::setupCode();
+        $plain = fn (string $text): string => strtoupper((string) preg_replace('/[^A-Za-z0-9]/', '', $text));
+
+        return $code !== null && hash_equals($plain($code), $plain($given));
+    }
+
+    /**
+     * What a session keeps once the right code was typed. It names the code without holding it,
+     * so an installer that opens again later with a new code asks again.
+     */
+    public static function setupCodeMark(): ?string
+    {
+        $code = self::setupCode();
+
+        return $code === null ? null : hash('sha256', 'nuvabill-setup-code:'.$code);
     }
 
     /**

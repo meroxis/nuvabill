@@ -84,8 +84,36 @@ class DatabaseSeeder extends Seeder
         'Coral Bay Diving', 'Pine Hill Clinic', 'Echo Music School', 'Velvet Rose Salon', 'Copper Pot Restaurant',
     ];
 
+    /**
+     * Set while "nuvabill:demo-reset --force" runs: the one deliberate way to load the demo data on
+     * a site that is not the demo.
+     */
+    private static bool $forced = false;
+
+    /**
+     * Run $load with the demo data allowed on this site, whatever its mode.
+     *
+     * @template T
+     *
+     * @param  callable(): T  $load
+     * @return T
+     */
+    public static function forced(callable $load): mixed
+    {
+        $before = self::$forced;
+        self::$forced = true;
+
+        try {
+            return $load();
+        } finally {
+            self::$forced = $before;
+        }
+    }
+
     public function run(): void
     {
+        $this->refuseOnRealSites();
+
         // The demo reset moves to a new database in the same process, so extension rows cached from
         // the old database are dropped first. Saving over a stale row could leave an extension off.
         app(ExtensionManager::class)->refresh();
@@ -886,6 +914,20 @@ class DatabaseSeeder extends Seeder
         }
 
         return $service;
+    }
+
+    /**
+     * The demo data comes with shared sign-ins that are public, and it renames the company. So it
+     * only loads on the demo, on a development copy or in tests, and it stops before it changes
+     * anything anywhere else.
+     */
+    private function refuseOnRealSites(): void
+    {
+        if (self::$forced || Demo::isEnabled() || app()->environment('local', 'testing')) {
+            return;
+        }
+
+        throw new RuntimeException('This loads demo data and a public sign-in. It only runs on the demo or a local copy.');
     }
 
     /**

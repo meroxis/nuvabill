@@ -32,6 +32,7 @@ class InstallerClosedTest extends TestCase
     protected function tearDown(): void
     {
         $this->lockFile === null ? @unlink(Installation::lockPath()) : file_put_contents(Installation::lockPath(), $this->lockFile);
+        @unlink(Installation::setupCodePath());
 
         parent::tearDown();
     }
@@ -97,6 +98,13 @@ class InstallerClosedTest extends TestCase
     public function test_a_fresh_database_still_installs(): void
     {
         $this->get(route('store.index'))->assertRedirect(route('install.welcome'));
+
+        // Without the setup code from the file, the account step stays shut.
+        $this->post(route('install.finish'), $this->accountForm('raz@example.test'))->assertRedirect(route('install.welcome'));
+        $this->assertSame(0, Admin::query()->count());
+
+        Installation::ensureSetupCode();
+        $this->post(route('install.code'), ['setup_code' => Installation::setupCode()])->assertRedirect(route('install.database'));
 
         $this->post(route('install.finish'), $this->accountForm('raz@example.test'))->assertRedirect(route('admin.dashboard'));
 

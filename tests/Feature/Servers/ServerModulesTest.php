@@ -14,8 +14,10 @@ use App\Models\Service;
 use App\Provisioning\Provisioner;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Exceptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Sleep;
+use LogicException;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -236,6 +238,48 @@ class ServerModulesTest extends TestCase
 
         $this->post(route('client.services.panel', [$service, 'start']))->assertSessionHas('status', 'The server is starting.');
         $this->post(route('client.services.panel', [$service, 'password']), ['password' => 'short'])->assertSessionHas('error');
+    }
+
+    public function test_a_server_that_cannot_be_reached_gives_the_client_a_plain_message_and_staff_the_detail(): void
+    {
+        Http::fake([
+            '*/qemu/105/status/reboot' => Http::failedConnection('cURL error 28: Operation timed out after 30001 milliseconds for https://pve.example.test:8006/api2/json/nodes/pve1/qemu/105/status/reboot'),
+            '*/qemu/105/status/shutdown' => fn () => throw new LogicException('Broken answer from https://pve.example.test:8006/api2/json/nodes/pve1'),
+            '*/qemu/105/status/start' => Http::response(['data' => 'UPID:pve1:start']),
+        ]);
+
+        $service = $this->service('proxmox', 'pve.example.test', ['node' => 'pve1'], ['module_data' => ['vmid' => 105, 'node' => 'pve1']], ['port' => 8006, 'ip_address' => '198.51.100.7']);
+        $this->actingAs($service->client, 'web');
+        Exceptions::fake();
+
+        // The power buttons (JSON) and the plain forms both get the plain message.
+        foreach (['restart', 'stop'] as $action) {
+            $answer = $this->postJson(route('client.services.panel', [$service, $action]))
+                ->assertStatus(422)
+                ->assertJson(['ok' => false, 'message' => 'The server did not answer. Please try again in a minute.']);
+
+            $this->post(route('client.services.panel', [$service, $action]))
+                ->assertSessionHas('error', 'The server did not answer. Please try again in a minute.');
+
+            foreach (['pve.example.test', '8006', 'pve1', 'cURL', 'LogicException'] as $detail) {
+                $this->assertStringNotContainsString($detail, $answer->getContent());
+                $this->assertStringNotContainsString($detail, (string) json_encode(session()->all()));
+            }
+        }
+
+        // Staff read what happened in the activity log.
+        $logged = ActivityLog::query()->where('action', 'service.module_failed')->pluck('description')->implode("\n");
+        $this->assertStringContainsString('Client action "restart"', $logged);
+        $this->assertStringContainsString('Could not connect to pve.example.test: cURL error 28', $logged);
+        $this->assertStringContainsString('Client action "stop"', $logged);
+        $this->assertStringContainsString('(LogicException)', $logged);
+        $this->assertStringNotContainsString('Broken answer', $logged);
+        Exceptions::assertReported(fn (RuntimeException $exception): bool => ! str_contains($exception->getMessage(), 'pve.example.test'));
+
+        // What the module tells the client about their own input, and a normal answer, are unchanged.
+        $this->post(route('client.services.panel', [$service, 'password']), ['password' => 'short'])
+            ->assertSessionHas('error', 'Use at least 10 characters with letters and numbers.');
+        $this->post(route('client.services.panel', [$service, 'start']))->assertSessionHas('status', 'The server is starting.');
     }
 
     public function test_plesk_terminate_of_an_imported_service_removes_only_its_own_subscription(): void

@@ -337,3 +337,106 @@ test('a power action without a state to reach shows its message only, and a busy
     await settle();
     assert.equal(panel.message, 'Another change is running on this server. Try again in a moment.');
 });
+
+const revealForm = () => ({
+    defaultPrevented: false,
+    target: { action: '/client/services/5/panel/vnc' },
+    preventDefault() {
+        this.defaultPrevented = true;
+    },
+});
+
+test('a value shown once comes from the answer, stays in memory and closes after a minute', async () => {
+    const panel = vpsPanel(config({ state: 'running' }));
+    const event = revealForm();
+
+    panel.reveal(event);
+    await settle();
+
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(panel.revealing, true);
+    assert.equal(requests[0].url, '/client/services/5/panel/vnc');
+    assert.equal(requests[0].options.method, 'POST');
+    assert.equal(requests[0].options.headers.Accept, 'application/json');
+
+    // A second press while the first one waits sends nothing.
+    panel.reveal(revealForm());
+    await settle();
+    assert.equal(requests.length, 1);
+
+    requests[0].answer({
+        ok: true,
+        message: 'VNC details are shown below.',
+        pending: null,
+        state: null,
+        secret: [{ label: 'IP address', value: '203.0.113.9' }, { label: 'Port', value: '5901' }, { label: 'Password', value: 'vnc-pass' }, { label: 'Broken' }],
+    });
+    await settle();
+
+    assert.equal(panel.revealing, false);
+    assert.equal(panel.revealMessage, 'VNC details are shown below.');
+    assert.deepEqual(panel.secret, [
+        { label: 'IP address', value: '203.0.113.9' },
+        { label: 'Port', value: '5901' },
+        { label: 'Password', value: 'vnc-pass' },
+    ]);
+    assert.equal(panel.secretLeft, 60);
+
+    // One tick for each second: the countdown sets its next second only after the one before.
+    for (let second = 0; second < 59; second++) {
+        mock.timers.tick(1000);
+    }
+
+    assert.equal(panel.secretLeft, 1);
+    assert.notEqual(panel.secret, null);
+    mock.timers.tick(1000);
+    assert.equal(panel.secret, null);
+});
+
+test('a value shown once can be kept open or hidden, and goes when the panel is left', async () => {
+    const panel = vpsPanel(config({ state: 'running' }));
+
+    panel.showSecret([{ label: 'Password', value: 'vnc-pass' }]);
+    mock.timers.tick(1000);
+    assert.equal(panel.secretLeft, 59);
+    panel.keepSecret();
+
+    for (let second = 0; second < 120; second++) {
+        mock.timers.tick(1000);
+    }
+    assert.deepEqual(panel.secret, [{ label: 'Password', value: 'vnc-pass' }]);
+    assert.equal(panel.secretLeft, 0);
+
+    panel.hideSecret();
+    assert.equal(panel.secret, null);
+
+    panel.showSecret([{ label: 'Password', value: 'vnc-pass' }]);
+    panel.destroy();
+    assert.equal(panel.secret, null);
+});
+
+test('a refused or failed request for a value shows a message and no value', async () => {
+    const panel = vpsPanel(config({ state: 'running' }));
+
+    panel.reveal(revealForm());
+    await settle();
+    requests[0].answer({ ok: false, message: 'VNC is not available for this VPS.' }, 422);
+    await settle();
+    assert.equal(panel.revealMessage, 'VNC is not available for this VPS.');
+    assert.equal(panel.secret, null);
+    assert.equal(panel.revealing, false);
+
+    panel.reveal(revealForm());
+    await settle();
+    requests[1].answer({ message: 'CSRF token mismatch.' }, 419);
+    await settle();
+    assert.equal(panel.revealMessage, 'That did not work.');
+    assert.equal(panel.secret, null);
+
+    panel.reveal(revealForm());
+    await settle();
+    requests[2].fail();
+    await settle();
+    assert.equal(panel.revealMessage, 'That did not work.');
+    assert.equal(panel.revealing, false);
+});

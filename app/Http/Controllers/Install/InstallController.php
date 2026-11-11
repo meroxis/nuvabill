@@ -17,24 +17,47 @@ use RuntimeException;
 /**
  * The three-step web installer: check the server, connect the database, create the owner account.
  * "php artisan nuvabill:install" runs the same steps in a terminal.
+ *
+ * Anyone can open the first page of a copy that is not installed yet. The steps after it only
+ * open for someone who can read the site's files: they type the setup code from a file in the
+ * storage folder (see Installation::ensureSetupCode()).
  */
 class InstallController extends Controller
 {
     public function __construct(private readonly Installer $installer) {}
 
-    public function welcome(): View
+    public function welcome(Request $request): View
     {
+        $passes = $this->installer->meetsRequirements();
+
         return view('install.welcome', [
             'checks' => $this->installer->requirements(),
-            'passes' => $this->installer->meetsRequirements(),
+            'passes' => $passes,
+            'needsCode' => $passes && Installation::ensureSetupCode() && ! $this->hasSetupCode($request),
         ]);
+    }
+
+    public function confirmCode(Request $request): RedirectResponse
+    {
+        $this->abortIfInstalled();
+
+        $data = $request->validate(['setup_code' => ['required', 'string', 'max:100']]);
+
+        if (! Installation::isSetupCode($data['setup_code'])) {
+            return back()->withErrors(['setup_code' => __('That is not the code in the file. Open storage/app/setup-code.txt again and copy the whole line.')]);
+        }
+
+        $request->session()->regenerate();
+        $request->session()->put(Installation::SETUP_CODE_SESSION, Installation::setupCodeMark());
+
+        return redirect()->route('install.database');
     }
 
     public function database(Request $request): View|RedirectResponse
     {
         $this->abortIfInstalled();
 
-        if (! $this->installer->meetsRequirements()) {
+        if (! $this->installer->meetsRequirements() || ! $this->hasSetupCode($request)) {
             return redirect()->route('install.welcome');
         }
 
@@ -49,6 +72,10 @@ class InstallController extends Controller
     {
         $this->abortIfInstalled();
 
+        if (! $this->hasSetupCode($request)) {
+            return redirect()->route('install.welcome');
+        }
+
         $data = $request->validate([
             'app_url' => ['required', 'url', 'max:190'],
             'driver' => ['required', Rule::in(['mysql', 'sqlite'])],
@@ -58,6 +85,11 @@ class InstallController extends Controller
             'username' => ['required_if:driver,mysql', 'nullable', 'string', 'max:64'],
             'password' => ['nullable', 'string', 'max:190'],
         ]);
+
+        // A database that is only down for a moment may hold an installed site: .env keeps pointing at it.
+        if ($this->installer->savedDatabaseIsDown()) {
+            return back()->withInput($request->except('password'))->withErrors(['host' => __('The .env file already names a database, and it does not answer right now. Start the database server and try again. To use another database, remove the DB_ lines from the .env file first.')]);
+        }
 
         try {
             $this->installer->setUpDatabase($data);
@@ -75,9 +107,13 @@ class InstallController extends Controller
         return redirect()->route('install.account');
     }
 
-    public function account(): View|RedirectResponse
+    public function account(Request $request): View|RedirectResponse
     {
         $this->abortIfInstalled();
+
+        if (! $this->hasSetupCode($request)) {
+            return redirect()->route('install.welcome');
+        }
 
         if (! $this->installer->databaseIsReady()) {
             return redirect()->route('install.database');
@@ -91,6 +127,10 @@ class InstallController extends Controller
     public function finish(Request $request): RedirectResponse
     {
         $this->abortIfInstalled();
+
+        if (! $this->hasSetupCode($request)) {
+            return redirect()->route('install.welcome');
+        }
 
         if (! $this->installer->databaseIsReady()) {
             return redirect()->route('install.database');
@@ -114,6 +154,7 @@ class InstallController extends Controller
 
         Auth::guard('admin')->login($admin);
         $request->session()->regenerate();
+        $request->session()->forget(Installation::SETUP_CODE_SESSION);
 
         return redirect()->route('admin.dashboard')->with('status', __('Nuvabill is installed. Next: add the cron job (Settings → Automation), a payment gateway and your server.'));
     }
@@ -125,5 +166,16 @@ class InstallController extends Controller
     private function abortIfInstalled(): void
     {
         abort_if($this->installer->hasStaff(), 404);
+    }
+
+    /**
+     * Whether this visitor typed the setup code that is in the file now.
+     */
+    private function hasSetupCode(Request $request): bool
+    {
+        $mark = Installation::setupCodeMark();
+        $typed = $request->session()->get(Installation::SETUP_CODE_SESSION);
+
+        return $mark !== null && is_string($typed) && hash_equals($mark, $typed);
     }
 }

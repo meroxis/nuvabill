@@ -6,7 +6,13 @@
  *
  * Other power actions (such as "wol" for Wake on LAN) have no state to wait for: they show the
  * server's message only. A button with data-destructive sends confirm=1 once the client said yes.
+ *
+ * A button that shows a value once (such as VNC details) posts in the background too. The value
+ * comes back in the answer and is kept in memory only, never in the page address or storage: it is
+ * dropped after a minute (unless the client keeps it open), with Hide, or when the page is left.
  */
+import { SECRET_SECONDS } from './server-panel.js';
+
 const EXPECTED = { start: 'running', restart: 'running', stop: 'stopped', poweroff: 'stopped', reset: 'running', 'power-cycle': 'running' };
 
 /** Actions that only make sense on a stopped server. */
@@ -41,6 +47,14 @@ export function vpsPanel(config) {
         tries: 0,
         // Counts the waits for a new state, so a check from an older wait stops once a new one began.
         run: 0,
+        // A value shown once, as rows of label and value, and the seconds until it closes.
+        secret: null,
+        secretLeft: 0,
+        secretTimer: null,
+        revealing: false,
+        revealMessage: '',
+        copied: null,
+        copiedTimer: null,
 
         init() {
             if (this.pending) {
@@ -50,6 +64,8 @@ export function vpsPanel(config) {
 
         destroy() {
             clearTimeout(this.timer);
+            clearTimeout(this.copiedTimer);
+            this.hideSecret();
         },
 
         get label() {
@@ -229,6 +245,107 @@ export function vpsPanel(config) {
             this.busy = false;
             this.state = state ?? this.state;
             this.message = state === null ? config.messages.failed : (config.messages.reached[state] ?? '');
+        },
+
+        /**
+         * Ask for a value that is shown once, such as VNC details, and show it.
+         */
+        async reveal(event) {
+            event.preventDefault();
+
+            if (this.revealing) {
+                return;
+            }
+
+            this.revealing = true;
+            this.revealMessage = '';
+            this.hideSecret();
+
+            let response = null;
+            let data = {};
+
+            try {
+                response = await fetch(event.target.action, {
+                    method: 'POST',
+                    headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: new FormData(event.target),
+                    credentials: 'same-origin',
+                    redirect: 'error',
+                });
+                data = await response.json().catch(() => ({}));
+            } catch {
+                response = null;
+            }
+
+            this.revealing = false;
+
+            const readable = response && (response.ok || READABLE.includes(response.status));
+
+            if (!readable || typeof data.message !== 'string') {
+                this.revealMessage = config.messages.failed;
+
+                return;
+            }
+
+            this.revealMessage = data.message;
+
+            if (data.ok && Array.isArray(data.secret)) {
+                this.showSecret(data.secret);
+            }
+        },
+
+        showSecret(list) {
+            const items = list
+                .filter((item) => item !== null && typeof item === 'object' && typeof item.value === 'string')
+                .map((item) => ({ label: String(item.label ?? ''), value: item.value }));
+
+            if (items.length === 0) {
+                return;
+            }
+
+            this.secret = items;
+            this.secretLeft = SECRET_SECONDS;
+            clearTimeout(this.secretTimer);
+            this.secretTimer = setTimeout(() => this.tick(), 1000);
+        },
+
+        tick() {
+            this.secretLeft -= 1;
+
+            if (this.secretLeft <= 0) {
+                this.hideSecret();
+            } else {
+                this.secretTimer = setTimeout(() => this.tick(), 1000);
+            }
+        },
+
+        /**
+         * Keep the value open until the client hides it or leaves the page: stops the countdown,
+         * for anyone who needs more than a minute to read or copy it. It stays in memory only.
+         */
+        keepSecret() {
+            clearTimeout(this.secretTimer);
+            this.secretLeft = 0;
+        },
+
+        hideSecret() {
+            clearTimeout(this.secretTimer);
+            this.secret = null;
+            this.secretLeft = 0;
+            this.copied = null;
+        },
+
+        async copy(text, id = null) {
+            try {
+                await globalThis.navigator.clipboard.writeText(String(text));
+                this.copied = id ?? text;
+                clearTimeout(this.copiedTimer);
+                this.copiedTimer = setTimeout(() => {
+                    this.copied = null;
+                }, 2000);
+            } catch {
+                globalThis.window?.prompt('', String(text));
+            }
         },
 
         /**

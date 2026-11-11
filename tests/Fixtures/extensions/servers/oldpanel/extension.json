@@ -1,0 +1,9 @@
+{
+    "slug": "oldpanel",
+    "type": "server",
+    "name": "Old panel",
+    "version": "1.0.0",
+    "namespace": "Tests\\Fixtures\\OldPanel\\",
+    "class": "Tests\\Fixtures\\OldPanel\\OldPanelModule",
+    "description": "A server module that only exists in the test suite. It has the older client panel (HasClientPanel) without panel sections, and makes no network calls."
+}

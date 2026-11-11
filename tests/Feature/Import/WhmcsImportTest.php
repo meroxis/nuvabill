@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Import;
 
+use App\Auth\LegacyPassword;
 use App\Billing\InvoicePaidHandler;
 use App\Billing\PaymentRecorder;
 use App\Billing\RenewalGenerator;
@@ -158,11 +159,19 @@ class WhmcsImportTest extends TestCase
     {
         $this->seedWhmcs();
         DB::connection(self::CONNECTION)->table('tblclients')->where('id', 2)->update(['status' => 'Active', 'password' => md5('x7Q'.'sam-old-pass').':x7Q']);
+        LegacyPassword::wrapStored();
+        $this->assertFalse(LegacyPassword::mayHaveFastHashes());
 
         $this->runImport();
 
         $sam = Client::query()->where('email', 'sam@example.com')->firstOrFail();
         $this->assertNotNull($sam->legacy_password);
+
+        // The import asks the scheduler to run, which keeps the MD5 hash inside Nuvabill's own slow hash.
+        $this->assertTrue(LegacyPassword::mayHaveFastHashes());
+        $this->assertSame(1, LegacyPassword::wrapStored());
+        $this->assertStringStartsWith('md5-salt-wrapped:', (string) $sam->fresh()->legacy_password);
+        $this->assertStringNotContainsString(md5('x7Q'.'sam-old-pass'), (string) $sam->fresh()->legacy_password);
 
         $this->post(route('client.login'), ['email' => 'sam@example.com', 'password' => 'wrong-pass'])->assertSessionHasErrors('email');
         $this->assertGuest('web');

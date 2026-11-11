@@ -82,8 +82,10 @@ class ServiceController extends Controller
     }
 
     /**
-     * An action from the module's own panel, for example "restart" on a VPS. The panel's power
-     * buttons ask for JSON: they get the message and the server's new state, never other data.
+     * An action from the module's own panel, for example "restart" on a VPS. The panel's buttons
+     * ask for JSON: they get the message, the server's new state and, for an action that shows
+     * something once (such as VNC details), that value. Such a value is only ever in a JSON answer
+     * that is not cached: never in the session or the page.
      */
     public function panel(Request $request, Service $service, string $action, Provisioner $provisioner): RedirectResponse|JsonResponse
     {
@@ -94,19 +96,27 @@ class ServiceController extends Controller
         }
 
         $result = $provisioner->clientAction($service, $action, $request->except('_token'));
+        $pending = $result->success && in_array($result->data['pending'] ?? null, ['start', 'stop', 'restart', 'poweroff'], true) ? $result->data['pending'] : null;
+        $secret = $result->shownOnce();
 
         if ($request->expectsJson()) {
             return response()->json([
                 'ok' => $result->success,
                 'message' => $result->message,
-                'pending' => $result->success && in_array($result->data['pending'] ?? null, ['start', 'stop', 'restart', 'poweroff'], true) ? $result->data['pending'] : null,
+                'pending' => $pending,
                 'state' => $result->success ? $this->panelState($result->data['state'] ?? null) : null,
-            ], $result->success ? 200 : 422)->withHeaders(self::PRIVATE_HEADERS);
+            ] + ($secret !== [] ? ['secret' => $secret] : []), $result->success ? 200 : 422)->withHeaders(self::PRIVATE_HEADERS);
         }
 
+        // Only the page's script can show a value once, so without it the value is dropped here.
+        if ($secret !== []) {
+            return back()->with('error', __('Turn on JavaScript to do this.'));
+        }
+
+        // The session gets the power action that is still running, and nothing else the module gave.
         return back()
             ->with($result->success ? 'status' : 'error', $result->message)
-            ->with('panel_result', $result->success ? $result->data : null);
+            ->with('panel_result', $result->success ? array_filter(['pending' => $pending]) : null);
     }
 
     /**

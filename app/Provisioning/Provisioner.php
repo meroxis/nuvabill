@@ -1438,6 +1438,10 @@ class Provisioner
      * it never runs on top of a suspend, terminate, resource change or plan change: when one is
      * running it fails with data['busy'] = true, and a service suspended meanwhile is refused.
      *
+     * The answer is for the client. When the module could not reach its server, the module's own
+     * words (which name the server) go to the activity log for staff, and the client gets a plain
+     * message without them.
+     *
      * @param  array<string, mixed>  $input
      */
     public function clientAction(Service $service, string $action, array $input): ModuleResult
@@ -1464,7 +1468,15 @@ class Provisioner
                 return ModuleResult::fail(__('This action is not available.'));
             }
 
-            $result = $this->attempt(fn (): ModuleResult => $module->clientAction($service, $action, $input));
+            $stopped = false;
+
+            try {
+                $result = $module->clientAction($service, $action, $input);
+            } catch (Throwable $exception) {
+                $this->reportCleanly("Client action {$action} of service #{$service->id}", $exception);
+                $result = ModuleResult::fail(__('The server module stopped with an error (:error). Check the server and try again.', ['error' => class_basename($exception)]));
+                $stopped = true;
+            }
         } finally {
             $lock->release();
         }
@@ -1475,7 +1487,30 @@ class Provisioner
             $service,
         );
 
+        if ($stopped || (! $result->success && $this->tellsWhereTheServerIs($result->message, $service->server))) {
+            return ModuleResult::fail(__('The server did not answer. Please try again in a minute.'), $result->data);
+        }
+
         return $result;
+    }
+
+    /**
+     * Whether a module's failure text is for staff only: it names the server's host or IP address,
+     * holds a web address, or carries a raw connection error (which ends with the address called).
+     */
+    private function tellsWhereTheServerIs(string $message, ?Server $server): bool
+    {
+        if (preg_match('~[a-z][a-z0-9+.-]*://|\bcURL error\b~i', $message) === 1) {
+            return true;
+        }
+
+        foreach (array_filter([(string) $server?->hostname, (string) $server?->ip_address]) as $address) {
+            if (preg_match('~(?<![\w.-])'.preg_quote($address, '~').'(?![\w-])~iu', $message) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

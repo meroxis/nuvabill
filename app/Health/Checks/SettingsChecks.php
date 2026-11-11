@@ -112,7 +112,7 @@ class SettingsChecks extends CheckGroup
         }
 
         return $check->warning('Browsers may also send the sign-in cookie over plain HTTP',
-            advice: 'Nuvabill already asks browsers to use HTTPS only, so this is a second lock on the same door.',
+            advice: 'Nuvabill marks this cookie HTTPS-only by itself when it sees that the visitor uses HTTPS. Behind a proxy it may not see that, so turn this on to be sure.',
             fix: $this->fix('settings.secure_cookies', 'Turn it on', confirm: 'SESSION_SECURE_COOKIE=true is written to the .env file.'),
         );
     }

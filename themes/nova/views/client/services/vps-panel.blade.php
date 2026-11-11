@@ -7,7 +7,9 @@
     - templates (os id => name) for a reinstall, and recipe (true: a reinstall may run the plan's recipe again)
     - login: the label of a button that opens the module's own panel through the login route
     - console: "panel" when the console is in that panel, so no VNC details are offered
-    $result is the last action's data: pending (a power action) or vnc ({ip, port, password}).
+    $result is what the last action left for this page: pending (a power action still running).
+    A value shown once, such as VNC details, comes back in the answer to its button and is kept in
+    the browser's memory only: it is never in the page, the page address or the session.
 --}}
 @php
     $can = fn (string $action): bool => array_key_exists($action, $actions);
@@ -30,7 +32,6 @@
         'stop' => __('Shut down the server now? Websites and apps on it will stop.'),
         'poweroff' => __('Power off without a clean shutdown? Only use this if the server does not respond.'),
     ];
-    $vnc = is_array($result['vnc'] ?? null) ? $result['vnc'] : null;
     $login = is_string($panel['login'] ?? null) && $panel['login'] !== '' ? $panel['login'] : null;
     $console = ($panel['console'] ?? 'vnc') === 'panel' ? 'panel' : 'vnc';
     $ips = array_values(array_filter((array) ($panel['ips'] ?? []), 'is_string'));
@@ -176,16 +177,7 @@
             </div>
         @endif
 
-        @if ($vnc)
-            <div class="flash" data-tone="info" style="display:grid;gap:.3rem">
-                <strong>{{ __('VNC console') }}</strong>
-                <span>{{ __('Connect with a VNC app such as TigerVNC or RealVNC.') }}</span>
-                <span class="mono" dir="ltr">{{ $vnc['ip'] ?? '' }}:{{ $vnc['port'] ?? '' }}</span>
-                @if (($vnc['password'] ?? '') !== '')<span>{{ __('Password') }}: <span class="mono">{{ $vnc['password'] }}</span></span>@endif
-            </div>
-        @endif
-
-        @if ($can('hostname') || $can('password') || ($can('reinstall') && ! empty($panel['templates'])) || ($can('vnc') && $console === 'vnc' && ! $vnc) || ($login && $console === 'panel'))
+        @if ($can('hostname') || $can('password') || ($can('reinstall') && ! empty($panel['templates'])) || ($can('vnc') && $console === 'vnc') || ($login && $console === 'panel'))
             <div class="vps-section">
                 <h3 class="eyebrow">{{ __('Settings') }}</h3>
                 <div class="vps-tools">
@@ -227,10 +219,19 @@
                         </details>
                     @endif
 
-                    @if ($can('vnc') && $console === 'vnc' && ! $vnc)
-                        <form method="POST" action="{{ $post('vnc') }}">@csrf<button class="btn btn-sm" type="submit">{{ $actions['vnc'] }}</button></form>
+                    @if ($can('vnc') && $console === 'vnc')
+                        <form method="POST" action="{{ $post('vnc') }}" x-on:submit.prevent="reveal($event)">
+                            @csrf
+                            <button class="btn btn-sm" type="submit" :disabled="revealing"><x-icon name="eye" />{{ $actions['vnc'] }}</button>
+                        </form>
                     @endif
                 </div>
+                @if ($can('vnc') && $console === 'vnc')
+                    <noscript><p class="muted vps-note">{{ __('Turn on JavaScript to do this.') }}</p></noscript>
+                    <p class="vps-message" role="status" aria-live="polite" x-show="revealMessage !== ''" x-text="revealMessage" style="display: none"></p>
+                    <p class="muted vps-note" x-show="secret" style="display: none">{{ __('Use these details in a VNC app such as TigerVNC or RealVNC.') }}</p>
+                    @include('theme::client.services.panel.partials.secret')
+                @endif
                 @if ($login && $console === 'panel')
                     <p class="muted vps-note">{{ __('Need the console? Open the panel with the button at the top: it has a console in your browser.') }}</p>
                 @endif
