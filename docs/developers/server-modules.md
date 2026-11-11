@@ -368,7 +368,7 @@ and [For module makers](../integrations/servers.md#for-module-makers-staff-pages
 
 | Contract | Purpose | Since |
 |---|---|---|
-| `HasClientPanel` | An own panel on the client's service page (`clientPanelView`, `clientPanel`, `clientActions`, `clientAction`). | 0.2.0 |
+| `HasClientPanel` | An own panel on the client's service page (`clientPanelView`, `clientPanel`, `clientActions`, `clientAction`). To show the client a value once, such as VNC details, `clientAction` answers with `ModuleResult::secret()`: it is shown by the page's script and never kept in the session. | 0.2.0 |
 | `HasLoginForm` | The panel signs clients in with a posted form instead of a link (`loginForm()`). | 0.4.10 |
 | `HasPanelState` | Reads only the server state for quick status checks (`clientPanelState()`). | 0.6.13 |
 | `HasPanelSections` | A client server panel with tabs (`panelSections`, `availablePanelSections`, `readPanelSection`, `runPanelAction`). | 0.7.0 |

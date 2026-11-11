@@ -178,6 +178,12 @@ their address.
   the sign-in fails, or every client is tied to the proxy's address.
 - **The console and panel limits** of some server modules count per address.
 
+**Why it matters for HTTPS too:** when the proxy takes the HTTPS connection and passes requests on over plain HTTP
+(Cloudflare "Flexible" SSL, many load balancers), Nuvabill only learns that the visitor used HTTPS from a trusted
+proxy. Without it, Nuvabill does not mark sign-in cookies as HTTPS-only and does not tell browsers to always use HTTPS
+(the `Strict-Transport-Security` header). Nothing looks broken, so **Site health** checks for it. Make sure your proxy
+sends the `X-Forwarded-Proto` header.
+
 **Set it in `.env`:**
 
 | Value | When |
@@ -194,6 +200,9 @@ and `X-Forwarded-Proto` (whether the visitor used HTTPS) from trusted proxies. I
 **How to check it:**
 
 - **Site health** warns when your site is behind Cloudflare but Cloudflare's addresses are not trusted.
+- **Site health** also warns when your site uses HTTPS but Nuvabill sees its visitors on plain HTTP
+  (**Your site from outside → Nuvabill sees that visitors use HTTPS**). Its button turns on HTTPS-only cookies
+  (`SESSION_SECURE_COOKIE=true`) right away; the lasting fix is this setting.
 - On a service page, **Test panel sign-in** shows **Proxy in front of this site** when your own request came through a
   proxy that Nuvabill does not trust. Its **Client IP address** line fails when a client's panel sign-in was refused in
   the last day because Nuvabill saw a Cloudflare address.

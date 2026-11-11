@@ -11,7 +11,7 @@ The import runs in this order, because later steps need the records from earlier
 | Step | From WHMCS | Notes |
 |---|---|---|
 | Staff | `tbladmins` | Created as switched-off staff accounts, so ticket replies keep their author. Staff with the same email in Nuvabill are linked. |
-| Clients | `tblclients` | Clients keep their password. WHMCS 7 and newer (bcrypt, and the account owner in WHMCS 8) work as they are; the salted MD5 passwords of WHMCS 4.2 to 6.2 are checked at the client's first sign-in and then replaced. WHMCS credit becomes a wallet entry; running the import again adds only what changed. |
+| Clients | `tblclients` | Clients keep their password. WHMCS 7 and newer (bcrypt, and the account owner in WHMCS 8) work as they are; the salted MD5 passwords of WHMCS 4.2 to 6.2 are checked at the client's first sign-in and then replaced. Until then Nuvabill keeps them inside its own slow hash: the scheduler does this within minutes of the import, so plain MD5 is only kept until then (the cron job must run). WHMCS credit becomes a wallet entry; running the import again adds only what changed. |
 | Product groups | `tblproductgroups` | |
 | Servers | `tblservers` | cPanel, DirectAdmin, Plesk, Virtualizor and Proxmox servers, with their API token. Imported **switched off**, so you can check them first. Their passwords come across when you give WHMCS's encryption key (see below). |
 | Products and prices | `tblproducts`, `tblpricing` | Monthly to three-yearly prices and setup fees, per currency. Quantity configurable options you map become [resource options](resource-options.md) with their prices (see below). |

@@ -24,6 +24,7 @@ use App\Support\Demo;
 use Closure;
 use Database\Seeders\DatabaseSeeder;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
@@ -33,14 +34,67 @@ use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
 use LogicException;
 use PDO;
+use RuntimeException;
 use Tests\Fakes\FakePowerDriver;
 use Tests\TestCase;
 
 class DemoResetTest extends TestCase
 {
+    private const REFUSAL = 'This loads demo data and a public sign-in. It only runs on the demo or a local copy.';
+
     public function test_the_reset_only_runs_on_demo_sites(): void
     {
         $this->artisan('nuvabill:demo-reset')->assertFailed();
+    }
+
+    public function test_the_demo_data_does_not_load_on_a_real_site(): void
+    {
+        $database = storage_path('framework/testing/demo-data-real-site.sqlite');
+        File::ensureDirectoryExists(dirname($database));
+        File::put($database, '');
+        config(['nuvabill.demo' => false]);
+        $this->app['env'] = 'production';
+        $this->useTemporaryDatabase($database);
+
+        try {
+            $this->assertSame(self::REFUSAL, $this->errorOf('migrate', ['--seed' => true, '--force' => true]));
+            $this->assertSame(self::REFUSAL, $this->errorOf('db:seed', ['--force' => true]));
+
+            // It stopped before anything changed: no shared sign-ins, no demo clients, the company keeps its name.
+            $this->assertSame(0, Admin::query()->count());
+            $this->assertSame(0, Client::query()->count());
+            $this->assertSame(0, Product::query()->count());
+            $this->assertFalse(DB::table('settings')->where('key', 'company.name')->exists());
+        } finally {
+            $this->backToTestDatabase();
+            File::delete([$database, $database.'-journal']);
+        }
+    }
+
+    public function test_the_demo_data_still_loads_on_the_demo_and_with_a_forced_reset(): void
+    {
+        $this->app['env'] = 'production';
+
+        $this->inFreshDemo('demo-data-demo-site.sqlite', function (): void {
+            $this->assertTrue(Admin::query()->where('email', Demo::ADMIN_EMAIL)->exists());
+        });
+
+        $database = storage_path('framework/testing/demo-data-forced.sqlite');
+        File::ensureDirectoryExists(dirname($database));
+        File::put($database, '');
+        config(['nuvabill.demo' => false]);
+        $this->useTemporaryDatabase($database);
+
+        try {
+            $this->artisan('nuvabill:demo-reset', ['--force' => true])->assertSuccessful();
+            $this->assertTrue(Admin::query()->where('email', Demo::ADMIN_EMAIL)->exists());
+
+            // The reset's own pass ends with it: a seed right after is refused again.
+            $this->assertSame(self::REFUSAL, $this->errorOf('db:seed', ['--force' => true]));
+        } finally {
+            $this->backToTestDatabase();
+            File::delete([$database, $database.'-journal', $database.'.next']);
+        }
     }
 
     public function test_the_reset_swaps_in_a_database_full_of_demo_data(): void
@@ -401,6 +455,22 @@ class DemoResetTest extends TestCase
             $this->backToTestDatabase();
             File::delete([$database, $database.'-journal', $database.'.next']);
         }
+    }
+
+    /**
+     * The error an Artisan command stops with, or null when it runs through.
+     *
+     * @param  array<string, mixed>  $options
+     */
+    private function errorOf(string $command, array $options): ?string
+    {
+        try {
+            Artisan::call($command, $options);
+        } catch (RuntimeException $exception) {
+            return $exception->getMessage();
+        }
+
+        return null;
     }
 
     /**

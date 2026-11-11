@@ -32,6 +32,8 @@ final class SecretInput
             // API keys, bot tokens, app secrets, captcha secrets, EPP codes and license keys.
             // The password reset forms take their token from the link, never from old input.
             'key', 'token', 'app_secret', 'captcha_secret', 'epp_code', 'license_key',
+            // The setup code the web installer asks for.
+            'setup_code',
             // The client secrets of social login.
             ...array_map(fn (string $slug): string => $slug.'.client_secret', array_keys(SocialLogin::PROVIDERS)),
         ]));

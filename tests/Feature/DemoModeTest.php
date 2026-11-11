@@ -4,8 +4,11 @@ namespace Tests\Feature;
 
 use App\Models\Admin;
 use App\Models\Client;
+use App\Models\EmailTemplate;
 use App\Models\Role;
 use App\Models\Service;
+use App\Models\TicketDepartment;
+use App\Models\TldPrice;
 use App\Providers\AppServiceProvider;
 use App\Support\Demo;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -28,6 +31,36 @@ class DemoModeTest extends TestCase
             ->assertSessionHas('error');
 
         $this->assertNotSame('Taken over', setting('company.name'));
+    }
+
+    public function test_email_templates_departments_and_domain_settings_cannot_be_saved_in_the_demo(): void
+    {
+        $this->enableDemo();
+        $this->signInAdmin();
+        $template = EmailTemplate::query()->orderBy('id')->firstOrFail();
+        $department = TicketDepartment::query()->orderBy('id')->firstOrFail();
+        $price = TldPrice::query()->create(['tld' => 'com', 'currency' => 'USD', 'register_price' => 1200, 'transfer_price' => 1200, 'renew_price' => 1200]);
+        $subject = $template->subject;
+        $name = $department->name;
+
+        $this->put(route('admin.settings.email-templates.update', $template), ['subject' => 'Changed by a visitor', 'body' => 'Changed by a visitor'])->assertSessionHas('error');
+        $this->assertSame($subject, $template->fresh()->subject);
+
+        $this->put(route('admin.settings.departments.update', $department), ['name' => 'Changed by a visitor'])->assertSessionHas('error');
+        $this->post(route('admin.settings.departments.store'), ['name' => 'Added by a visitor'])->assertSessionHas('error');
+        $this->assertSame($name, $department->fresh()->name);
+        $this->assertDatabaseMissing('ticket_departments', ['name' => 'Added by a visitor']);
+
+        $this->put(route('admin.settings.tlds.settings'), ['renewal_days_before' => 5])->assertSessionHas('error');
+        $this->put(route('admin.settings.tlds.update', $price), ['tld' => 'com', 'currency' => 'USD', 'register_price' => '0', 'transfer_price' => '0', 'renew_price' => '0', 'min_years' => 1, 'max_years' => 1])->assertSessionHas('error');
+        $this->delete(route('admin.settings.tlds.destroy', $price))->assertSessionHas('error');
+        $this->assertSame(30, setting('domains.renewal_days_before'));
+        $this->assertSame(1200, $price->fresh()->register_price);
+
+        // The pages themselves still open.
+        $this->get(route('admin.settings.email-templates.edit', $template))->assertOk();
+        $this->get(route('admin.settings.departments.index'))->assertOk();
+        $this->get(route('admin.settings.tlds.index'))->assertOk();
     }
 
     public function test_everyday_work_still_saves_in_the_demo(): void

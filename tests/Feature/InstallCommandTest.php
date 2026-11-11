@@ -37,6 +37,7 @@ class InstallCommandTest extends TestCase
     protected function tearDown(): void
     {
         $this->lockFile === null ? @unlink(Installation::lockPath()) : file_put_contents(Installation::lockPath(), $this->lockFile);
+        @unlink(Installation::setupCodePath());
         DB::purge('sqlite');
         File::deleteDirectory($this->folder);
 
@@ -46,6 +47,10 @@ class InstallCommandTest extends TestCase
     public function test_it_installs_without_questions_and_makes_a_password(): void
     {
         $database = $this->folder.DIRECTORY_SEPARATOR.'nuvabill.sqlite';
+
+        // Someone opened the site in a browser first, so the web installer's setup code exists.
+        // The terminal needs no code: whoever runs it can read the files already.
+        Installation::ensureSetupCode();
 
         $this->artisan('nuvabill:install', [
             '--no-interaction' => true,
@@ -70,6 +75,7 @@ class InstallCommandTest extends TestCase
         $this->assertSame('sqlite', $env['DB_CONNECTION']);
         $this->assertSame($database, $env['DB_DATABASE']);
         $this->assertStringStartsWith('base64:', $env['APP_KEY']);
+        $this->assertFileDoesNotExist(Installation::setupCodePath());
 
         config(['nuvabill.installed' => true]);
         app(Settings::class)->flush();

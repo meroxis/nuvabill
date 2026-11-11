@@ -193,6 +193,7 @@ run_installer() {
 
     if ! (cd "$DIR" && "${as[@]+"${as[@]}"}" php artisan list --raw </dev/null 2>/dev/null | grep -q '^nuvabill:install'); then
         warn "Nuvabill $VERSION has no terminal installer. Open your site in a browser to finish with the web installer."
+        warn "If the web installer asks for a setup code: it writes the code to $DIR/storage/app/setup-code.txt when you first open the site."
         return 1
     fi
 

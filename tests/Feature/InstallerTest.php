@@ -6,6 +6,7 @@ use App\Enums\AutoSetup;
 use App\Enums\BillingCycle;
 use App\Models\Product;
 use App\Models\ProductGroup;
+use App\Support\Installation;
 use App\Support\Installer;
 use Database\Seeders\DemoCatalogSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,6 +16,13 @@ use Tests\TestCase;
 class InstallerTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        @unlink(Installation::setupCodePath());
+
+        parent::tearDown();
+    }
 
     public function test_sqlite_uses_the_default_database_file_when_the_installer_leaves_the_name_empty(): void
     {
@@ -59,6 +67,7 @@ class InstallerTest extends TestCase
             }
         };
         $this->app->instance(Installer::class, $installer);
+        $this->typeSetupCode();
 
         $form = ['app_url' => 'https://billing.example.test', 'driver' => 'mysql', 'host' => 'wrong.example.test', 'port' => 3306, 'database' => 'nuvabill', 'username' => 'nuvabill', 'password' => 'secret'];
 
@@ -97,6 +106,8 @@ class InstallerTest extends TestCase
             }
         });
 
+        $this->typeSetupCode();
+
         $help = 'Three sample plans you can edit or delete. Their prices fit USD, EUR, GBP, CAD, AUD, NZD, CHF and SGD. In other currencies they stay hidden until you set their prices.';
 
         $this->get(route('install.account'))->assertOk()->assertSee($help);
@@ -116,5 +127,15 @@ class InstallerTest extends TestCase
         $this->assertCount(3, $plans);
         $plans->each(fn (Product $plan) => $this->assertSame(AutoSetup::OnPayment, $plan->auto_setup));
         $this->assertSame(399, $plans->firstWhere('slug', 'starter')->priceFor('USD', BillingCycle::Monthly)->price);
+    }
+
+    /**
+     * The step after the first page: the person installing types the code from the file.
+     */
+    private function typeSetupCode(): void
+    {
+        Installation::ensureSetupCode();
+
+        $this->post(route('install.code'), ['setup_code' => Installation::setupCode()])->assertRedirect(route('install.database'));
     }
 }

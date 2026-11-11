@@ -34,6 +34,13 @@ interface HasClientPanel
     /**
      * Run one of the client actions with the values from the panel's form.
      *
+     * The message is shown to the client. Core keeps only data['pending'] (a power action still
+     * running) for the next page: nothing else from the result reaches the session. To show the
+     * client a value once, such as VNC details, answer with ModuleResult::secret(). A failure text
+     * that names the server's host or IP address, holds a web address or carries a raw connection
+     * error is kept for staff in the activity log, and the client gets a plain message instead. The
+     * same goes for anything this method throws.
+     *
      * @param  array<string, mixed>  $input
      */
     public function clientAction(Service $service, string $action, array $input): ModuleResult;

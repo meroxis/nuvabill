@@ -37,6 +37,14 @@ class RoutesAndLocksTest extends TestCase
     private const ADMIN_GROUP = ['web', 'auth:admin', 'auth.session', 'admin.can', 'admin.two-factor'];
 
     /**
+     * Settings routes that demo visitors may really use, by name. Empty: nothing under Settings is
+     * saved in the demo.
+     *
+     * @var list<string>
+     */
+    private const SETTINGS_OPEN_IN_DEMO = [];
+
+    /**
      * Every new route: method, path (admin paths without the admin prefix), the middleware it needs
      * besides its group's, and whether it is demo-locked.
      *
@@ -160,6 +168,58 @@ class RoutesAndLocksTest extends TestCase
 
         $this->assertFalse($this->isLockedInDemo('client.services.resources.quote'));
         $this->assertFalse($this->isLockedInDemo('admin.services.resources.quote'));
+    }
+
+    /**
+     * Every staff route for settings that saves, deletes or sends something is either locked in the
+     * demo or named in SETTINGS_OPEN_IN_DEMO. That is everything under Settings, and the settings of
+     * other pages (such as admin.kb.settings). A new settings route in neither list fails here, so
+     * it is never left open by accident.
+     */
+    public function test_every_settings_route_that_changes_something_is_locked_in_the_demo_or_listed_as_open(): void
+    {
+        $adminPath = trim((string) config('nuvabill.admin_path'), '/');
+        $checked = 0;
+        $unlisted = [];
+
+        foreach (Route::getRoutes() as $route) {
+            $name = (string) $route->getName();
+            $changing = array_values(array_diff($route->methods(), ['GET', 'HEAD', 'OPTIONS']));
+            $isStaffRoute = str_starts_with($name, 'admin.') || str_starts_with($route->uri().'/', $adminPath.'/');
+            $isSettings = in_array('settings', explode('.', $name), true) || in_array('settings', explode('/', $route->uri()), true);
+
+            if ($changing === [] || ! $isStaffRoute || ! $isSettings) {
+                continue;
+            }
+
+            $checked++;
+            $locked = $name !== '' && $this->demoLocks($route, $changing[0]);
+            $open = in_array($name, self::SETTINGS_OPEN_IN_DEMO, true);
+
+            // In exactly one list: a route without a name can be in neither.
+            if ($locked === $open) {
+                $unlisted[] = implode('|', $changing).' '.$route->uri().' ('.($name ?: 'no name').')';
+            }
+        }
+
+        $this->assertGreaterThan(50, $checked, 'The settings routes were found.');
+        $this->assertSame([], $unlisted, 'Add each of these settings routes to Demo::LOCKED_ROUTES, or to SETTINGS_OPEN_IN_DEMO when demo visitors may really use it.');
+
+        foreach (self::SETTINGS_OPEN_IN_DEMO as $name) {
+            $this->assertTrue(Route::has($name), "{$name} is listed as open in the demo, but there is no such route.");
+        }
+    }
+
+    public function test_email_templates_departments_and_domain_prices_are_locked_in_the_demo(): void
+    {
+        foreach (['email-templates.update', 'departments.store', 'departments.update', 'tlds.store', 'tlds.settings', 'tlds.update', 'tlds.destroy'] as $route) {
+            $this->assertTrue($this->isLockedInDemo("admin.settings.{$route}"), "admin.settings.{$route} is locked in the demo.");
+        }
+
+        // The pages themselves still open.
+        foreach (['email-templates.index', 'email-templates.edit', 'departments.index', 'tlds.index', 'tlds.edit'] as $route) {
+            $this->assertFalse($this->isLockedInDemo("admin.settings.{$route}"), "admin.settings.{$route} stays open in the demo.");
+        }
     }
 
     #[DataProvider('lockedRoutes')]
@@ -336,6 +396,17 @@ class RoutesAndLocksTest extends TestCase
     {
         $route = Route::getRoutes()->getByName($name);
         $request = Request::create('/', $route->methods()[0]);
+        $request->setRouteResolver(fn () => $route);
+
+        return ! $request->isMethodSafe() && $request->routeIs(...Demo::LOCKED_ROUTES);
+    }
+
+    /**
+     * Whether the demo turns away a request to the route with this method.
+     */
+    private function demoLocks(RoutingRoute $route, string $method): bool
+    {
+        $request = Request::create('/', $method);
         $request->setRouteResolver(fn () => $route);
 
         return ! $request->isMethodSafe() && $request->routeIs(...Demo::LOCKED_ROUTES);

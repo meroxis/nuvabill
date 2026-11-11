@@ -49,7 +49,8 @@ class Installer
             'help' => 'Turn on pdo_mysql to use a MySQL or MariaDB database.',
         ];
 
-        foreach (['storage', 'bootstrap/cache'] as $folder) {
+        // storage/app holds the setup code the web installer asks for, and the file that closes it.
+        foreach (['storage', 'storage/app', 'bootstrap/cache'] as $folder) {
             $checks[] = [
                 'label' => "Folder {$folder} is writable",
                 'ok' => is_writable(base_path($folder)),
@@ -153,6 +154,29 @@ class Installer
             report($exception);
 
             throw new RuntimeException(__('Connected, but creating the tables failed: :error', ['error' => $exception->getMessage()]), previous: $exception);
+        }
+    }
+
+    /**
+     * Whether .env already names a database server that does not answer right now. Nuvabill may be
+     * installed in it, so the web installer leaves .env alone until that database answers again.
+     * A new copy starts with SQLite and no file, which is not a server that is down.
+     */
+    public function savedDatabaseIsDown(): bool
+    {
+        $connection = (string) config('database.default');
+        $details = (array) config("database.connections.{$connection}", []);
+
+        if (($details['driver'] ?? 'sqlite') === 'sqlite' || blank($details['database'] ?? null)) {
+            return false;
+        }
+
+        try {
+            DB::connection($connection)->getPdo();
+
+            return false;
+        } catch (Throwable) {
+            return true;
         }
     }
 

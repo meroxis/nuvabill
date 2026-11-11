@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Support\Demo;
 use App\Support\Settings;
+use Database\Seeders\DatabaseSeeder;
 use Illuminate\Console\Attributes\Description;
 use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
@@ -35,16 +36,21 @@ class ResetDemo extends Command
         $connection = (string) config('database.default');
         $database = (string) config("database.connections.{$connection}.database");
 
+        // The demo data refuses to load on a site that is not the demo, unless --force asked for it.
+        $load = $this->option('force')
+            ? DatabaseSeeder::forced(...)
+            : fn (callable $fill): mixed => $fill();
+
         if (config("database.connections.{$connection}.driver") === 'sqlite' && $database !== ':memory:') {
             try {
-                $this->replaceSqliteFile($connection, $database);
+                $load(fn () => $this->replaceSqliteFile($connection, $database));
             } catch (RuntimeException $exception) {
                 $this->components->error($exception->getMessage());
 
                 return self::FAILURE;
             }
         } else {
-            $this->call('migrate:fresh', ['--seed' => true, '--force' => true]);
+            $load(fn (): int => $this->call('migrate:fresh', ['--seed' => true, '--force' => true]));
         }
 
         $settings->flush();

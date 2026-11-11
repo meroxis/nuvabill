@@ -5,6 +5,7 @@ namespace Tests\Feature\Admin;
 use App\Health\CheckResult;
 use App\Health\Checks\DatabaseSafetyChecks;
 use App\Health\Checks\FileChecks;
+use App\Health\Checks\OutsideChecks;
 use App\Health\Checks\SearchSetupChecks;
 use App\Health\Checks\SettingsChecks;
 use App\Health\CoreFiles;
@@ -121,6 +122,72 @@ class SiteHealthSettingsTest extends TestCase
 
         config(['trustedproxy.proxies' => null]);
         $this->assertSame(Status::Warning, app(SiteHealth::class)->run()->check('outside.proxy')->status);
+    }
+
+    public function test_a_proxy_that_hides_https_from_nuvabill_is_found(): void
+    {
+        config(['app.url' => 'https://billing.example-host.com', 'session.secure' => null]);
+        $this->setSettings(['health.outside_check' => true]);
+        $answer = [];
+        Http::fake([
+            'billing.example-host.com/' => function () use (&$answer) {
+                return Http::response('<html></html>', 200, $answer);
+            },
+            '*' => Http::response('Not found', 404),
+        ]);
+        $check = fn (): CheckResult => collect(app(OutsideChecks::class)->run())->firstWhere('id', 'outside.https_seen');
+
+        // The proxy takes the HTTPS connection and is not trusted: the answer Nuvabill gives then.
+        config(['trustedproxy.proxies' => []]);
+        $answer = $this->homeAnswerBehindProxy();
+        $this->assertArrayNotHasKey('Strict-Transport-Security', $answer);
+
+        $found = $check();
+        $this->assertSame(Status::Warning, $found->status);
+        $this->assertSame('The site uses HTTPS, but Nuvabill sees its visitors on plain HTTP', $found->summary);
+        $this->assertStringContainsString('Add NUVABILL_TRUSTED_PROXIES to the .env file', $found->advice);
+        $this->assertSame('settings.secure_cookies', $found->fix['action']);
+
+        // A proxy that adds its own HSTS header does not hide it: the cookie still tells.
+        $answer['Strict-Transport-Security'] = 'max-age=31536000';
+        $this->assertSame(Status::Warning, $check()->status);
+
+        // HTTPS-only cookies switched on by hand: the cookie is safe, browsers are still not told
+        // to always use HTTPS, and there is nothing left for the button to do.
+        config(['session.secure' => true]);
+        $answer = $this->homeAnswerBehindProxy();
+        $found = $check();
+        $this->assertSame(Status::Warning, $found->status);
+        $this->assertNull($found->fix);
+        config(['session.secure' => null]);
+
+        // A list of trusted proxies without this proxy in it.
+        config(['trustedproxy.proxies' => ['10.9.9.9']]);
+        $answer = $this->homeAnswerBehindProxy();
+        $found = $check();
+        $this->assertSame(Status::Warning, $found->status);
+        $this->assertStringContainsString('NUVABILL_TRUSTED_PROXIES is set, but', $found->advice);
+
+        // The proxy is trusted: Nuvabill sees HTTPS, marks the cookie and sends HSTS.
+        config(['trustedproxy.proxies' => ['10.0.0.5']]);
+        $answer = $this->homeAnswerBehindProxy();
+        $this->assertSame('max-age=31536000', $answer['Strict-Transport-Security']);
+        $this->assertSame(Status::Passed, $check()->status);
+
+        // A site without HTTPS has nothing to hide.
+        config(['app.url' => 'http://billing.example-host.com']);
+        $this->assertSame(Status::Skipped, $check()->status);
+    }
+
+    public function test_the_cookie_advice_does_not_promise_what_a_proxy_can_switch_off(): void
+    {
+        config(['app.url' => 'https://billing.example-host.com', 'session.secure' => null]);
+
+        $check = $this->settingsCheck('settings.secure_cookies');
+
+        $this->assertSame(Status::Warning, $check->status);
+        $this->assertSame('Nuvabill marks this cookie HTTPS-only by itself when it sees that the visitor uses HTTPS. Behind a proxy it may not see that, so turn this on to be sure.', $check->advice);
+        $this->assertSame('settings.secure_cookies', $check->fix['action']);
     }
 
     public function test_table_names_are_only_those_of_nuvabills_database(): void
@@ -273,6 +340,27 @@ class SiteHealthSettingsTest extends TestCase
         } finally {
             File::deleteDirectory($folder);
         }
+    }
+
+    /**
+     * The headers of Nuvabill's own answer to a visitor who reached a proxy over HTTPS, when the
+     * proxy (10.0.0.5) passes the visit on over plain HTTP. Site health reads them from outside.
+     *
+     * @return array<string, string|list<string>>
+     */
+    private function homeAnswerBehindProxy(): array
+    {
+        $response = $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.5'])
+            ->withHeaders(['X-Forwarded-Proto' => 'https', 'X-Forwarded-For' => '203.0.113.9'])
+            ->get('http://billing.example-host.com/')
+            ->assertOk();
+
+        return array_filter([
+            'Set-Cookie' => $response->headers->all('set-cookie'),
+            'Content-Security-Policy' => $response->headers->get('Content-Security-Policy'),
+            'Strict-Transport-Security' => $response->headers->get('Strict-Transport-Security'),
+            'X-Content-Type-Options' => $response->headers->get('X-Content-Type-Options'),
+        ]);
     }
 
     private function settingsCheck(string $id): CheckResult
