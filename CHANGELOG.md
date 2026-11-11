@@ -9,7 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
-| [0.7.3](https://github.com/meroxis/nuvabill/releases/tag/v0.7.3) | Unreleased | OpenSRS fixes |
+| [0.7.3](https://github.com/meroxis/nuvabill/releases/tag/v0.7.3) | Unreleased | Security fixes for sign-ins, staff permissions, affiliates, refunds and disputes, coupons, the marketplace and the installer; every add-on in 12 languages; OpenSRS fixes |
 | [0.7.2](https://github.com/meroxis/nuvabill/releases/tag/v0.7.2) | 28 Oct 2026 | Security fixes: API keys after a password reset, typed secrets after form errors, refunds never sent twice, no server passwords over plain HTTP on the internet |
 | [0.7.1](https://github.com/meroxis/nuvabill/releases/tag/v0.7.1) | 28 Oct 2026 | Mongolian (off until you turn it on), 155 currencies, the public demo can switch chosen add-ons on again after every reset; marketplace listings are checked for length before they are saved; the client side follows the admin language when no client language was picked |
 | [0.7.0](https://github.com/meroxis/nuvabill/releases/tag/v0.7.0) | 27 Oct 2026 | Resource sliders, a full server panel with console, Virtualizor 2.0, your own dedicated servers, free Hetzner modules, Connect to marketplace, Thai, more hooks for server modules and dedicated server add-ons |
@@ -60,13 +60,97 @@ the [roadmap](ROADMAP.md).
 
 ## 0.7.3
 
-Work in progress.
+[security] Security fixes from a full review of sign-ins, permissions, billing, the marketplace and the installer.
+Sites that install security fixes automatically get this update by themselves.
+
+**Do this after the update**
+
+- **Stripe:** add these events to your webhook: `charge.refunded`, `charge.dispute.created`,
+  `charge.dispute.funds_withdrawn` and `charge.dispute.funds_reinstated`.
+  **PayPal:** add `PAYMENT.CAPTURE.REFUNDED` and `PAYMENT.CAPTURE.REVERSED`. Then refunds and disputes made at
+  Stripe or PayPal are recorded on the invoice.
+- **Review your staff roles, staff accounts and automations** once. The update stops new changes that go beyond a
+  staff member's own permissions, but it does not undo changes made before.
+
+**Sign-in**
+
+- A password reset, or a password set by staff, now ends every other way into that account: passkeys, connected
+  Google, GitHub or Facebook sign-ins, linked Telegram or WhatsApp chats, staff API keys and staff phone alerts. A
+  client who only used a connected account has a password afterwards, so nobody is locked out. When you change your
+  own password, a box (ticked) does the same.
+- Clients get an email when a Telegram or WhatsApp chat is linked to their account.
+- Clients type their password, or an emailed code, to turn on two-factor sign-in. After 10 wrong emailed codes,
+  codes stop for an hour.
+- Staff type their password to turn on phone alerts on a device.
+- Signing in with Google, GitHub or Facebook only uses an account with exactly that email address.
+- After the staff two-factor check, Nuvabill only goes back to a page of this site.
+
+**Permissions**
+
+- Staff managers who are not owners can only give the permissions they have themselves, and cannot change their own
+  role.
+- Each automation step needs the matching permission to save, switch on or try it, for example billing for "Add
+  wallet credit". Automations that are already on keep running.
+- The admin pages of add-ons that make whole-site backups are for owners only. Add-on settings can be marked
+  owner-only. A whole-site backup without a backup password leaves out the .env file.
+- The staff data download leaves out what the staff member's role cannot see. API keys without the products
+  permission only see the products the store shows. Products in a hidden group can no longer be ordered.
+
+**Billing**
+
+- **Affiliates:** commissions are only paid on money a referred client paid through a payment method, not on
+  invoices paid from the wallet, and they go down when the money goes back during the hold (credit notes, a move to
+  a smaller plan, refunds and disputes).
+- **Refunds and disputes made at Stripe or PayPal** are recorded on the invoice. Staff get an email and a dashboard
+  item. Services and the wallet are not changed by themselves.
+- **Coupons:** a renewal discount only applies while the service is on a product and billing cycle the coupon is
+  for. Cancelling an unpaid order gives the coupon use back.
+- **Converted payments** (FIB, FastPay, Wayl, NOWPayments): when the exchange rate went up by more than 1% after the
+  client started paying, the payment counts at today's rate and the rest stays to pay. The client is told why.
+
+**Marketplace**
+
+- Packages are checked exactly the way they are unpacked, and the automatic checks find more kinds of hidden code.
+  Zips with backslashes in file names (made with PowerShell's Compress-Archive) are refused; use another zip tool.
+- Sites never install an older version of an item than the one they have.
+- A license key works on its own site and its test copies; local development names still work with any key.
+- Listings that are not approved yet are not public.
+- **Store:** WhatsApp QR connect only opens for sites connected to the marketplace. Site health warns when the
+  signing key is inside the site folder.
+
+**Installer, demo and platform**
+
+- When you install by uploading a zip, the installer first asks for a setup code from the file
+  `storage/app/setup-code.txt`, so only someone with access to your files can finish it. The one-line installer
+  is unchanged.
+- Demo data cannot be loaded on a live site any more.
+- Site health warns when a proxy ends HTTPS and is not trusted, with a one-click fix for HTTPS-only cookies.
+- Old passwords imported from WHMCS are stored with a slow hash within minutes of the update. Clients sign in as
+  before.
+- When a server cannot be reached, clients see a short message; staff still see the full error in the activity log.
+- The AI ticket helper keeps what clients write clearly apart from its own instructions.
+- Updated Symfony libraries and build tools with published security fixes.
 
 **Domains**
 
 - OpenSRS: **Test connection** works again with live reseller accounts, an OpenSRS error now shows its code (for
   example 211 when the domain is already taken), and a domain registered without its own nameservers no longer sends
   an empty nameserver list. Thanks to @gbatkhuyag for finding and fixing these.
+
+**Languages**
+
+- Every new text is in all 12 languages, and so are the CyberPanel, HestiaCP, SolusVM, VirtFusion and Google Drive
+  backup add-ons.
+
+**On the Marketplace**
+
+- Free Trial 1.0.4 and Google Drive backup 1.2.2 (both need 0.7.3), SolusVM 1.0.2, CyberPanel 1.0.2, HestiaCP 1.0.1
+  and VirtFusion 1.0.2.
+
+**For developers**
+
+- See the developer guide for the stricter package checks, owner-only settings fields (`'owner' => true`) and the
+  exchange-rate check for gateways that convert currencies.
 
 ## 0.7.2
 

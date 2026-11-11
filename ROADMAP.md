@@ -34,6 +34,7 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.7.0 | Resource sliders, a full server panel with console, Virtualizor 2.0, your own dedicated servers, free Hetzner modules, Connect to marketplace, Thai, hooks for server modules and dedicated server add-ons |
 | 0.7.1 | Mongolian, 155 currencies, the client side follows the admin language; the public demo keeps chosen add-ons on; marketplace listings are checked for length |
 | 0.7.2 | Security fixes: API keys, typed secrets, refunds sent once, server connections |
+| 0.7.3 | Security fixes for sign-ins, permissions, billing, the marketplace and the installer; every add-on in 12 languages |
 
 ## Next
 
