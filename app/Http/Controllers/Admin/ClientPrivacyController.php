@@ -16,10 +16,12 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class ClientPrivacyController extends Controller
 {
-    public function export(Client $client, ClientPrivacy $privacy): StreamedResponse
+    public function export(Request $request, Client $client, ClientPrivacy $privacy): StreamedResponse
     {
-        Activity::log('client.data_exported', "Data of client #{$client->id} downloaded", $client);
-        $data = $privacy->export($client, forStaff: true);
+        // Billing records, orders and ticket messages are only in the file for staff who may see them.
+        $data = $privacy->export($client, forStaff: true, staff: $request->user('admin'));
+        $leftOut = (array) ($data['left_out'] ?? []);
+        Activity::log('client.data_exported', "Data of client #{$client->id} downloaded".($leftOut === [] ? '' : ' (without: '.implode(', ', $leftOut).')'), $client);
 
         return response()->streamDownload(function () use ($data): void {
             echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);

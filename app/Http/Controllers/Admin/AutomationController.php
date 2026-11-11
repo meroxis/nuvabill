@@ -57,7 +57,7 @@ class AutomationController extends Controller
             'template' => $template !== null ? (string) $request->query('template') : null,
         ]);
 
-        return $this->form($automation);
+        return $this->form($request, $automation);
     }
 
     public function store(Request $request): RedirectResponse
@@ -71,9 +71,9 @@ class AutomationController extends Controller
             ->with('status', $automation->is_active ? __('Automation saved and switched on.') : __('Automation saved. It is off until you switch it on.'));
     }
 
-    public function edit(Automation $automation): View
+    public function edit(Request $request, Automation $automation): View
     {
-        return $this->form($automation);
+        return $this->form($request, $automation);
     }
 
     public function update(Request $request, Automation $automation): RedirectResponse
@@ -87,8 +87,13 @@ class AutomationController extends Controller
             ->with('status', $automation->is_active ? __('Automation saved. It is on.') : __('Automation saved. It is off until you switch it on.'));
     }
 
-    public function toggle(Automation $automation): RedirectResponse
+    public function toggle(Request $request, Automation $automation): RedirectResponse
     {
+        // Switching on is checked like saving. Switching off is always allowed.
+        if (! $automation->is_active && $this->registry->refusals($request->user('admin'), $automation->trigger, $automation->steps ?? []) !== []) {
+            return back()->with('error', __('You cannot switch “:name” on. It has steps that need permissions you do not have.', ['name' => $automation->name]));
+        }
+
         $automation->update(['is_active' => ! $automation->is_active]);
         Activity::log('automation.toggled', "Automation \"{$automation->name}\" switched ".($automation->is_active ? 'on' : 'off'), $automation);
 
@@ -109,6 +114,11 @@ class AutomationController extends Controller
     public function test(Request $request, Automation $automation, Runner $runner): RedirectResponse
     {
         $data = $request->validate(['subject' => ['required', 'string', 'max:190']]);
+
+        if (! $this->mayTry($request, $automation)) {
+            return back()->withInput()->with('error', __('You cannot try this automation. It needs permissions you do not have.'));
+        }
+
         $subject = $this->findSubject((string) $this->registry->trigger($automation->trigger)?->subject, trim($data['subject']));
 
         if ($subject === null) {
@@ -135,8 +145,21 @@ class AutomationController extends Controller
         ]);
     }
 
-    private function form(Automation $automation): View
+    /**
+     * "Try it" looks up an invoice, client or ticket and shows what each step would do with it, so
+     * it needs what seeing that record and saving the steps need.
+     */
+    private function mayTry(Request $request, Automation $automation): bool
     {
+        $staff = $request->user('admin');
+
+        return $this->registry->maySee($staff, $automation->trigger)
+            && $this->registry->refusals($staff, $automation->trigger, $automation->steps ?? []) === [];
+    }
+
+    private function form(Request $request, Automation $automation): View
+    {
+        $staff = $request->user('admin');
         $value = [
             'trigger' => $automation->trigger,
             'days' => $automation->trigger_days,
@@ -147,10 +170,11 @@ class AutomationController extends Controller
 
         return view('admin.automations.form', [
             'automation' => $automation,
-            'editor' => ['defs' => $this->registry->editorDefinitions(), 'value' => is_array($old) ? $old : $value],
+            'editor' => ['defs' => $this->registry->editorDefinitions($staff), 'value' => is_array($old) ? $old : $value],
             'registry' => $this->registry,
             'runs' => $automation->exists ? $automation->runs()->with('subject')->latest('updated_at')->limit(8)->get() : collect(),
-            'subjectHint' => $this->subjectHint((string) $this->registry->trigger($automation->trigger)?->subject),
+            'canTry' => $automation->exists && $this->mayTry($request, $automation),
+            'subjectHint' => $this->subjectHint((string) $this->registry->trigger($automation->trigger)?->subject, $this->registry->maySee($staff, $automation->trigger)),
         ]);
     }
 
@@ -170,7 +194,14 @@ class AutomationController extends Controller
             throw ValidationException::withMessages(['definition' => __('The automation could not be read. Please try again.')]);
         }
 
-        return ['name' => trim($data['name']), 'template' => $data['template'] ?? null] + $this->registry->clean($definition);
+        $clean = $this->registry->clean($definition);
+
+        // Every step stands for a permission: staff only save what they may do by hand.
+        if (($refusals = $this->registry->refusals($request->user('admin'), $clean['trigger'], $clean['steps'])) !== []) {
+            throw ValidationException::withMessages(['definition' => $refusals]);
+        }
+
+        return ['name' => trim($data['name']), 'template' => $data['template'] ?? null] + $clean;
     }
 
     private function findSubject(string $type, string $search): ?Model
@@ -189,10 +220,10 @@ class AutomationController extends Controller
         };
     }
 
-    private function subjectHint(string $type): string
+    private function subjectHint(string $type, bool $withExample = true): string
     {
         return match ($type) {
-            'invoice' => __('Invoice number, for example :example', ['example' => (string) (Invoice::query()->whereNotNull('number')->latest('id')->value('number') ?? 'INV-0001')]),
+            'invoice' => __('Invoice number, for example :example', ['example' => (string) (($withExample ? Invoice::query()->whereNotNull('number')->latest('id')->value('number') : null) ?? 'INV-0001')]),
             'client' => __('Client email address or number'),
             'service' => __('Service number or domain'),
             'ticket' => __('Ticket number'),

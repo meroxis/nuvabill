@@ -45,6 +45,11 @@ class EmailStaff extends Step
         ];
     }
 
+    public function permissions(string $subject): array
+    {
+        return self::permissionsToSee($subject);
+    }
+
     public function summary(array $config): string
     {
         return __('Email staff “:subject”', ['subject' => Str::limit(self::withoutPlaceholders((string) ($config['subject'] ?? '')), 60)]);

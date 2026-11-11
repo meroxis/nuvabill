@@ -169,7 +169,7 @@ class Cart
     public function lines(string $currency, ?Client $client = null): Collection
     {
         $items = $this->rawItems();
-        $products = Product::query()->with('prices', 'server', 'resourceOptions.prices')->whereIn('id', array_filter(array_column($items, 'product_id')))->get()->keyBy('id');
+        $products = Product::query()->with('prices', 'group', 'server', 'resourceOptions.prices')->whereIn('id', array_filter(array_column($items, 'product_id')))->get()->keyBy('id');
         $addons = ProductAddon::query()->visible()->with('prices')->whereIn('id', collect($items)->pluck('addons')->flatten()->filter()->all())->get()->keyBy('id');
         $tlds = TldPrice::query()->enabled($currency)->get();
         $coupon = $this->coupon($currency, $client);
@@ -185,7 +185,7 @@ class Cart
                 $product = $products->get($item['product_id'] ?? 0);
                 $cycle = BillingCycle::tryFrom((string) ($item['billing_cycle'] ?? ''));
 
-                if ($product === null || $cycle === null || ! $product->is_visible || $stockLeft[$product->id] === 0) {
+                if ($product === null || $cycle === null || ! $product->isOrderable() || $stockLeft[$product->id] === 0) {
                     return null;
                 }
 

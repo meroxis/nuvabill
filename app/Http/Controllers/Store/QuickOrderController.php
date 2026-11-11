@@ -169,9 +169,15 @@ class QuickOrderController extends Controller
         $data = $this->validateOrder($request, forQuote: false);
         $client = $request->user('web');
 
-        // The module's order fields are checked before an account is made, so a mistake there
-        // never leaves a new account without its order.
-        app(OrderFields::class)->validate(Product::query()->findOrFail($data['product_id']), $data);
+        // The product and the module's order fields are checked before an account is made, so a
+        // mistake there never leaves a new account without its order.
+        $product = Product::query()->with('group')->findOrFail($data['product_id']);
+
+        if (! $product->isOrderable() || ! $product->isInStock()) {
+            throw ValidationException::withMessages(['product_id' => __('This product is not available right now.')]);
+        }
+
+        app(OrderFields::class)->validate($product, $data);
 
         if ($client === null) {
             $this->verifySignUpCaptcha($request);
@@ -272,10 +278,10 @@ class QuickOrderController extends Controller
      */
     private function fill(Cart $cart, array $data, string $currency, bool $checkAvailability): array
     {
-        $product = Product::query()->with('prices')->findOrFail($data['product_id']);
+        $product = Product::query()->with('prices', 'group')->findOrFail($data['product_id']);
         $cycle = BillingCycle::from($data['billing_cycle']);
 
-        if (! $product->is_visible || ! $product->isInStock()) {
+        if (! $product->isOrderable() || ! $product->isInStock()) {
             throw ValidationException::withMessages(['product_id' => __('This product is not available right now.')]);
         }
 

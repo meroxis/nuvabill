@@ -3,6 +3,7 @@
 namespace App\Automations\Steps;
 
 use App\Automations\Context;
+use App\Automations\Registry;
 
 /**
  * One thing an automation does, such as "send an email" or "add a late fee". Add-ons can add
@@ -76,6 +77,49 @@ abstract class Step
     public function appliesTo(string $subject): bool
     {
         return $this->subjects() === [] || in_array($subject, $this->subjects(), true);
+    }
+
+    /**
+     * The staff permissions this step stands for, such as "billing.manage" for adding wallet
+     * credit. Staff save, switch on and try an automation only when they have them all, so an
+     * automation never does what the staff member may not do by hand. $subject is what the
+     * trigger is about ("invoice", "client", "service" and so on), for steps that pass its
+     * details on.
+     *
+     * A step that does not say what it needs asks for "settings.manage". Return an empty list
+     * when the automations permission alone is enough.
+     *
+     * @return list<string>
+     */
+    public function permissions(string $subject): array
+    {
+        return ['settings.manage'];
+    }
+
+    /**
+     * What staff need to see the subject of a run and its client, for steps that send these
+     * details to a person or another system.
+     *
+     * @return list<string>
+     */
+    protected static function permissionsToSee(string $subject): array
+    {
+        return array_values(array_unique(['clients.view', Registry::subjectPermission($subject)]));
+    }
+
+    /**
+     * The step's own permission, and what staff need to see the subject of a run. For steps that
+     * leave something staff can read later, such as a ticket or a tag on the client: it tells them
+     * what happened to the invoice, service or order the run was about.
+     *
+     * @return list<string>
+     */
+    protected static function permissionAndToSee(string $permission, string $subject): array
+    {
+        $toSee = Registry::subjectPermission($subject);
+
+        // "clients.manage" already includes "clients.view".
+        return $toSee === explode('.', $permission)[0].'.view' ? [$permission] : array_values(array_unique([$permission, $toSee]));
     }
 
     /**

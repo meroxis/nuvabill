@@ -50,20 +50,36 @@ class ClientPrivacy
      * Everything about the client, for a JSON file. Staff notes, tags, draft quotes and the staff
      * side of the activity log are only included for staff.
      *
+     * With $staff, the file holds only what that staff member may see in the admin area: invoices,
+     * payments, quotes, the wallet and saved payment methods need "billing.view", orders need
+     * "orders.manage" and ticket messages need "support.manage". "left_out" names what is missing.
+     *
      * @return array<string, mixed>
      */
-    public function export(Client $client, bool $forStaff = false): array
+    public function export(Client $client, bool $forStaff = false, ?Admin $staff = null): array
     {
+        $may = fn (string $permission): bool => $staff === null || $staff->hasPermission($permission);
+        $billing = $may('billing.view');
+        $orders = $may('orders.manage');
+        $support = $may('support.manage');
+
         $client->load([
-            'services.product', 'domains', 'invoices.items', 'invoices.transactions', 'invoices.creditNotes', 'quotes.items',
-            'orders', 'tickets.replies', 'tickets.department', 'creditTransactions', 'paymentMethods', 'socialAccounts', 'passkeys',
+            'services.product', 'domains', 'tickets.department', 'socialAccounts', 'passkeys',
+            ...($billing ? ['invoices.items', 'invoices.transactions', 'invoices.creditNotes', 'quotes.items', 'creditTransactions', 'paymentMethods'] : []),
+            ...($orders ? ['orders'] : []),
+            ...($support ? ['tickets.replies'] : []),
         ]);
         $date = fn ($value): ?string => $value?->toIso8601String();
         $amount = fn (?int $minor): string => Money::toDecimal((int) $minor);
 
-        return [
+        $data = [
             'exported_at' => now()->toIso8601String(),
             'company' => setting('company.name'),
+            'left_out' => [
+                ...($billing ? [] : ['invoices', 'quotes', 'wallet', 'wallet_history', 'saved_payment_methods', 'billing activity']),
+                ...($orders ? [] : ['orders']),
+                ...($support ? [] : ['ticket messages']),
+            ],
             'profile' => array_filter([
                 'id' => $client->id,
                 'first_name' => $client->first_name,
@@ -81,7 +97,7 @@ class ClientPrivacy
                 'currency' => $client->currency,
                 'language' => $client->language,
                 'status' => $client->status->value,
-                'wallet' => $amount($client->credit),
+                'wallet' => $billing ? $amount($client->credit) : null,
                 'two_factor' => $client->hasTwoFactorEnabled(),
                 'tags' => $forStaff ? $client->tags : null,
                 'staff_notes' => $forStaff ? $client->notes : null,
@@ -104,7 +120,7 @@ class ClientPrivacy
                 'registered_at' => $domain->registered_at?->toDateString(),
                 'expires_at' => $domain->expires_at?->toDateString(),
             ])->all(),
-            'invoices' => $client->invoices->where('status', '!=', InvoiceStatus::Draft)->values()->map(fn (Invoice $invoice): array => [
+            'invoices' => ! $billing ? null : $client->invoices->where('status', '!=', InvoiceStatus::Draft)->values()->map(fn (Invoice $invoice): array => [
                 'number' => $invoice->displayNumber(),
                 'status' => $invoice->status->value,
                 'currency' => $invoice->currency,
@@ -127,14 +143,14 @@ class ClientPrivacy
                     'reason' => $note->reason,
                 ])->all(),
             ])->all(),
-            'quotes' => ($forStaff ? $client->quotes : $client->quotes->where('status', '!=', QuoteStatus::Draft)->values())->map(fn ($quote): array => [
+            'quotes' => ! $billing ? null : ($forStaff ? $client->quotes : $client->quotes->where('status', '!=', QuoteStatus::Draft)->values())->map(fn ($quote): array => [
                 'number' => $quote->displayNumber(),
                 'subject' => $quote->subject,
                 'status' => $quote->status->value,
                 'total' => $amount($quote->total),
                 'currency' => $quote->currency,
             ])->all(),
-            'orders' => $client->orders->map(fn (Order $order): array => [
+            'orders' => ! $orders ? null : $client->orders->map(fn (Order $order): array => [
                 'number' => $order->number,
                 'status' => $order->status->value,
                 'total' => $amount($order->total),
@@ -142,7 +158,7 @@ class ClientPrivacy
                 'ip_address' => $order->ip_address,
                 'date' => $date($order->created_at),
             ])->all(),
-            'wallet_history' => $client->creditTransactions->map(fn ($entry): array => [
+            'wallet_history' => ! $billing ? null : $client->creditTransactions->map(fn ($entry): array => [
                 'amount' => $amount($entry->amount),
                 'balance' => $amount($entry->balance),
                 'description' => $entry->description,
@@ -153,14 +169,14 @@ class ClientPrivacy
                 'subject' => $ticket->subject,
                 'department' => $ticket->department?->name,
                 'status' => $ticket->status->value,
-                'messages' => $ticket->replies->map(fn (TicketReply $reply): array => [
+                ...($support ? ['messages' => $ticket->replies->map(fn (TicketReply $reply): array => [
                     'from' => $reply->author_type === 'client' ? 'you' : 'staff',
                     'message' => $reply->original_message ?: $reply->message,
                     'ip_address' => $reply->author_type === 'client' ? $reply->ip_address : null,
                     'date' => $date($reply->created_at),
-                ])->all(),
+                ])->all()] : []),
             ])->all(),
-            'saved_payment_methods' => $client->paymentMethods->map(fn (PaymentMethod $method): array => [
+            'saved_payment_methods' => ! $billing ? null : $client->paymentMethods->map(fn (PaymentMethod $method): array => [
                 'name' => $method->label(),
                 'expires' => $method->expiry(),
             ])->all(),
@@ -171,10 +187,20 @@ class ClientPrivacy
             'activity' => ActivityLog::query()->where('client_id', $client->id)
                 ->when(! $forStaff, fn ($query) => $query->where('actor_type', 'client')->where('actor_id', $client->id)
                     ->where(fn ($query) => $query->where('action', 'like', 'client.%')->orWhereIn('action', self::CLIENT_ACTIVITY)))
+                ->unless($billing, fn ($query) => $query->withoutBilling())
                 ->latest('id')->limit(1000)->get()
                 ->map(fn (ActivityLog $entry): array => ['action' => $entry->action, 'description' => $entry->description, 'ip_address' => $entry->actor_type === 'client' ? $entry->ip_address : null, 'date' => $date($entry->created_at)])
                 ->all(),
         ];
+
+        // A part the staff member may not see is not in the file at all, and a complete file has no "left_out".
+        foreach (['left_out' => [], 'invoices' => null, 'quotes' => null, 'orders' => null, 'wallet_history' => null, 'saved_payment_methods' => null] as $part => $empty) {
+            if ($data[$part] === $empty) {
+                unset($data[$part]);
+            }
+        }
+
+        return $data;
     }
 
     /**

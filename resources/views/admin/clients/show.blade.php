@@ -216,6 +216,9 @@
                             <a class="btn btn-sm" href="{{ route('admin.clients.data', $client) }}"><x-icon name="download" />{{ __('Download their data') }}</a>
                             <button class="btn btn-sm btn-danger" type="button" @click="erase = ! erase">{{ __('Erase personal data') }}</button>
                         </div>
+                        @unless ($canBilling && $admin->hasPermission('orders.manage') && $admin->hasPermission('support.manage'))
+                            <p class="help" style="margin:0">{{ __('The download leaves out what your role cannot see: billing, orders or ticket messages. Ask an owner for the full file.') }}</p>
+                        @endunless
                         <div x-show="erase" x-cloak style="display:grid;gap:.7rem">
                             @if ($privacyBlockers !== [])
                                 <ul style="margin:0;padding-inline-start:1.1rem;font-size:.9rem">

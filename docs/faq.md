@@ -62,6 +62,10 @@ themselves at night.
 `--password=…` to encrypt it. The free **Google Drive backup** add-on on the Marketplace runs backups on a schedule and
 keeps the newest copies in your Google Drive.
 
+Use a backup password. A whole-site backup without one leaves out the `.env` file, because that file holds the key
+that opens every saved password. Without a password, keep your own copy of `.env` in a safe place: you need it to
+restore the site.
+
 ## Is it secure?
 
 Staff and clients can use two-factor sign-in and passkeys, forms can have a CAPTCHA, every page sends security headers,

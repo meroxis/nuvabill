@@ -164,6 +164,35 @@ class Product extends Model
         $query->where('is_visible', true);
     }
 
+    /**
+     * Products the store lists: shown in the store, in a group that is shown too.
+     *
+     * @param  Builder<Product>  $query
+     */
+    public function scopeListedInStore(Builder $query): void
+    {
+        $query->where('is_visible', true)->whereHas('group', fn (Builder $group) => $group->where('is_visible', true));
+    }
+
+    /**
+     * Whether visitors can order the product: it is shown in the store, and so is its group.
+     * Hiding a group takes its products off sale, because its store pages are gone too. Items of
+     * the marketplace store are the exception: they are kept in a hidden group on purpose and
+     * sold from their own pages.
+     */
+    public function isOrderable(): bool
+    {
+        return $this->is_visible && ($this->group?->is_visible !== false || $this->isMarketplaceItem());
+    }
+
+    /**
+     * A theme, extension or license sold on the marketplace store (see ItemPublisher::syncProduct()).
+     */
+    public function isMarketplaceItem(): bool
+    {
+        return (bool) config('nuvabill.marketplace.store') && filled($this->module_config['marketplace_item'] ?? null);
+    }
+
     public function priceFor(string $currency, BillingCycle $cycle): ?ProductPrice
     {
         return $this->prices->first(

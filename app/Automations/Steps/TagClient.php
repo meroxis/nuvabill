@@ -33,6 +33,15 @@ class TagClient extends Step
         return [self::field('tag', 'Tag', 'text', ['required' => true, 'max' => 30, 'help' => 'For example VIP or Reseller.'])];
     }
 
+    /**
+     * A tag tells staff what happened to the invoice, service or order the run is about, so they
+     * also need to see that.
+     */
+    public function permissions(string $subject): array
+    {
+        return self::permissionAndToSee('clients.manage', $subject);
+    }
+
     public function summary(array $config): string
     {
         return $this->remove

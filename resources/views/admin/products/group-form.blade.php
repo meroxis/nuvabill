@@ -10,7 +10,9 @@
             <x-input name="slug" :label="__('Web address')" :value="$group->slug" :help="__('Used in the store link. Leave empty to create it from the name.')" />
             <x-textarea name="description" :label="__('Description')" :value="$group->description" rows="3" class="span-2" />
             <x-input name="sort_order" type="number" min="0" :label="__('Sort order')" :value="$group->sort_order ?? 0" />
-            <x-checkbox name="is_visible" :label="__('Show in the store')" :checked="$group->is_visible" />
+            {{-- The marketplace store sells its items from their own pages, out of a hidden group. --}}
+            <x-checkbox name="is_visible" :label="__('Show in the store')" :checked="$group->is_visible"
+                :help="config('nuvabill.marketplace.store') && $group->slug === \App\Marketplace\Store\ItemPublisher::PRODUCT_GROUP ? null : __('When off, the group and its products are not in the store and cannot be ordered.')" />
         </div>
         <div class="card-header" style="margin:0"><h2>{{ __('Search appearance') }}</h2></div>
         <x-search-appearance :title="$group->seo_title" :description="$group->seo_description" :default-title="$group->exists ? \App\Seo\SeoText::withPattern($group->name) : ''"

@@ -179,7 +179,7 @@ class MarketplaceController extends Controller
             : __('License key saved.'));
     }
 
-    public function settings(string $slug): View
+    public function settings(Request $request, string $slug): View
     {
         $manifest = $this->addonManifest($slug);
 
@@ -191,19 +191,25 @@ class MarketplaceController extends Controller
             'panel' => $this->extensions->isEnabled($slug) ? (string) rescue(fn (): string => $addon->settingsHtml(), '') : '',
             'values' => $this->extensions->settings($slug),
             'enabled' => $this->extensions->isEnabled($slug),
+            'owner' => $this->isOwner($request),
         ]);
     }
 
+    /**
+     * Fields the add-on marks "owner" only change for an owner: for other staff the saved value
+     * stays, and a new value is a form error.
+     */
     public function saveSettings(Request $request, string $slug): RedirectResponse
     {
         $manifest = $this->addonManifest($slug);
         $fields = $this->extensions->addon($slug)->settingsFields();
         $current = $this->extensions->settings($slug);
         $enabled = $request->boolean('enabled');
+        $owner = $this->isOwner($request);
 
-        $input = SettingsForm::validate($request, $fields, $current, $enabled);
+        $input = SettingsForm::validate($request, $fields, $current, $enabled, owner: $owner);
         // Keep values the add-on saved for itself, such as a connection token.
-        $settings = array_replace($current, SettingsForm::values($fields, $input, $current));
+        $settings = array_replace($current, SettingsForm::values($fields, $input, $current, $owner));
 
         $this->extensions->saveSettings($slug, $settings, $enabled);
         Activity::log('extension.updated', "Extension {$manifest->name} ".($enabled ? 'switched on' : 'switched off'));
@@ -281,6 +287,11 @@ class MarketplaceController extends Controller
             PackageType::Addon => route('admin.marketplace.settings', $listing->slug),
             default => null,
         };
+    }
+
+    private function isOwner(Request $request): bool
+    {
+        return $request->user('admin')?->role?->isOwner() === true;
     }
 
     private function addonManifest(string $slug): ExtensionManifest

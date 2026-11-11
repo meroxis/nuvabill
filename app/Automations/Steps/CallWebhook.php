@@ -31,6 +31,11 @@ class CallWebhook extends Step
         return [self::field('url', 'Web address', 'url', ['required' => true, 'max' => 500, 'help' => 'Nuvabill sends a POST request with JSON: the trigger, the invoice, service or ticket, and the client.'])];
     }
 
+    public function permissions(string $subject): array
+    {
+        return self::permissionsToSee($subject);
+    }
+
     public function summary(array $config): string
     {
         return __('Send to :host', ['host' => (string) parse_url((string) ($config['url'] ?? ''), PHP_URL_HOST)]);

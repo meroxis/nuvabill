@@ -13,7 +13,7 @@
         <x-checkbox name="enabled" :label="__('Switch :name on', ['name' => $manifest->name])" :checked="$enabled" />
         @if ($fields)
             <div class="form-grid">
-                <x-extension-fields :fields="$fields" :values="$values" />
+                <x-extension-fields :fields="$fields" :values="$values" :owner="$owner" />
             </div>
         @endif
         <div class="form-actions">

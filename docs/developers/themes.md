@@ -364,7 +364,7 @@ Fields:
 
 | Field | Rules |
 | --- | --- |
-| `product_id` | Required. Product ID. The product must be visible and in stock. |
+| `product_id` | Required. Product ID. The product and its group must be shown in the store, and the product must be in stock. |
 | `billing_cycle` | Required. One of `monthly`, `quarterly`, `semiannually`, `annually`, `biennially`, `triennially`, `onetime`, `free`. The product must have a price for it. |
 | `addons[]` | Optional. Up to 20 add-on IDs (integers). |
 | `resources[kind]` | Optional (0.7.0+). Resource slider steps, for example `resources[ram]=4`. Unknown kinds and values out of range are refused. A hidden slider that sends `0` is fine. |

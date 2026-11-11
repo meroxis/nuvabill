@@ -19,6 +19,9 @@ use ZipArchive;
  *   and the database. Unzip it anywhere and the site is back.
  * - "database": only the database. Small, so it can run often.
  *
+ * The .env file holds the key that opens every saved password, so it only goes into a backup that
+ * has a password. A whole-site backup without one leaves it out (see includesEnvFile()).
+ *
  * Backup add-ons and "php artisan nuvabill:backup" use this.
  */
 class SiteBackup
@@ -45,6 +48,14 @@ class SiteBackup
         'storage/app/backups', 'storage/app/site-backups', 'storage/app/updates',
     ];
 
+    /**
+     * Files with the app key and the database password. Only a backup with a password holds them.
+     * The cached configuration is a copy of .env.
+     *
+     * @var list<string>
+     */
+    private const SECRET_FILES = ['.env', 'bootstrap/cache/config.php'];
+
     public function __construct(private readonly ?string $folder = null) {}
 
     public function folder(): string
@@ -69,7 +80,18 @@ class SiteBackup
     }
 
     /**
+     * Whether a whole-site backup made with this password holds the .env file: only when there is
+     * a password. Without one, anyone who gets the zip could read the app key and, with it, every
+     * saved password in the database copy next to it. Since Nuvabill 0.7.3.
+     */
+    public static function includesEnvFile(?string $password): bool
+    {
+        return filled($password);
+    }
+
+    /**
      * Make the backup zip and return its path. With a password, every file in it is encrypted with AES-256.
+     * Without one, a whole-site backup leaves out the .env file.
      *
      * $record false: a safety copy (before an optimize or a database change), or a backup an add-on
      * still has to upload. Site health then does not count it; an add-on calls record() once its copy
@@ -108,7 +130,7 @@ class SiteBackup
             $zip->addFile($database, $this->exportDatabase($database));
 
             if ($type === self::TYPE_SITE) {
-                $this->addSiteFiles($zip);
+                $this->addSiteFiles($zip, self::includesEnvFile($password));
             }
 
             if (filled($password)) {
@@ -118,7 +140,7 @@ class SiteBackup
             }
 
             // Added last so it stays readable in an encrypted backup.
-            $zip->addFromString('RESTORE.txt', $this->instructions($type, filled($password)));
+            $zip->addFromString('RESTORE.txt', $this->instructions($type, filled($password), self::includesEnvFile($password)));
 
             if (! $zip->close()) {
                 throw new RuntimeException('The backup zip could not be finished: '.$zip->getStatusString());
@@ -211,9 +233,10 @@ class SiteBackup
 
     /**
      * Every file of the Nuvabill folder, except caches, logs, other backups and the live SQLite
-     * file (the zip has a consistent copy of it as database.sqlite).
+     * file (the zip has a consistent copy of it as database.sqlite). Without $withEnvFile the
+     * files that hold the app key stay out too.
      */
-    private function addSiteFiles(ZipArchive $zip): void
+    private function addSiteFiles(ZipArchive $zip, bool $withEnvFile): void
     {
         $base = base_path();
         $liveDatabase = DB::getDriverName() === 'sqlite' ? realpath((string) DB::connection()->getDatabaseName()) : false;
@@ -224,6 +247,10 @@ class SiteBackup
             $relative = ltrim(str_replace('\\', '/', substr($file->getPathname(), strlen($base))), '/');
 
             if (! $file->isFile() || $this->skipped($relative) || ($liveDatabase !== false && realpath($file->getPathname()) === $liveDatabase)) {
+                continue;
+            }
+
+            if (! $withEnvFile && $this->holdsAppKey($relative)) {
                 continue;
             }
 
@@ -242,7 +269,17 @@ class SiteBackup
         return false;
     }
 
-    private function instructions(string $type, bool $encrypted): string
+    /**
+     * The .env file, its copies in the Nuvabill folder (such as .env.backup) and the cached
+     * configuration. The example file has no secrets and stays.
+     */
+    private function holdsAppKey(string $relative): bool
+    {
+        return in_array($relative, self::SECRET_FILES, true)
+            || (str_starts_with($relative, '.env.') && ! str_contains($relative, '/') && $relative !== '.env.example');
+    }
+
+    private function instructions(string $type, bool $encrypted, bool $withEnvFile): string
     {
         $lines = [
             'Nuvabill '.($type === self::TYPE_SITE ? 'whole-site' : 'database').' backup of '.config('app.url')
@@ -260,6 +297,16 @@ class SiteBackup
                 '   - SQLite: copy database.sqlite to database/database.sqlite (or where DB_DATABASE in .env points).',
                 '3. Add the cron job again: * * * * * cd /path/to/nuvabill && php artisan schedule:run',
             );
+
+            if (! $withEnvFile) {
+                array_push($lines,
+                    '',
+                    'This backup has no password, so the .env file is NOT in it. Before step 2, put your own copy',
+                    'of the .env file into the "site" folder. It holds the key (APP_KEY) that opens saved passwords:',
+                    'without it, the passwords and keys of gateways, servers and email must be typed in again.',
+                    'Set a backup password to have the .env file inside the next backups.',
+                );
+            }
         } else {
             array_push($lines,
                 '1. Start from your Nuvabill site, or install the same version with its original .env file.',

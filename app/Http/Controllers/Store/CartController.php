@@ -58,10 +58,10 @@ class CartController extends Controller
             OrderFields::SECRET => ['sometimes', 'array', 'max:'.OrderFields::MAX_FIELDS],
         ], ['domain.not_in' => __('Enter a domain like example.com.')]);
 
-        $product = Product::query()->with('prices')->findOrFail($data['product_id']);
+        $product = Product::query()->with('prices', 'group')->findOrFail($data['product_id']);
         $cycle = BillingCycle::from($data['billing_cycle']);
 
-        if (! $product->is_visible || ! $product->isInStock()) {
+        if (! $product->isOrderable() || ! $product->isInStock()) {
             throw ValidationException::withMessages(['product_id' => __('This product is not available right now.')]);
         }
 

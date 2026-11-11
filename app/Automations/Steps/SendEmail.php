@@ -38,6 +38,11 @@ class SendEmail extends Step
         ];
     }
 
+    public function permissions(string $subject): array
+    {
+        return ['clients.manage'];
+    }
+
     public function summary(array $config): string
     {
         return __('Email the client “:subject”', ['subject' => Str::limit(self::withoutPlaceholders((string) ($config['subject'] ?? '')), 60)]);

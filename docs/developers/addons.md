@@ -123,6 +123,7 @@ Return one entry per field. The key is the setting name. Each field has:
 | `help` | no | A short help line under the field. |
 | `required` | no | `true` if the add-on cannot work without it. |
 | `options` | for `select` | `['value' => 'Label', ...]`. |
+| `owner` | no | `true` if only staff with the Owner role may change it (0.7.3+). See [Owner-only fields](#owner-only-fields-073). |
 
 ```php
 public function settingsFields(): array
@@ -148,6 +149,36 @@ for every secret (API keys, tokens, passwords), so the value is never shown on t
 
 Use `'type' => 'password'` for secrets in add-on settings. Do not use the `'secret' => true` flag here: on the add-on
 settings form, an empty `secret` field is saved as empty, so the stored value is lost.
+
+### Owner-only fields (0.7.3+)
+
+Every staff member with the `marketplace.manage` permission can open and save your settings form. Some settings are
+too strong for that: a setting that decides **where site data goes** (a backup password, the account or app a copy is
+sent to, a forwarding address) lets that person take the data. Mark such fields with `'owner' => true`:
+
+```php
+'password' => ['label' => 'Backup password', 'type' => 'password', 'owner' => true],
+```
+
+What Nuvabill does with a field marked `owner`:
+
+- An owner (a staff member whose role has every permission) uses it like any other field.
+- For other staff the field is shown switched off, with the note "Only an owner can change this setting."
+- When other staff save the form, the saved value stays. A new value is a form error, and nothing is saved.
+- Other staff can never fill in a `password` field marked `owner`, also not with the value that is already saved.
+- A `required` field marked `owner` that is still empty stops other staff from switching the add-on on.
+
+Nuvabill before 0.7.3 ignores the mark and saves the field for everyone. If your add-on supports older versions,
+leave the field out of `settingsFields()` there for staff who are not owners. A field that is not in the list is
+never changed:
+
+```php
+use App\Extensions\SettingsForm;
+
+if (! method_exists(SettingsForm::class, 'isOwnerOnly') && auth('admin')->user()?->role?->isOwner() !== true) {
+    unset($fields['password']);
+}
+```
 
 ### Reading settings
 
@@ -353,6 +384,38 @@ Admin forms are normal Laravel forms: add `@csrf` to each one. Use the admin lay
     ...
 </x-layouts.admin>
 ```
+
+### Owner-only actions
+
+Your admin pages are open to every staff member with `marketplace.manage`. That permission is meant for installing
+and setting up extensions, not for reading all the data of the site. So a page that **sends site data somewhere new**
+or **starts a copy of it** (connect an outside account, disconnect it, "Back up now", an export) must check more
+itself:
+
+```php
+Route::post('connect', function (Request $request) {
+    // 1. Only an owner.
+    abort_unless($request->user('admin')?->role?->isOwner() === true, 403);
+    // 2. Who types their own password again, so a session someone else got hold of is not enough.
+    $request->validate(['current_password' => ['required', 'string', 'current_password:admin']]);
+
+    // ... connect ...
+})->middleware('throttle:staff-reauth')->name('connect');
+```
+
+- Name the form field `current_password`: Nuvabill never keeps a field with that name in the session after a form
+  error. Laravel checks the password for you. Never read, log or store it yourself.
+- `throttle:staff-reauth` (0.6.12+) counts the tries together with every other password check of that staff member.
+  On older versions use `throttle:6,1`. You can test for it with
+  `RateLimiter::limiter('staff-reauth') !== null`.
+- Show these buttons only to owners, and tell other staff why they are missing.
+- Mark the settings fields that belong to the same choice with `'owner' => true`, see
+  [Owner-only fields](#owner-only-fields-073).
+
+For an add-on that lists `backups` in its permissions, Nuvabill 0.7.3 and newer does the first check itself: all of
+its admin pages answer 403 for staff who are not owners. Keep your own check anyway, for older versions, and still ask
+for the password. The settings form stays open to staff with `marketplace.manage`, which is why its sensitive fields
+need the `owner` mark.
 
 ## Pages for visitors, the home page and the sitemap
 
@@ -565,6 +628,11 @@ for boxes to show.
 (0.4.2+) `create(string $type = SiteBackup::TYPE_SITE, ?string $password = null, bool $record = true): string`
 makes a backup zip and returns its path. With a password, every file in the zip is encrypted with AES-256.
 
+Since 0.7.3 a whole-site backup **without a password leaves out the `.env` file** (and its copies, such as the
+cached configuration). That file holds the key that opens every saved password, so it must never leave the server
+unencrypted next to a copy of the database. `SiteBackup::includesEnvFile($password)` tells you whether a backup made
+with that password holds it, so you can tell staff. The `RESTORE.txt` in the zip explains it too.
+
 ```php
 use App\Support\SiteBackup;
 
@@ -590,9 +658,12 @@ $backups->record(SiteBackup::TYPE_DATABASE, encrypted: true, offsite: true);
 List `backups` in your permissions. Staff then see that your add-on reads the whole site, including the `.env`
 file. A whole-site backup holds every secret of the site, so:
 
-- Always set a strong zip password, and store it only in a `password` setting.
-- Send the file only to a place staff chose, over HTTPS.
+- Always set a strong zip password, and store it only in a `password` setting marked `'owner' => true`.
+- Send the file only to a place an owner chose, over HTTPS. Choosing or changing that place, and starting a backup by
+  hand, are [owner-only actions](#owner-only-actions): check for an owner and ask for the password again.
 - Delete the local file when you are done.
+
+Since 0.7.3 the admin pages of an add-on with the `backups` permission are open to owners only.
 
 ## Database tables
 
@@ -716,7 +787,11 @@ hardware pages are turned away, so visitors cannot change them.
   does nothing else. Nuvabill itself only checks `public-page`, `webhook`, `hardware` and `database`. It runs the
   admin pages, schedule, head HTML and event listeners of any active add-on, so list `admin-page`, `schedule`,
   `head-script` and `events` honestly. See [Packages](packages.md).
-- **Do not ask for passwords** of staff, clients or servers outside your settings form.
+- **Do not ask for passwords** of staff, clients or servers outside your settings form. The one exception is the
+  signed-in staff member's own password before an [owner-only action](#owner-only-actions), checked by Laravel's
+  `current_password:admin` rule in a field named `current_password`. Your code never reads or keeps it.
+- **`marketplace.manage` is not "see everything".** Settings and pages that decide where site data goes are for
+  owners only: see [Owner-only fields](#owner-only-fields-073) and [Owner-only actions](#owner-only-actions).
 
 ## Example 1: order alerts
 

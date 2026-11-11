@@ -30,6 +30,10 @@ class BackupSite extends Command
         $this->components->info('Backup made: '.$path.' ('.Number::fileSize((int) filesize($path)).')');
         $this->line('  Keep a copy somewhere else. Read RESTORE.txt inside it to put the site back.');
 
+        if ($type === SiteBackup::TYPE_SITE && ! SiteBackup::includesEnvFile($this->option('password'))) {
+            $this->components->warn('This backup has no password, so the .env file is not in it. Keep your own copy of .env, or add --password to have it inside.');
+        }
+
         return self::SUCCESS;
     }
 }

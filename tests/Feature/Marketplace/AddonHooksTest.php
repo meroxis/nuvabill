@@ -7,6 +7,7 @@ use App\Models\Admin;
 use App\Models\Extension;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use Tests\Fixtures\Addons\ProbeAddon;
 use Tests\TestCase;
@@ -95,6 +96,35 @@ class AddonHooksTest extends TestCase
 
         $this->post(route('admin.addons.probe.connect'))->assertForbidden();
         $this->assertArrayNotHasKey('token', app(ExtensionManager::class)->settings('probe'));
+    }
+
+    public function test_pages_of_an_addon_that_copies_the_whole_site_are_for_owners_only(): void
+    {
+        // The same add-on, but its manifest now lists "backups". One fixed folder: PHP loads the class once.
+        $folder = storage_path('framework/testing/backup-addon');
+        File::copyDirectory(base_path('tests/Fixtures/extensions/addons/probe'), $folder.'/addons/probe');
+        $manifest = json_decode((string) file_get_contents($folder.'/addons/probe/extension.json'), true);
+        $manifest['permissions'][] = 'backups';
+        file_put_contents($folder.'/addons/probe/extension.json', json_encode($manifest));
+
+        try {
+            $extensions = new ExtensionManager($folder);
+            $this->app->instance(ExtensionManager::class, $extensions);
+            Route::middleware(['web', 'auth:admin', 'admin.can:marketplace.manage'])
+                ->prefix(config('nuvabill.admin_path').'/backup-addons')->name('admin.backup-addons.')
+                ->group(fn () => $extensions->registerAddonRoutes());
+            app('router')->getRoutes()->refreshNameLookups();
+
+            $this->actingAs(Admin::factory()->withPermissions(['marketplace.manage'])->create(['name' => 'Raz']), 'admin');
+            $this->post(route('admin.backup-addons.probe.connect'))->assertForbidden()->assertSee('Only an owner can do this.');
+            $this->assertArrayNotHasKey('token', $extensions->settings('probe'));
+
+            $this->actingAs(Admin::factory()->create(['name' => 'Mer']), 'admin');
+            $this->post(route('admin.backup-addons.probe.connect'))->assertRedirect(route('admin.marketplace.settings', 'probe'));
+            $this->assertSame('secret-token', $extensions->settings('probe')['token']);
+        } finally {
+            File::deleteDirectory($folder);
+        }
     }
 
     public function test_addon_pages_are_locked_on_the_demo(): void

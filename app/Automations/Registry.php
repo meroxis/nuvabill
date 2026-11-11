@@ -22,11 +22,13 @@ use App\Enums\QuoteStatus;
 use App\Enums\ServiceStatus;
 use App\Enums\TicketPriority;
 use App\Enums\TicketStatus;
+use App\Models\Admin;
 use App\Models\Automation;
 use App\Models\Domain;
 use App\Models\Invoice;
 use App\Models\Product;
 use App\Models\Quote;
+use App\Models\Role;
 use App\Models\Service;
 use App\Models\TicketDepartment;
 use App\Provisioning\Provisioner;
@@ -48,6 +50,20 @@ class Registry
      * does not start other automations in a loop.
      */
     public static bool $paused = false;
+
+    /**
+     * The permission staff need to see what a run is about, by subject. Steps that send its
+     * details on, and "Try it", ask for it.
+     */
+    private const SUBJECT_PERMISSIONS = [
+        'client' => 'clients.view',
+        'invoice' => 'billing.view',
+        'quote' => 'billing.view',
+        'order' => 'orders.manage',
+        'service' => 'services.manage',
+        'domain' => 'domains.manage',
+        'ticket' => 'support.manage',
+    ];
 
     /**
      * @var array<string, Step>
@@ -144,6 +160,72 @@ class Registry
     public function step(string $key): ?Step
     {
         return $this->steps()[$key] ?? null;
+    }
+
+    /**
+     * The permission staff need to see a subject such as "invoice". A subject without one of its
+     * own asks for "settings.manage".
+     */
+    public static function subjectPermission(string $subject): string
+    {
+        return self::SUBJECT_PERMISSIONS[$subject] ?? 'settings.manage';
+    }
+
+    /**
+     * Whether the staff member may see what the trigger is about, so "Try it" shows them nothing
+     * the admin area would not.
+     */
+    public function maySee(Admin $staff, string $trigger): bool
+    {
+        $subject = $this->trigger($trigger)?->subject;
+
+        return $subject !== null && $staff->hasPermission(self::subjectPermission($subject));
+    }
+
+    /**
+     * The permissions of a step that the staff member does not have, for a trigger about $subject.
+     *
+     * @return list<string>
+     */
+    public function missingPermissions(Admin $staff, Step $step, string $subject): array
+    {
+        return array_values(array_filter($step->permissions($subject), fn (string $permission): bool => ! $staff->hasPermission($permission)));
+    }
+
+    /**
+     * Why the staff member may not save, switch on or try these steps: one line for each step
+     * that stands for a permission they do not have. Empty when they may. Runs are not checked:
+     * an automation that is on keeps running whoever made it.
+     *
+     * @param  list<array<string, mixed>>  $steps
+     * @return list<string>
+     */
+    public function refusals(Admin $staff, string $trigger, array $steps): array
+    {
+        $subject = (string) $this->trigger($trigger)?->subject;
+        $labels = array_merge(...array_values(Role::permissionGroups()));
+        $refusals = [];
+
+        foreach (array_values($steps) as $index => $saved) {
+            $type = (string) (((array) $saved)['type'] ?? '');
+            $step = $this->step($type);
+            // A step whose extension was removed cannot say what it needs.
+            $missing = $step !== null
+                ? $this->missingPermissions($staff, $step, $subject)
+                : ($staff->hasPermission('settings.manage') ? [] : ['settings.manage']);
+
+            if ($missing === []) {
+                continue;
+            }
+
+            $refusals[] = __('Step :number (:step): your role does not allow this step. It needs: :permissions.', [
+                'number' => $index + 1,
+                'step' => $step !== null ? __($step->label()) : $type,
+                'permissions' => implode(', ', array_map(fn (string $permission): string => __($labels[$permission] ?? $permission), $missing)),
+            ]);
+        }
+
+        return $refusals;
     }
 
     /**
@@ -268,10 +350,12 @@ class Registry
 
     /**
      * Triggers, conditions and steps for the editor, with every label in the language of the page.
+     * With a staff member, each step lists the subjects ("invoice", "ticket" and so on) for which
+     * their role does not allow it, so the editor does not offer it there.
      *
      * @return array<string, mixed>
      */
-    public function editorDefinitions(): array
+    public function editorDefinitions(?Admin $staff = null): array
     {
         $triggers = [];
 
@@ -292,12 +376,14 @@ class Registry
         }
 
         $steps = [];
+        $subjects = array_values(array_unique(array_map(fn (Trigger $trigger): string => $trigger->subject, $this->triggers())));
 
         foreach ($this->steps() as $step) {
             $steps[$step->key()] = [
                 'label' => __($step->label()),
                 'group' => __($step->group()),
                 'subjects' => $step->subjects(),
+                'denied' => $staff === null ? [] : array_values(array_filter($subjects, fn (string $subject): bool => $this->missingPermissions($staff, $step, $subject) !== [])),
                 'fields' => array_map(fn (array $field): array => ['label' => __((string) $field['label']), 'help' => isset($field['help']) ? __((string) $field['help']) : null] + $field, $step->fields()),
             ];
         }

@@ -8,6 +8,8 @@ use App\Enums\TicketStatus;
 use App\Models\Admin;
 use App\Models\ApiToken;
 use App\Models\Client;
+use App\Models\Product;
+use App\Models\ProductGroup;
 use App\Models\Service;
 use App\Models\Ticket;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -41,6 +43,21 @@ class ApiTest extends TestCase
 
         $this->getJson('/api/v1/invoices', $headers)->assertForbidden();
         $this->assertNotNull($token->fresh()->last_used_at);
+    }
+
+    public function test_the_product_list_shows_products_the_store_does_not_list_only_to_staff_who_manage_products(): void
+    {
+        Product::factory()->priced(899)->create(['name' => 'Business Plan']);
+        Product::factory()->priced(100)->create(['name' => 'Private Plan', 'is_visible' => false]);
+        Product::factory()->priced(500)->create(['name' => 'Legacy Plan', 'product_group_id' => ProductGroup::factory()->create(['is_visible' => false])]);
+
+        [, $plain] = ApiToken::issue(Admin::factory()->withPermissions(['clients.view'])->create(['name' => 'Raz']), 'Reports', false);
+        $names = $this->getJson('/api/v1/products', ['Authorization' => "Bearer {$plain}"])->assertOk()->json('data.*.name');
+        $this->assertSame(['Business Plan'], $names);
+
+        [, $plain] = ApiToken::issue(Admin::factory()->withPermissions(['products.manage'])->create(['name' => 'Las']), 'Catalog', false);
+        $names = $this->getJson('/api/v1/products', ['Authorization' => "Bearer {$plain}"])->assertOk()->json('data.*.name');
+        $this->assertEqualsCanonicalizing(['Business Plan', 'Private Plan', 'Legacy Plan'], $names);
     }
 
     public function test_a_read_only_key_cannot_change_data(): void

@@ -14,6 +14,11 @@ use Symfony\Component\HttpFoundation\Response;
  */
 class EnsureAdminPermission
 {
+    /**
+     * "admin.can:*" lets only owners through: no other role holds every permission.
+     */
+    public const OWNER = '*';
+
     public function handle(Request $request, Closure $next, ?string $permission = null): Response
     {
         $admin = $request->user('admin');
@@ -25,7 +30,9 @@ class EnsureAdminPermission
         }
 
         if ($permission !== null && ! $admin->hasPermission($permission)) {
-            abort(403, __('Your role does not allow this. Ask the owner to give you the ":permission" permission.', ['permission' => $permission]));
+            abort(403, $permission === self::OWNER
+                ? __('Only an owner can do this.')
+                : __('Your role does not allow this. Ask the owner to give you the ":permission" permission.', ['permission' => $permission]));
         }
 
         return $next($request);

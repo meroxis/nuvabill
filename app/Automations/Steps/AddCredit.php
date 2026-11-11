@@ -37,6 +37,11 @@ class AddCredit extends Step
         ];
     }
 
+    public function permissions(string $subject): array
+    {
+        return ['billing.manage'];
+    }
+
     public function summary(array $config): string
     {
         return __('Add :amount wallet credit', ['amount' => money(Money::toMinor($config['amount'] ?? 0))]);

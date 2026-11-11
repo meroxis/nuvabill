@@ -26,18 +26,18 @@ class StaffController extends Controller
         ]);
     }
 
-    public function create(): View
+    public function create(Request $request): View
     {
         return view('admin.settings.staff.form', [
             'admin' => new Admin(['is_active' => true]),
-            'roles' => Role::query()->orderBy('name')->pluck('name', 'id')->all(),
+            'roles' => $this->rolesToGive($request),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
         $data = $this->validated($request);
-        $this->onlyOwnersTouchOwners($request, null, (int) $data['role_id']);
+        $this->onlyOwnersTouchOwners($request, null, $data);
 
         $admin = Admin::create($data);
         Activity::log('staff.created', "Staff account for {$admin->name} created", $admin);
@@ -45,11 +45,11 @@ class StaffController extends Controller
         return redirect()->route('admin.settings.staff.index')->with('status', __('Staff member added. Share the password with them safely.'));
     }
 
-    public function edit(Admin $admin): View
+    public function edit(Request $request, Admin $admin): View
     {
         return view('admin.settings.staff.form', [
             'admin' => $admin,
-            'roles' => Role::query()->orderBy('name')->pluck('name', 'id')->all(),
+            'roles' => $this->rolesToGive($request, $admin),
         ]);
     }
 
@@ -68,12 +68,11 @@ class StaffController extends Controller
             throw ValidationException::withMessages([$active ? 'role_id' : 'is_active' => __('This is the last owner. Give someone else the Owner role first.')]);
         }
 
-        $this->onlyOwnersTouchOwners($request, $admin, (int) $data['role_id']);
-
         if (blank($data['password'] ?? null)) {
             unset($data['password']);
         }
 
+        $this->onlyOwnersTouchOwners($request, $admin, $data);
         $this->confirmOwnSignInChange($request, $admin, $data);
 
         $admin->fill($data);
@@ -110,9 +109,7 @@ class StaffController extends Controller
      */
     private function confirmOwnSignInChange(Request $request, Admin $admin, array $data): void
     {
-        $changesSignIn = isset($data['password']) || mb_strtolower((string) $data['email']) !== mb_strtolower((string) $admin->email);
-
-        if (! $admin->is($request->user('admin')) || ! $changesSignIn) {
+        if (! $admin->is($request->user('admin')) || ! $this->changesSignIn($admin, $data)) {
             return;
         }
 
@@ -136,16 +133,71 @@ class StaffController extends Controller
     /**
      * Staff managers who are not owners cannot make owners or change an owner's account (email,
      * password, role or sign-in), so they cannot take over or lock out an owner.
+     *
+     * They also cannot get more permissions than they have: they keep their own role, only give
+     * roles whose permissions they all have themselves, and cannot set the email or password of
+     * staff whose role has more.
+     *
+     * @param  array<string, mixed>  $data
      */
-    private function onlyOwnersTouchOwners(Request $request, ?Admin $admin, int $roleId): void
+    private function onlyOwnersTouchOwners(Request $request, ?Admin $admin, array $data): void
     {
-        if ($request->user('admin')->role?->isOwner() === true) {
+        $staff = $request->user('admin');
+
+        if ($staff->role?->isOwner() === true) {
             return;
         }
 
-        if ($admin?->role?->isOwner() === true || Role::find($roleId)?->isOwner() === true) {
+        $role = Role::find((int) $data['role_id']);
+
+        if ($admin?->role?->isOwner() === true || $role?->isOwner() === true) {
             throw ValidationException::withMessages(['role_id' => __('Only an owner can give the Owner role or change an owner account.')]);
         }
+
+        if ($admin === null || (int) $admin->role_id !== (int) $data['role_id']) {
+            if ($admin?->is($staff) === true) {
+                throw ValidationException::withMessages(['role_id' => __('You cannot change your own role. Ask an owner.')]);
+            }
+
+            if (! $staff->holdsAllOf($role)) {
+                throw ValidationException::withMessages(['role_id' => __('You can only give a role when you have all of its permissions yourself.')]);
+            }
+        }
+
+        if ($admin !== null && ! $admin->is($staff) && $this->changesSignIn($admin, $data) && ! $staff->holdsAllOf($admin->role)) {
+            throw ValidationException::withMessages([
+                isset($data['password']) ? 'password' : 'email' => __('Only an owner can change the email or password of staff who have more permissions than you.'),
+            ]);
+        }
+    }
+
+    /**
+     * Whether the form sets a new password or another email address for the staff member.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function changesSignIn(Admin $admin, array $data): bool
+    {
+        return isset($data['password']) || mb_strtolower((string) $data['email']) !== mb_strtolower((string) $admin->email);
+    }
+
+    /**
+     * The roles the form offers: every role for owners. Other staff managers get the roles whose
+     * permissions they all have themselves, plus the role the staff member has now. On their own
+     * account that is only their own role.
+     *
+     * @return array<int, string>
+     */
+    private function rolesToGive(Request $request, ?Admin $admin = null): array
+    {
+        $staff = $request->user('admin');
+
+        return Role::query()->orderBy('name')->get()
+            ->filter(fn (Role $role): bool => $staff->role?->isOwner() === true
+                || (int) $role->getKey() === (int) $admin?->role_id
+                || ($admin?->is($staff) !== true && $staff->holdsAllOf($role)))
+            ->pluck('name', 'id')
+            ->all();
     }
 
     /**

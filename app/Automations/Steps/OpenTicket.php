@@ -44,6 +44,15 @@ class OpenTicket extends Step
         ];
     }
 
+    /**
+     * The ticket can hold details of the invoice, service or order the run is about, so staff also
+     * need to see that.
+     */
+    public function permissions(string $subject): array
+    {
+        return self::permissionAndToSee('support.manage', $subject);
+    }
+
     public function summary(array $config): string
     {
         return __('Open a ticket “:subject”', ['subject' => Str::limit(self::withoutPlaceholders((string) ($config['subject'] ?? '')), 60)]);
