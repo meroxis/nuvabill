@@ -63,7 +63,7 @@
                     <dt>{{ __('Extra') }}</dt><dd><bdi>{{ $resource->describe() }}</bdi>@if ($resource->recurring_amount) · {{ money($resource->recurring_amount, $service->currency) }}@endif</dd>
                 @endforeach
                 @if ($service->coupon)
-                    <dt>{{ __('Coupon') }}</dt><dd><span class="mono">{{ $service->coupon->code }}</span> · {{ $service->coupon->describe() }}@if ($service->coupon_payments_left !== null) · {{ trans_choice(':count more payment|:count more payments', $service->coupon_payments_left, ['count' => $service->coupon_payments_left]) }}@endif</dd>
+                    <dt>{{ __('Coupon') }}</dt><dd><span class="mono">{{ $service->coupon->code }}</span> · @if ($service->coupon->appliesToProduct($service->product, $service->billing_cycle)){{ $service->coupon->describe() }}@if ($service->coupon_payments_left !== null) · {{ trans_choice(':count more payment|:count more payments', $service->coupon_payments_left, ['count' => $service->coupon_payments_left]) }}@endif @else{{ __('not for your current plan') }}@endif</dd>
                 @endif
             </dl>
             @if (! empty($pendingChange))

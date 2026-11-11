@@ -73,6 +73,9 @@
                                 {{ __('Changes now. Nothing to pay.') }}
                             @endif
                         </p>
+                        @if ($service->renewalCoupon() !== null && $service->renewalCoupon($product) === null)
+                            <p class="muted" style="margin:0;font-size:.85rem">{{ __('Coupon :code is not for this plan, so it gives no discount there.', ['code' => $service->coupon->code]) }}</p>
+                        @endif
                         <form method="POST" action="{{ route('client.services.change-plan.store', $service) }}" data-confirm="{{ __('Move to :plan?', ['plan' => $product->name]) }}">
                             @csrf
                             <input type="hidden" name="product_id" value="{{ $product->id }}">

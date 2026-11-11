@@ -18,6 +18,9 @@
             <div class="flash" data-tone="info" style="display:grid;gap:.4rem">
                 <span>{{ __('Webhook URL for :name:', ['name' => $manifest->name]) }}</span>
                 <code class="mono" style="overflow-wrap:anywhere">{{ $webhookUrl }}</code>
+                @if ($webhookEvents !== [])
+                    <span>{{ __('Events to send to this URL:') }} <span class="mono" style="overflow-wrap:anywhere">{{ implode(', ', $webhookEvents) }}</span></span>
+                @endif
                 <span><button type="button" class="btn btn-sm" data-copy="{{ $webhookUrl }}" data-copied="{{ __('Copied') }}">{{ __('Copy URL') }}</button></span>
             </div>
         @endif

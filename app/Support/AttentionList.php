@@ -127,6 +127,48 @@ final class AttentionList
             ];
         }
 
+        // A gateway said money of these invoices went back without this site sending it: a refund
+        // made at the payment service, or a dispute. Each one stays here until a credit note covers
+        // the money, for at most 30 days.
+        $reversedInvoices = fn (array $statuses): array => ! $may('billing.view') ? [] : Invoice::query()
+            ->whereIn('status', $statuses)
+            ->whereIn('id', ActivityLog::query()
+                ->select('subject_id')
+                ->where('action', ActivityLog::PAYMENT_REVERSED)
+                ->where('subject_type', (new Invoice)->getMorphClass())
+                ->where('created_at', '>=', now()->subDays(30)))
+            ->with('creditNotes')
+            ->latest('id')
+            ->limit(50)
+            ->get()
+            ->filter(fn (Invoice $invoice): bool => $invoice->returnedWithoutCreditNote() > 0)
+            ->pluck('id')
+            ->all();
+        $reversed = $reversedInvoices([InvoiceStatus::Paid]);
+        // The same on an invoice whose money was already given back here (cancelled, or credited
+        // to the wallet): no credit note can settle it, so it stays for the 30 days.
+        $reversedAfterReturn = $reversedInvoices([InvoiceStatus::Cancelled, InvoiceStatus::Refunded]);
+
+        if ($reversedAfterReturn !== []) {
+            $items[] = [
+                'key' => 'payments.reversed_after_return',
+                'tone' => 'crit',
+                'text' => trans_choice(':count payment went back at the payment service after its money was already given back here. Check the client\'s wallet.|:count payments went back at the payment service after their money was already given back here. Check the clients\' wallets.', count($reversedAfterReturn), ['count' => count($reversedAfterReturn)]),
+                'url' => route('admin.invoices.show', $reversedAfterReturn[0]),
+                'action' => __('Review'),
+            ];
+        }
+
+        if ($reversed !== []) {
+            $items[] = [
+                'key' => 'payments.reversed',
+                'tone' => 'crit',
+                'text' => trans_choice(':count payment was refunded or disputed at the payment service. Make a credit note for it, and check the client\'s services and wallet.|:count payments were refunded or disputed at the payment service. Make a credit note for each, and check the clients\' services and wallets.', count($reversed), ['count' => count($reversed)]),
+                'url' => route('admin.invoices.show', $reversed[0]),
+                'action' => __('Review'),
+            ];
+        }
+
         $mayOrders = $may('orders.manage');
         $toReview = ! $mayOrders ? 0 : Order::query()->where('status', OrderStatus::Pending)->where('needs_review', true)->count();
 

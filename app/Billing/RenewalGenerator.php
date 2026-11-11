@@ -174,7 +174,7 @@ class RenewalGenerator
 
     /**
      * The service's renewal line, its active add-ons, its extras, and its coupon discount if it
-     * still has one. A coupon only ever takes money off the plan price.
+     * still has one that covers the plan billed. A coupon only ever takes money off the plan price.
      *
      * @return list<array<string, mixed>>
      */
@@ -202,9 +202,11 @@ class RenewalGenerator
 
         $items = [...$items, ...$this->resourceItems($service, $start)];
 
-        $coupon = $service->coupon;
+        // Checked against the plan this renewal bills, so a coupon made for one plan gives nothing
+        // after the service moved to another.
+        $coupon = $service->renewalCoupon($billed->product);
 
-        if ($coupon !== null && ($service->coupon_payments_left === null || $service->coupon_payments_left > 0)) {
+        if ($coupon !== null) {
             $discount = $coupon->discountOn($amount);
 
             if ($discount > 0) {

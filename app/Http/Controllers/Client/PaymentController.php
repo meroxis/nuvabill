@@ -36,6 +36,7 @@ class PaymentController extends Controller
         abort_unless($invoice->client_id === $request->user('web')->id, 404);
 
         $gateway = $invoice->payment_method ? $extensions->activeGateways()->get($invoice->payment_method) : null;
+        $received = false;
 
         if ($invoice->isPayable() && $gateway instanceof Gateway && $gateway->checksWhileWaiting() && Cache::add('nuvabill.payment-poll.'.$invoice->id, true, 8)) {
             try {
@@ -48,10 +49,12 @@ class PaymentController extends Controller
             if ($result !== null) {
                 $payments->recordGatewayResult($result, $invoice->payment_method);
                 $invoice->refresh();
+                // A payment that left a part to pay (the exchange rate changed): the page shows the new balance.
+                $received = $invoice->isPayable();
             }
         }
 
-        return response()->json(['paid' => ! $invoice->isPayable()]);
+        return response()->json(['paid' => ! $invoice->isPayable()] + ($received ? ['received' => true] : []));
     }
 
     public function return(Request $request, Invoice $invoice, string $gateway, ExtensionManager $extensions, PaymentRecorder $payments): RedirectResponse
@@ -73,6 +76,11 @@ class PaymentController extends Controller
 
         if ($result !== null) {
             $payments->recordGatewayResult($result, $gateway);
+
+            // A payment started at an older exchange rate can leave a part of the invoice to pay.
+            if (isset($result->meta['quoted_amount']) && $invoice->refresh()->isPayable()) {
+                return redirect()->route('client.invoices.show', $invoice)->with('status', __('Thank you! Your payment was received. The exchange rate changed after you started it, so :amount is still to pay.', ['amount' => money($invoice->balance(), $invoice->currency)]));
+            }
 
             return redirect()->route('client.invoices.show', $invoice)->with('status', __('Thank you! Your payment was received.'));
         }

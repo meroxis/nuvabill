@@ -109,6 +109,30 @@ class Invoice extends Model
         return max(0, $this->total - (int) $credited);
     }
 
+    /**
+     * Money that went back to the client with no credit note for it yet, in minor units: a refund
+     * or a dispute at the payment service, or a refund that stopped halfway. Read from the saved
+     * payments, so a refund recorded a moment ago counts.
+     */
+    public function returnedWithoutCreditNote(): int
+    {
+        $refunded = -(int) Transaction::query()->where('invoice_id', $this->id)->where('type', 'refund')->sum('amount');
+        $covered = $this->relationLoaded('creditNotes')
+            ? $this->creditNotes->where('method', CreditNote::METHOD_REFUND)->sum('total')
+            : $this->creditNotes()->reorder()->where('method', CreditNote::METHOD_REFUND)->sum('total');
+
+        return max(0, $refunded - (int) $covered);
+    }
+
+    /**
+     * What the client still pays for, in minor units: the total less credit notes, and less money
+     * that went back without one.
+     */
+    public function keptAmount(): int
+    {
+        return max(0, $this->creditableAmount() - $this->returnedWithoutCreditNote());
+    }
+
     public function balance(): int
     {
         return max(0, $this->total - $this->amount_paid);

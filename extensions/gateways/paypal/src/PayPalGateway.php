@@ -9,6 +9,7 @@ use App\Contracts\SendsRefundsOnce;
 use App\Extensions\Gateways\ChargeResult;
 use App\Extensions\Gateways\Gateway;
 use App\Extensions\Gateways\PaymentResult;
+use App\Extensions\Gateways\PaymentReversal;
 use App\Extensions\Gateways\PaymentStart;
 use App\Extensions\Gateways\RefundResult;
 use App\Extensions\Gateways\RefundUnclear;
@@ -61,6 +62,11 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
 
     private const UNMARKED_ORDER_DAYS = 30;
 
+    /**
+     * Events that say money of a capture went back: a refund, or PayPal took the payment back.
+     */
+    private const REVERSAL_EVENTS = ['PAYMENT.CAPTURE.REFUNDED', 'PAYMENT.CAPTURE.REVERSED'];
+
     public function settingsFields(): array
     {
         return [
@@ -89,7 +95,7 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
             'webhook_id' => [
                 'label' => 'Webhook ID',
                 'type' => 'text',
-                'help' => 'Recommended. Add a webhook for the URL shown on this page with the event PAYMENT.CAPTURE.COMPLETED and paste its ID. Without it, a checkout payment PayPal finishes later (for example an eCheck) must be marked paid by hand.',
+                'help' => 'Recommended. Add a webhook for the URL shown on this page with the event PAYMENT.CAPTURE.COMPLETED and paste its ID. Without it, a checkout payment PayPal finishes later (for example an eCheck) must be marked paid by hand. Add PAYMENT.CAPTURE.REFUNDED and PAYMENT.CAPTURE.REVERSED too, so refunds made in PayPal and payments PayPal takes back are recorded here.',
             ],
         ];
     }
@@ -202,13 +208,20 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
     public function handleWebhook(Request $request): WebhookResult
     {
         $event = $request->json()->all();
+        $type = $event['event_type'] ?? null;
 
-        if (($event['event_type'] ?? null) !== 'PAYMENT.CAPTURE.COMPLETED') {
+        if (! in_array($type, ['PAYMENT.CAPTURE.COMPLETED', ...self::REVERSAL_EVENTS], true)) {
             return WebhookResult::ignored();
         }
 
         if (! $this->webhookIsVerified($request, $event)) {
             return WebhookResult::invalid('PayPal could not verify this webhook.');
+        }
+
+        if ($type !== 'PAYMENT.CAPTURE.COMPLETED') {
+            $reversal = $this->reversalFromEvent($type, is_array($event['resource'] ?? null) ? $event['resource'] : []);
+
+            return $reversal ? WebhookResult::reversed($reversal) : WebhookResult::ignored('No money went back on a capture.');
         }
 
         // PayPal sends the payments of the whole app to every webhook on it, for example those of
@@ -221,6 +234,44 @@ class PayPalGateway extends Gateway implements ChecksSavedCharges, RepeatsUnclea
         }
 
         return WebhookResult::paid($this->resultFromCapture($capture, $invoiceId));
+    }
+
+    public function webhookEvents(): array
+    {
+        return ['PAYMENT.CAPTURE.COMPLETED', ...self::REVERSAL_EVENTS];
+    }
+
+    /**
+     * A refund made in PayPal, or a payment PayPal took back (for example after a dispute), as
+     * PayPal reports it. PayPal sends these for the whole app; only a capture recorded here with
+     * the same ID is touched when it is saved.
+     *
+     * @param  array<string, mixed>  $resource  The refund or reversal. Its "up" link names the capture.
+     */
+    private function reversalFromEvent(string $type, array $resource): ?PaymentReversal
+    {
+        $up = collect((array) ($resource['links'] ?? []))->first(fn (mixed $link): bool => is_array($link) && ($link['rel'] ?? null) === 'up');
+        $capture = is_string($up['href'] ?? null) && preg_match('#/v2/payments/captures/([A-Z0-9]+)$#', $up['href'], $match) === 1 ? $match[1] : null;
+        $id = $resource['id'] ?? null;
+        $value = $resource['amount']['value'] ?? null;
+        // The size of what went back, whichever sign PayPal writes it with.
+        $amount = is_numeric($value) ? abs(Money::toMinor($value)) : 0;
+        $currency = $resource['amount']['currency_code'] ?? null;
+        $currency = is_string($currency) ? $currency : '';
+
+        // A refund PayPal cancelled or could not make sent no money back.
+        if ($capture === null || ! is_string($id) || preg_match('/^[A-Z0-9]+$/', $id) !== 1 || $amount <= 0 || in_array($resource['status'] ?? null, ['CANCELLED', 'FAILED'], true)) {
+            return null;
+        }
+
+        if ($type === 'PAYMENT.CAPTURE.REVERSED') {
+            return PaymentReversal::chargeback($capture, $amount, $currency, $id);
+        }
+
+        // PayPal's total for the capture, when it gives one, keeps a refund sent from here from being counted twice.
+        $soFar = $resource['seller_payable_breakdown']['total_refunded_amount']['value'] ?? null;
+
+        return PaymentReversal::refund($capture, $amount, $currency, $id, is_numeric($soFar) ? Money::toMinor($soFar) : null);
     }
 
     public function supportsRefunds(): bool

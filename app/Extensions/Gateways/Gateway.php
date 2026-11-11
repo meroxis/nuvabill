@@ -18,6 +18,13 @@ use RuntimeException;
 abstract class Gateway implements PaymentGateway
 {
     /**
+     * How far, in percent, a converted payment may fall short of the invoice's price at today's
+     * exchange rate and still pay it in full (see resultFor()). It covers rounding and small rate
+     * changes, so they leave no tiny balance behind.
+     */
+    protected const RATE_TOLERANCE_PERCENT = 1;
+
+    /**
      * @param  array<string, mixed>  $settings
      */
     public function __construct(
@@ -131,13 +138,20 @@ abstract class Gateway implements PaymentGateway
      * converted amount (for example dinar for a dollar invoice), the invoice is credited with the
      * amount the intent was made for, but only if at least the converted amount arrived.
      *
+     * The converted amount was worked out at the exchange rate of the moment the payment was
+     * started. A payment page can stay open long after that, so the price is checked again at
+     * today's rate: when what arrived is short of it by more than RATE_TOLERANCE_PERCENT, the
+     * payment counts for what it is worth today and the rest of the invoice stays due. The money
+     * that arrived is always counted.
+     *
      * @param  array<string, mixed>  $meta
      */
     protected function resultFor(PaymentIntent $intent, int $paidMinor, string $paidCurrency, string $reference, array $meta = []): ?PaymentResult
     {
         $paidCurrency = strtoupper($paidCurrency);
+        $currency = strtoupper((string) $intent->currency);
 
-        if ($paidCurrency === strtoupper((string) $intent->currency)) {
+        if ($paidCurrency === $currency) {
             return new PaymentResult($intent->invoice_id, $paidMinor, $paidCurrency, $reference, meta: $meta);
         }
 
@@ -149,11 +163,29 @@ abstract class Gateway implements PaymentGateway
             return null;
         }
 
-        return new PaymentResult($intent->invoice_id, (int) $intent->amount, strtoupper((string) $intent->currency), $reference, meta: $meta + [
-            'paid_amount' => $paidMinor,
-            'paid_currency' => $paidCurrency,
-            'rate' => $intent->meta['rate'] ?? null,
-        ]);
+        $amount = (int) $intent->amount;
+        $details = ['paid_amount' => $paidMinor, 'paid_currency' => $paidCurrency, 'rate' => $intent->meta['rate'] ?? null];
+        $rates = app(ExchangeRates::class);
+        // What the same invoice amount costs in the charged currency today. Without a rate today
+        // nothing can be compared, and the price of the day the payment was started stands.
+        $priceToday = $rates->convert($amount, $currency, $paidCurrency);
+
+        if ($priceToday !== null && $paidMinor < $priceToday - intdiv($priceToday * self::RATE_TOLERANCE_PERCENT, 100)) {
+            $worth = min($amount, (int) $rates->convert($paidMinor, $paidCurrency, $currency));
+
+            if ($worth <= 0) {
+                Log::warning("Gateway {$this->slug()} reported {$paidMinor} {$paidCurrency} for payment {$intent->reference}, which is worth nothing at today's exchange rate.");
+
+                return null;
+            }
+
+            // The rate used, and what the payment was started for, so the invoice can say why a
+            // part is still due.
+            $details = ['rate' => $rates->rate($currency, $paidCurrency), 'quoted_rate' => $details['rate'], 'quoted_amount' => $amount] + $details;
+            $amount = $worth;
+        }
+
+        return new PaymentResult($intent->invoice_id, $amount, $currency, $reference, meta: $meta + $details);
     }
 
     public function handleReturn(Request $request, Invoice $invoice): ?PaymentResult
@@ -164,6 +196,18 @@ abstract class Gateway implements PaymentGateway
     public function handleWebhook(Request $request): WebhookResult
     {
         return WebhookResult::ignored();
+    }
+
+    /**
+     * The provider's events the webhook must be sent, for providers where staff choose them. They
+     * are listed under the webhook URL on the gateway's settings page, also once the settings are
+     * saved, so a site that set the webhook up earlier sees which events a newer version added.
+     *
+     * @return list<string>
+     */
+    public function webhookEvents(): array
+    {
+        return [];
     }
 
     /**

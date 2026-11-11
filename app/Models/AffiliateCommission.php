@@ -10,6 +10,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  *
  * Pending during the hold period (so refunds can cancel it), then available, then paid: moved to
  * the affiliate's wallet or paid out by staff.
+ *
+ * The base is the money the commission was worked out on, in minor units with tax: the part of
+ * the invoice that was paid through a payment method. Older commissions have none.
  */
 class AffiliateCommission extends Model
 {
@@ -21,12 +24,13 @@ class AffiliateCommission extends Model
 
     public const STATUS_CANCELLED = 'cancelled';
 
-    protected $fillable = ['affiliate_id', 'client_id', 'invoice_id', 'amount', 'currency', 'status', 'available_at', 'paid_at'];
+    protected $fillable = ['affiliate_id', 'client_id', 'invoice_id', 'amount', 'base', 'currency', 'status', 'available_at', 'paid_at'];
 
     protected function casts(): array
     {
         return [
             'amount' => 'integer',
+            'base' => 'integer',
             'available_at' => 'immutable_date',
             'paid_at' => 'datetime',
         ];

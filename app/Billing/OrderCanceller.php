@@ -82,22 +82,23 @@ class OrderCanceller
     }
 
     /**
-     * Cancel the order's services and domains that were not set up yet, its invoice when unpaid,
-     * and the order itself. Dedicated server machines held by those services are freed first,
-     * because the mass update below skips model events.
+     * Cancel the order's invoice when unpaid, its services and domains that were not set up yet,
+     * and the order itself. The invoice goes first: cancelling it gives a coupon its use back, and
+     * a checkout locks the coupon before it locks services, so this keeps the same order. Dedicated
+     * server machines held by the services are freed before the mass update, which skips model events.
      */
     public function cancel(Order $order, string $note = ''): void
     {
         DB::transaction(function () use ($order, $note): void {
+            if ($order->invoice !== null) {
+                $this->invoices->cancel($order->invoice);
+            }
+
             $order->domains()->where('status', DomainStatus::Pending)->update(['status' => DomainStatus::Cancelled]);
             app(MachineInventory::class)->releaseForOrder($order);
             $order->services()
                 ->where('status', ServiceStatus::Pending)
                 ->update(['status' => ServiceStatus::Cancelled, 'cancelled_at' => now(), 'next_due_date' => null, 'order_fields' => null]);
-
-            if ($order->invoice !== null) {
-                $this->invoices->cancel($order->invoice);
-            }
 
             $order->update(['status' => OrderStatus::Cancelled]);
             Activity::log('order.cancelled', "Order #{$order->number} cancelled".($note !== '' ? ": {$note}" : ''), $order);

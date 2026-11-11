@@ -4,6 +4,8 @@ namespace App\Billing;
 
 use App\Enums\InvoiceStatus;
 use App\Models\Client;
+use App\Models\Coupon;
+use App\Models\CouponRedemption;
 use App\Models\CreditTransaction;
 use App\Models\Invoice;
 use App\Models\Transaction;
@@ -100,7 +102,8 @@ class InvoiceManager
 
     /**
      * Cancel an unpaid or draft invoice. Money already paid on it (often from the wallet) goes back
-     * into the client's wallet, so nothing stays on a cancelled invoice.
+     * into the client's wallet, so nothing stays on a cancelled invoice. A coupon used on it gets
+     * that use back.
      *
      * @throws NoExchangeRate When money was paid on it and the client's wallet is in another
      *                        currency with no exchange rate; the invoice is not cancelled then.
@@ -143,6 +146,7 @@ class InvoiceManager
             $locked->save();
             // The periods on it may be invoiced again.
             $locked->items()->whereNotNull('billing_key')->update(['billing_key' => null]);
+            $this->returnCouponUses($locked);
 
             return true;
         });
@@ -159,6 +163,28 @@ class InvoiceManager
     }
 
     /**
+     * A cancelled invoice gave no discount, so the coupon uses made for it are free again: for the
+     * coupon's own limit and for the limit per client. Run inside the transaction that cancels the
+     * invoice, with its row locked. A use is given back by whoever deletes its row, so never twice,
+     * and the count never goes below zero.
+     */
+    private function returnCouponUses(Invoice $invoice): void
+    {
+        $redemptions = CouponRedemption::query()->where('invoice_id', $invoice->id)->orderBy('id')->get(['id', 'coupon_id', 'order_id']);
+
+        foreach ($redemptions as $redemption) {
+            if (CouponRedemption::query()->whereKey($redemption->id)->delete() !== 1) {
+                continue;
+            }
+
+            // Only orders count towards a coupon's uses; a renewal that kept the discount never did.
+            if ($redemption->order_id !== null) {
+                Coupon::query()->whereKey($redemption->coupon_id)->where('uses', '>', 0)->decrement('uses');
+            }
+        }
+    }
+
+    /**
      * Put what was paid on an invoice that is being cancelled back into the client's wallet. Each
      * payment gets a matching refund line, so the invoice's payments add up to nothing.
      *
@@ -171,6 +197,14 @@ class InvoiceManager
         // Money an add-on already put back for this invoice does not go back twice.
         if ($left > 0 && $invoice->currency === $invoice->client->currency) {
             $left -= (int) CreditTransaction::query()->where('invoice_id', $invoice->id)->where('amount', '>', 0)->sum('amount');
+        }
+
+        // Money a payment service already sent back itself (a refund made there, or a dispute) is
+        // still counted in the amount paid. It does not go into the wallet as well.
+        if ($left > 0) {
+            $left += (int) Transaction::query()->where('invoice_id', $invoice->id)->where('type', 'refund')->get(['amount', 'meta'])
+                ->filter(fn (Transaction $refund): bool => ($refund->meta['reported_by_gateway'] ?? false) === true)
+                ->sum('amount');
         }
 
         if ($left <= 0) {

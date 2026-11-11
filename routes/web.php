@@ -82,7 +82,8 @@ Route::post('store-api/quote', [QuickOrderController::class, 'quote'])->middlewa
 Route::post('order', [QuickOrderController::class, 'store'])->middleware(['throttle:5|10,1', 'auth.session', 'client.active', 'client.two-factor', 'captcha:checkout'])->name('order.store');
 
 Route::get('checkout', [CheckoutController::class, 'show'])->name('checkout.show');
-Route::post('checkout', [CheckoutController::class, 'store'])->middleware(['auth:web', 'auth.session', 'client.active', 'client.two-factor', 'captcha:checkout'])->name('checkout.store');
+// At most 10 orders a minute for each client, like the order form above.
+Route::post('checkout', [CheckoutController::class, 'store'])->middleware(['auth:web', 'auth.session', 'client.active', 'client.two-factor', 'throttle:10,1', 'captcha:checkout'])->name('checkout.store');
 
 /*
 |--------------------------------------------------------------------------

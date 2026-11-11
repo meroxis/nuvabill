@@ -61,7 +61,13 @@ class FibGateway extends Gateway
 
     public function startPayment(Invoice $invoice, string $returnUrl, string $cancelUrl): PaymentStart
     {
-        $intent = PaymentIntent::latestOpenFor($invoice, $this->slug()) ?? $this->createPayment($invoice);
+        $intent = PaymentIntent::latestOpenFor($invoice, $this->slug());
+
+        // A waiting payment priced at another exchange rate is not shown again: the client gets a
+        // new one at today's price.
+        if ($intent === null || ! $this->pricedAsToday($intent, $invoice)) {
+            $intent = $this->createPayment($invoice);
+        }
 
         return PaymentStart::qr(
             (string) $intent->meta['qr_code'],
@@ -129,6 +135,16 @@ class FibGateway extends Gateway
         }
 
         return $result;
+    }
+
+    /**
+     * Whether a waiting payment still asks for what the invoice costs in dinar today. One from
+     * before the charged amount was kept is taken as it is.
+     */
+    private function pricedAsToday(PaymentIntent $intent, Invoice $invoice): bool
+    {
+        return ! isset($intent->meta['charged_amount'])
+            || (int) $intent->meta['charged_amount'] === $this->wholeUnits($this->quote($invoice)['amount']) * 100;
     }
 
     private function createPayment(Invoice $invoice): PaymentIntent

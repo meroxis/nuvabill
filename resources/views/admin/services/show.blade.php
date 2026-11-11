@@ -80,7 +80,7 @@
                         <dt>{{ __('Add-on') }}</dt><dd>{{ $addon->name }} · {{ money($addon->recurring_amount, $service->currency) }}@unless ($addon->isActive()) <x-pill>{{ $addon->status === \App\Models\ServiceAddon::STATUS_CONVERTED ? __('Moved to resource options') : __('Cancelled') }}</x-pill>@endunless</dd>
                     @endforeach
                     @if ($service->coupon)
-                        <dt>{{ __('Coupon') }}</dt><dd><a class="mono" href="{{ route('admin.coupons.edit', $service->coupon) }}">{{ $service->coupon->code }}</a> · {{ $service->coupon_payments_left === null ? __('every renewal') : trans_choice(':count more payment|:count more payments', $service->coupon_payments_left, ['count' => $service->coupon_payments_left]) }}</dd>
+                        <dt>{{ __('Coupon') }}</dt><dd><a class="mono" href="{{ route('admin.coupons.edit', $service->coupon) }}">{{ $service->coupon->code }}</a> · @if (! $service->coupon->appliesToProduct($service->product, $service->billing_cycle)){{ __('not for this plan, so renewals get no discount') }}@else{{ $service->coupon_payments_left === null ? __('every renewal') : trans_choice(':count more payment|:count more payments', $service->coupon_payments_left, ['count' => $service->coupon_payments_left]) }}@endif</dd>
                     @endif
                     @if ($service->password)
                         <dt>{{ __('Password') }}</dt><dd><button type="button" class="btn btn-sm" data-copy="{{ $service->password }}" data-copied="{{ __('Copied') }}">{{ __('Copy password') }}</button></dd>

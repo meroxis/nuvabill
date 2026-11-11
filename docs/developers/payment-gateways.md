@@ -338,6 +338,8 @@ status callback when it starts a payment.
   webhook again.
 - A result with status 400 or more is logged as "Rejected {gateway} webhook".
 - When the result carries a payment, it goes to `recordGatewayResult()`.
+- When the result carries a reversal (a refund made at the provider, or a dispute), it goes to
+  `RefundIssuer::recordReversal()`.
 - The HTTP answer is the result's message and status.
 
 ### Webhook results
@@ -345,8 +347,35 @@ status callback when it starts a payment.
 | Factory | HTTP answer | Use it when |
 |---|---|---|
 | `WebhookResult::paid(PaymentResult $payment)` | `200 ok` | The payment is confirmed. It is recorded. |
+| `WebhookResult::reversed(PaymentReversal $reversal)` | `200 ok` | Money of a payment went back without Nuvabill sending it: a refund made at the provider, or a dispute. It is recorded once. |
 | `WebhookResult::ignored(string $message = 'ignored')` | `200` | A valid notification that needs no action, such as an event you do not use. |
 | `WebhookResult::invalid(string $message)` | `400` | The notification failed verification. Nothing is recorded. |
+
+### Refunds and disputes made at the provider
+
+When the provider tells you that money went back without Nuvabill sending it, return
+`WebhookResult::reversed()` with an `App\Extensions\Gateways\PaymentReversal`:
+
+| Factory | Use it when |
+|---|---|
+| `PaymentReversal::refund($paymentReference, $amount, $currency, $reference, $refundedSoFar = null)` | A refund was made at the provider. Pass the provider's total for the payment as `$refundedSoFar` when it gives one. |
+| `PaymentReversal::chargeback($paymentReference, $amount, $currency, $reference)` | A dispute took the money back. |
+| `PaymentReversal::chargebackUndone($paymentReference, $amount, $currency, $reference)` | The dispute ended well and the money came back. `$reference` is the dispute's ID again. |
+
+- `$paymentReference` is the provider's ID of the payment, the same `reference` you gave in the
+  `PaymentResult`. Only a payment recorded with exactly this gateway and ID is touched, so notices
+  about other payments on the same provider account change nothing.
+- `$reference` is the provider's own ID of the refund or dispute. It is recorded once.
+- Verify the notification first, as for a payment.
+
+Nuvabill writes a refund line on the payment's invoice, never for more than the payment, and tells
+staff (activity log, dashboard, email to the company address). A refund Nuvabill sent itself
+through your `refund()` is not recorded twice. The invoice, its services and the wallet stay as
+they are: staff decide what happens next.
+
+When staff choose the events of the webhook at the provider, return their names from
+`webhookEvents()`. The settings page lists them under the webhook URL, also after the settings are
+saved, so a site that set the webhook up earlier sees which events a newer version needs.
 
 ### Verify the signature yourself
 
@@ -476,6 +505,15 @@ automatic.** A converting gateway must do these steps itself. FIB is the example
 `charged_currency` and at least `charged_amount` arrived. Otherwise it logs a warning and returns
 `null`. When the paid currency is the invoice currency, it returns a result for the amount that was
 paid.
+
+The converted amount is the price at the exchange rate of the moment the payment was started. A
+payment page can stay open long after that, so `resultFor()` checks the price again at the rate
+staff have set now. When what arrived is more than 1% short of it, the result is for what the
+payment is worth at the new rate (never more than the intent's amount), and the rest of the invoice
+stays due. Its `meta` then also has `quoted_amount` and `quoted_rate`, and `rate` is the rate used.
+Staff see it in the activity log, and the client sees why a part is still to pay. Without a rate
+for the currency any more, the price of the day the payment was started stands. A gateway that shows
+a waiting payment again (as FIB does) should make a new one when its price is no longer today's.
 
 Shortened from FIB:
 
