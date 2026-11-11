@@ -12,6 +12,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Password;
 use OpenSSLAsymmetricKey;
 use Tests\TestCase;
 
@@ -114,6 +115,31 @@ class PasskeyTest extends TestCase
         $this->post(route('admin.passkey.login'), ['credential' => $this->assertion($options, 'cred-client', $key, 0)])
             ->assertSessionHasErrors('email');
         $this->assertGuest('admin');
+    }
+
+    public function test_a_passkey_no_longer_signs_in_after_its_owner_resets_the_password(): void
+    {
+        $admin = Admin::factory()->create(['email' => 'mer@example.test']);
+        $client = Client::factory()->create(['email' => 'las@example.test']);
+        $staffKey = $this->ecKey();
+        $clientKey = $this->ecKey();
+        $this->addPasskey($admin, 'cred-staff', $staffKey);
+        $this->addPasskey($client, 'cred-client', $clientKey);
+        $newPassword = ['password' => 'a-new-password-1', 'password_confirmation' => 'a-new-password-1'];
+
+        $this->post(route('admin.password.update'), ['token' => Password::broker('admins')->createToken($admin), 'email' => 'mer@example.test'] + $newPassword)
+            ->assertRedirect(route('admin.login'));
+        $this->post(route('client.password.update'), ['token' => Password::broker('clients')->createToken($client), 'email' => 'las@example.test'] + $newPassword)
+            ->assertRedirect(route('client.login'));
+
+        $options = $this->postJson(route('admin.passkey.options'))->json();
+        $this->post(route('admin.passkey.login'), ['credential' => $this->assertion($options, 'cred-staff', $staffKey, 1)])->assertSessionHasErrors('email');
+        $this->assertGuest('admin');
+
+        $options = $this->postJson(route('client.passkey.options'))->json();
+        $this->post(route('client.passkey.login'), ['credential' => $this->assertion($options, 'cred-client', $clientKey, 1)])->assertSessionHasErrors('email');
+        $this->assertGuest('web');
+        $this->assertSame(0, Passkey::query()->count());
     }
 
     public function test_clients_without_a_password_need_an_emailed_code_to_add_a_passkey(): void

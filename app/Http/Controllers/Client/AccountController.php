@@ -30,7 +30,9 @@ class AccountController extends Controller
     public function edit(Request $request, SocialLogin $social, EmailCode $codes): View
     {
         $client = $request->user('web');
-        $settingUpApp = $client->two_factor_method === Client::TWO_FACTOR_APP && $client->two_factor_confirmed_at === null && $client->two_factor_secret !== null;
+        // The QR code and key of an app setup are only shown to the session that started it with
+        // the owner's proof, see TwoFactorController.
+        $settingUpApp = TwoFactorController::isSettingUpApp($request, $client);
 
         return view('theme::client.account', [
             'client' => $client,
@@ -143,18 +145,29 @@ class AccountController extends Controller
         $request->validate([
             'current_password' => $client->has_password ? ['required', 'current_password:web'] : ['nullable'],
             'password' => ['required', 'confirmed', Password::min(8)],
+            'remove_other_sign_ins' => ['sometimes', 'boolean'],
         ]);
 
-        if (! $client->has_password) {
+        $hadPassword = (bool) $client->has_password;
+
+        if (! $hadPassword) {
             $codes->confirm($client, $request->input('email_code'));
         }
 
         // The new password signs out every other session (auth.session) and remember-me cookie.
-        // This session stays signed in: the guard holds this same client with the new password.
+        // This session stays signed in: the guard holds this same client with the new password. A
+        // password from an older billing system stops working too.
         $client->forceFill(['password' => $request->input('password'), 'has_password' => true, 'remember_token' => Str::random(60)])->save();
         $request->session()->regenerate();
 
-        return back()->with('status', __('Password saved.'));
+        // Passkeys, connected sign-ins and chat apps do not end with the sessions. When the password
+        // is changed they are removed unless the client unticks the box; a first password is added
+        // next to the connected account the client signs in with, so there they stay unless asked.
+        $removed = $request->boolean('remove_other_sign_ins', $hadPassword) ? $client->removeOtherSignIns('own password changed') : 0;
+
+        return back()->with('status', $removed > 0
+            ? __('Password saved. Passkeys, connected accounts and chat apps were removed from your account.')
+            : __('Password saved.'));
     }
 
     /**
@@ -166,6 +179,10 @@ class AccountController extends Controller
 
         if ($client->has_password) {
             return back();
+        }
+
+        if ($codes->locked($client)) {
+            return back()->with('error', EmailCode::lockedMessage());
         }
 
         return $codes->send($client, EmailCode::CONFIRM)

@@ -6,6 +6,7 @@
         'forgetUrl' => route('admin.profile.push.forget'),
         'failed' => __('Alerts could not be turned on. Please try again.'),
         'reload' => true,
+        'devices' => $pushDevices->pluck('endpoint_hash')->all(),
     ];
     $may = [
         'orders' => $admin->hasPermission('orders.manage'),
@@ -43,6 +44,8 @@
             <p class="muted" style="margin:0;font-size:.9rem" x-show="state === 'checking'">{{ __('Checking this device…') }}</p>
             <div x-show="state === 'off'" x-cloak style="display:grid;gap:.5rem">
                 <p class="muted" style="margin:0;font-size:.9rem">{{ __('This device does not get alerts yet.') }}</p>
+                {{-- A device keeps getting alerts after you sign out, so turning one on needs the password. --}}
+                <x-input name="push_password" id="push-password" type="password" :label="__('Your password')" x-model="password" x-on:keydown.enter.prevent="turnOn" autocomplete="current-password" />
                 <div><button class="btn btn-primary btn-sm" type="button" @click="turnOn" :disabled="busy"><x-icon name="bell" />{{ __('Turn on alerts on this device') }}</button></div>
             </div>
             <div x-show="state === 'on'" x-cloak style="display:grid;gap:.5rem">

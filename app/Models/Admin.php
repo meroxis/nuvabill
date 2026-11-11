@@ -130,4 +130,51 @@ class Admin extends Authenticatable
 
         return $count;
     }
+
+    /**
+     * Delete all of this staff member's passkeys, for example after a new password: a passkey signs
+     * in without the password and without a two-factor code. Writes one activity log entry and
+     * returns how many passkeys were deleted.
+     */
+    public function revokePasskeys(string $reason, ?Model $actor = null): int
+    {
+        $count = (int) $this->passkeys()->delete();
+
+        if ($count > 0) {
+            Activity::log('admin.passkeys_revoked', "{$count} passkey(s) of {$this->name} deleted: {$reason}", $this, actor: $actor);
+        }
+
+        return $count;
+    }
+
+    /**
+     * Stop phone alerts on all of this staff member's devices, for example after a new password, so
+     * a device someone else added no longer gets them. Writes one activity log entry and returns
+     * how many devices were removed.
+     */
+    public function revokePushDevices(string $reason, ?Model $actor = null): int
+    {
+        $count = (int) $this->pushSubscriptions()->delete();
+
+        if ($count > 0) {
+            Activity::log('admin.push_revoked', "{$count} phone alert device(s) of {$this->name} removed: {$reason}", $this, actor: $actor);
+        }
+
+        return $count;
+    }
+
+    /**
+     * After a password reset, or a password set by another staff member, nothing else may keep
+     * working for whoever had the account before: API keys, passkeys and phone alert devices all go.
+     *
+     * @return array{api_keys: int, passkeys: int, push_devices: int}
+     */
+    public function revokeOtherAccess(string $reason, ?Model $actor = null): array
+    {
+        return [
+            'api_keys' => $this->revokeApiKeys($reason, $actor),
+            'passkeys' => $this->revokePasskeys($reason, $actor),
+            'push_devices' => $this->revokePushDevices($reason, $actor),
+        ];
+    }
 }

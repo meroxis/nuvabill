@@ -86,10 +86,9 @@ class StaffController extends Controller
 
         $admin->save();
 
-        // Setting someone's password is a reset of their sign-in, so their API keys stop working too.
-        if ($newPassword) {
-            $admin->revokeApiKeys('password set in staff settings');
-        }
+        // Setting someone's password is a reset of their sign-in, so their API keys, passkeys and
+        // phone alert devices stop working too.
+        $revoked = $newPassword ? array_sum($admin->revokeOtherAccess('password set in staff settings')) : 0;
 
         // Staff editing their own account here keep this session: the guard holds the new password.
         if ($admin->is($request->user('admin'))) {
@@ -98,7 +97,9 @@ class StaffController extends Controller
 
         Activity::log('staff.updated', "Staff account for {$admin->name} updated", $admin);
 
-        return redirect()->route('admin.settings.staff.index')->with('status', __('Staff member saved.'));
+        return redirect()->route('admin.settings.staff.index')->with('status', $revoked > 0
+            ? __('Staff member saved. The new password also removed the API keys, passkeys and phone alerts of this account.')
+            : __('Staff member saved.'));
     }
 
     /**

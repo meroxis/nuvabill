@@ -355,6 +355,62 @@ class StaffLoginTest extends TestCase
         $this->assertSame($admin->id, session(StaffSecondFactor::SESSION_KEY));
     }
 
+    public function test_after_the_two_factor_check_staff_only_go_back_to_an_admin_page(): void
+    {
+        $dashboard = route('admin.dashboard');
+        $clients = route('admin.clients.index', ['search' => 'raz']);
+
+        $cameFrom = [
+            // The admin page with the link to the check: back there, always on this site's own address.
+            $clients => $clients,
+            str_replace('http://', 'https://', $clients) => $clients,
+            str_replace('http://localhost', '//localhost:8080', $clients) => $clients,
+            $dashboard.'/' => $dashboard.'/',
+            // Any other address the browser names becomes the dashboard.
+            'https://elsewhere.example/' => $dashboard,
+            'https://elsewhere.example/admin/clients' => $dashboard,
+            $dashboard.'@elsewhere.example/' => $dashboard,
+            $dashboard.'.elsewhere.example/clients' => $dashboard,
+            $dashboard.'-old/clients' => $dashboard,
+            route('client.login') => $dashboard,
+            route('admin.two-factor.step-up') => $dashboard,
+        ];
+
+        foreach ($cameFrom as $referer => $expected) {
+            $secret = $this->signInWithoutSecondFactor();
+
+            $this->get(route('admin.two-factor.step-up'), ['Referer' => $referer])->assertOk();
+            $this->post(route('admin.two-factor.step-up'), ['code' => Totp::codeAt($secret, intdiv(time(), 30))])->assertRedirect($expected);
+        }
+
+        // No page named at all: the dashboard.
+        $secret = $this->signInWithoutSecondFactor();
+        $this->get(route('admin.two-factor.step-up'))->assertOk();
+        $this->post(route('admin.two-factor.step-up'), ['code' => Totp::codeAt($secret, intdiv(time(), 30))])->assertRedirect($dashboard);
+
+        // An address a session kept from before is checked again when it is used.
+        $secret = $this->signInWithoutSecondFactor();
+        $this->withSession(['url.intended' => 'https://elsewhere.example/admin/sign-in']);
+        $this->post(route('admin.two-factor.step-up'), ['code' => Totp::codeAt($secret, intdiv(time(), 30))])->assertRedirect($dashboard);
+        $this->assertSame((int) auth('admin')->id(), session(StaffSecondFactor::SESSION_KEY));
+    }
+
+    /**
+     * A new staff member with two-factor login, signed in on a new session that did not pass it
+     * (a remember-me sign-in, say). Returns the key of their authenticator app.
+     */
+    private function signInWithoutSecondFactor(): string
+    {
+        $secret = Totp::generateSecret();
+        $admin = Admin::factory()->create();
+        $admin->forceFill(['two_factor_secret' => $secret, 'two_factor_confirmed_at' => now()])->save();
+
+        $this->flushSession();
+        $this->signInAdmin($admin);
+
+        return $secret;
+    }
+
     /**
      * A six-digit code that is not valid around now (the app code of this, the last or the next 30 seconds).
      */

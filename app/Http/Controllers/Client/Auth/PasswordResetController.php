@@ -45,9 +45,13 @@ class PasswordResetController extends Controller
         // The link went to the account's inbox, so the email is now confirmed. A new password hash
         // also ends every other signed-in session (the auth.session middleware), and wrong passwords
         // others typed no longer keep the owner out.
+        // A reset is the "someone else may be in my account" path, so passkeys, connected sign-ins
+        // and chat apps are removed as well: whoever added them does not keep a way in. The client
+        // now has a password, so one who only used Google, GitHub or Facebook is not locked out.
+        $removed = 0;
         $status = Password::broker('clients')->reset(
             ['email' => Str::lower(trim((string) $request->input('email')))] + $request->only('password', 'password_confirmation', 'token'),
-            function (Client $client, string $password) use ($request): void {
+            function (Client $client, string $password) use ($request, &$removed): void {
                 $client->forceFill([
                     'password' => $password,
                     'legacy_password' => null,
@@ -55,13 +59,16 @@ class PasswordResetController extends Controller
                     'remember_token' => Str::random(60),
                     'email_verified_at' => $client->email_verified_at ?? now(),
                 ])->save();
+                $removed = $client->removeOtherSignIns('password reset', actor: $client);
                 SignInLimiter::passwordReset($request, 'client', $client->email);
                 event(new PasswordReset($client));
             },
         );
 
         return $status === Password::PASSWORD_RESET
-            ? redirect()->route('client.login')->with('status', __('Your password was changed. Sign in with the new one.'))
+            ? redirect()->route('client.login')->with('status', $removed > 0
+                ? __('Your password was changed. Passkeys, connected accounts and chat apps were removed from your account. Sign in with the new password.')
+                : __('Your password was changed. Sign in with the new one.'))
             : back()->withInput($request->only('email'))->withErrors(['email' => __($status)]);
     }
 }

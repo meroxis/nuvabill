@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Chat\ChatInbox;
 use App\Chat\Telegram;
+use App\Chat\TelegramGroups;
 use App\Chat\WhatsApp;
 use App\Models\ChatLink;
 use App\Support\Activity;
@@ -21,7 +22,7 @@ class ChatWebhookController extends Controller
 {
     public function __construct(private ChatInbox $inbox, private Settings $settings) {}
 
-    public function telegram(Request $request, Telegram $telegram): JsonResponse
+    public function telegram(Request $request, Telegram $telegram, TelegramGroups $groups): JsonResponse
     {
         $secret = (string) setting('chat.telegram_secret');
 
@@ -31,16 +32,27 @@ class ChatWebhookController extends Controller
 
         $update = $request->json()->all();
 
-        // The bot was added to or removed from a group: remember groups for staff alerts.
+        // The bot was added to or removed from a group. Anyone can add it to a group of their own,
+        // so being added changes nothing; a group it left is no longer a choice for staff alerts.
         if (isset($update['my_chat_member']['chat']['id'])) {
-            $this->rememberGroup($update['my_chat_member']);
+            $this->leftGroup($update['my_chat_member'], $groups);
 
             return response()->json(['ok' => true]);
         }
 
         $message = $update['message'] ?? null;
 
-        if (! is_array($message) || ($message['chat']['type'] ?? '') !== 'private') {
+        if (! is_array($message)) {
+            return response()->json(['ok' => true]);
+        }
+
+        // In a group the bot only reads the message from Settings → Chat apps that confirms the
+        // group for staff alerts. Clients are only answered in a private chat.
+        if (($message['chat']['type'] ?? '') !== 'private') {
+            if ($groups->confirm($message) !== null) {
+                rescue(fn () => $telegram->send((string) $message['chat']['id'], __('This group can now be chosen for staff alerts in Settings → Chat apps.')));
+            }
+
             return response()->json(['ok' => true]);
         }
 
@@ -149,23 +161,13 @@ class ChatWebhookController extends Controller
     /**
      * @param  array<string, mixed>  $membership
      */
-    private function rememberGroup(array $membership): void
+    private function leftGroup(array $membership, TelegramGroups $groups): void
     {
         $chat = $membership['chat'];
-
-        if (! in_array($chat['type'] ?? '', ['group', 'supergroup'], true)) {
-            return;
-        }
-
-        $groups = (array) setting('chat.telegram_groups');
         $status = (string) ($membership['new_chat_member']['status'] ?? '');
 
-        if (in_array($status, ['member', 'administrator'], true)) {
-            $groups[(string) $chat['id']] = mb_substr((string) ($chat['title'] ?? $chat['id']), 0, 80);
-        } else {
-            unset($groups[(string) $chat['id']]);
+        if (in_array($chat['type'] ?? '', ['group', 'supergroup'], true) && ! in_array($status, ['member', 'administrator'], true)) {
+            $groups->forget((string) $chat['id']);
         }
-
-        $this->settings->set('chat.telegram_groups', $groups);
     }
 }

@@ -13,16 +13,17 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
 /**
- * Counts wrong passwords and wrong two-factor codes per account. The routes also limit each IP
- * address, but guesses spread over many addresses only stop with a limit on the account itself.
+ * Counts wrong passwords, wrong two-factor codes and wrong emailed codes per account. The routes
+ * also limit each IP address, but guesses spread over many addresses only stop with a limit on
+ * the account itself.
  *
  * Wrong passwords are counted twice: for the email address from one IP address, and for the email
  * address from all IP addresses together. The first stops one guesser quickly. The second is much
  * higher, so strangers cannot easily keep the owner out, and a password reset lets the owner past it.
  *
- * Each check runs inside onePasswordAtATime() or oneCodeAtATime(), so the limit check, the
- * password or code check and the count happen as one step per account. Without that, guesses sent
- * at the same moment would all pass the limit check before any of them was counted.
+ * Each check runs inside onePasswordAtATime(), oneCodeAtATime() or oneEmailCodeAtATime(), so the
+ * limit check, the password or code check and the count happen as one step per account. Without
+ * that, guesses sent at the same moment would all pass the limit check before any of them was counted.
  *
  * $area is "admin" for staff and "client" for clients, so the two never share a count.
  */
@@ -42,6 +43,12 @@ final class SignInLimiter
 
     /** How long the count for one email address from all IP addresses lasts, in seconds. */
     public const ACCOUNT_WAIT = 3600;
+
+    /** Wrong emailed codes (EmailCode) for one client, over all codes sent, before the client has to wait. */
+    public const EMAIL_CODES = 10;
+
+    /** How long that wait lasts, in seconds. */
+    public const EMAIL_CODE_WAIT = 3600;
 
     /** How long one check may hold an account at most, in seconds. */
     private const LOCK_SECONDS = 10;
@@ -77,6 +84,21 @@ final class SignInLimiter
     public static function oneCodeAtATime(string $area, int $id, Closure $check): mixed
     {
         return self::oneAtATime(self::codeKey($area, $id), $check);
+    }
+
+    /**
+     * Run $check while no other emailed code of this client is checked.
+     *
+     * @template T
+     *
+     * @param  Closure(): T  $check
+     * @return T
+     *
+     * @throws ThrottleRequestsException when other checks keep the client busy for too long
+     */
+    public static function oneEmailCodeAtATime(int $clientId, Closure $check): mixed
+    {
+        return self::oneAtATime(self::emailCodeKey($clientId), $check);
     }
 
     /**
@@ -164,6 +186,26 @@ final class SignInLimiter
     }
 
     /**
+     * Emailed codes that confirm an account change or set up two-factor sign-in (EmailCode) allow
+     * a few tries each, and a new code can be asked for every minute. This count runs over all of
+     * a client's codes, so asking for new codes gives no new tries.
+     */
+    public static function emailCodesLocked(int $clientId): bool
+    {
+        return RateLimiter::tooManyAttempts(self::emailCodeKey($clientId), self::EMAIL_CODES);
+    }
+
+    public static function emailCodeFailed(int $clientId): void
+    {
+        RateLimiter::hit(self::emailCodeKey($clientId), self::EMAIL_CODE_WAIT);
+    }
+
+    public static function emailCodePassed(int $clientId): void
+    {
+        RateLimiter::clear(self::emailCodeKey($clientId));
+    }
+
+    /**
      * The lock lives in the same cache as the counts (file, database or Redis), so it holds across
      * every PHP process of the site.
      */
@@ -225,5 +267,10 @@ final class SignInLimiter
     private static function codeKey(string $area, int $id): string
     {
         return $area.'-2fa:'.$id;
+    }
+
+    private static function emailCodeKey(int $clientId): string
+    {
+        return 'client-email-code:'.$clientId;
     }
 }

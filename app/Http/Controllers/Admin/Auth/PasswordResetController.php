@@ -62,22 +62,31 @@ class PasswordResetController extends Controller
 
         // A new password hash also ends every other signed-in session (the auth.session middleware).
         // The link proved this is the owner, so wrong passwords others typed no longer keep them out.
-        // A reset is the "someone took my account" path, so every API key is deleted as well.
-        $revoked = 0;
+        // A reset is the "someone took my account" path, so every API key, passkey and phone alert
+        // device is deleted as well: none of them ends with the sessions.
+        $revoked = ['api_keys' => 0, 'passkeys' => 0, 'push_devices' => 0];
         $status = Password::broker('admins')->reset(
             $request->only('email', 'password', 'password_confirmation', 'token'),
             function (Admin $admin, string $password) use ($request, &$revoked): void {
                 $admin->forceFill(['password' => $password, 'remember_token' => Str::random(60)])->save();
-                $revoked = $admin->revokeApiKeys('password reset', actor: $admin);
+                $revoked = $admin->revokeOtherAccess('password reset', actor: $admin);
                 SignInLimiter::passwordReset($request, 'admin', $admin->email);
                 event(new PasswordReset($admin));
             },
         );
 
-        return $status === Password::PASSWORD_RESET
-            ? redirect()->route('admin.login')->with('status', $revoked > 0
-                ? __('Your password was changed and your API keys were deleted. Sign in with the new one.')
-                : __('Your password was changed. Sign in with the new one.'))
-            : back()->withInput($request->only('email'))->withErrors(['email' => __($status)]);
+        if ($status !== Password::PASSWORD_RESET) {
+            return back()->withInput($request->only('email'))->withErrors(['email' => __($status)]);
+        }
+
+        $keys = $revoked['api_keys'] > 0;
+        $signIns = $revoked['passkeys'] + $revoked['push_devices'] > 0;
+
+        return redirect()->route('admin.login')->with('status', match (true) {
+            $keys && $signIns => __('Your password was changed. Your API keys, passkeys and phone alerts were removed. Sign in with the new password.'),
+            $keys => __('Your password was changed and your API keys were deleted. Sign in with the new one.'),
+            $signIns => __('Your password was changed. Your passkeys and phone alerts were removed. Sign in with the new password.'),
+            default => __('Your password was changed. Sign in with the new one.'),
+        });
     }
 }

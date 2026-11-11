@@ -23,9 +23,19 @@
                             @csrf
                             @method('PUT')
                             <x-select name="staff_chat" :label="__('Staff alerts go to')" :options="['' => __('Nowhere')] + $groups" :value="setting('chat.telegram_staff_chat')"
-                                :help="__('Add @:bot to your team’s Telegram group, then reload this page and pick the group. New tickets, client replies and orders are posted there.', ['bot' => setting('chat.telegram_bot')])" />
+                                :help="__('New tickets, client replies and orders are posted there.')" />
                             <div><button class="btn btn-sm" type="submit">{{ __('Save') }}</button></div>
                         </form>
+                        {{-- Anyone can add the bot to a group, so a group is only listed after this message was sent in it. --}}
+                        <div style="display:grid;gap:.5rem;font-size:.9rem">
+                            <p class="muted" style="margin:0">{{ __('To list a group here, add @:bot to your team’s Telegram group and send this message in the group. Then reload this page.', ['bot' => setting('chat.telegram_bot')]) }}</p>
+                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                                <code class="mono" style="overflow-wrap:anywhere">{{ $groupCommand }}</code>
+                                <button type="button" class="btn btn-sm" data-copy="{{ $groupCommand }}" data-copied="{{ __('Copied') }}">{{ __('Copy') }}</button>
+                                <a class="btn btn-sm" href="{{ $groupLink }}" target="_blank" rel="noopener noreferrer">{{ __('Pick the group in Telegram') }}</a>
+                            </div>
+                            <p class="muted" style="margin:0">{{ __('The message works once and for 30 minutes. It proves the group is yours: anyone on Telegram can add a bot to a group.') }}</p>
+                        </div>
                         <form method="POST" action="{{ route('admin.settings.chat.telegram.destroy') }}" onsubmit="return confirm(@js(__('Disconnect Telegram? Clients stop getting messages there.')))">
                             @csrf
                             @method('DELETE')

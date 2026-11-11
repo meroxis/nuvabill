@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Chat\ChatMessages;
 use App\Chat\LinkCodes;
+use App\Chat\TelegramGroups;
 use App\Chat\WhatsApp;
 use App\Chat\WhatsAppSetup;
 use App\Enums\ClientStatus;
@@ -442,6 +443,78 @@ class ChatAppsTest extends TestCase
         Http::assertSent(fn (Request $request): bool => $request['chat_id'] === '-100200' && ($request['reply_markup']['inline_keyboard'][0][0]['url'] ?? '') !== '');
     }
 
+    public function test_a_group_is_only_a_choice_for_staff_alerts_after_the_message_from_the_settings_page_was_sent_in_it(): void
+    {
+        $this->connectTelegram();
+        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true, 'result' => []]), 'my.nuvabill.com/*' => Http::response(['ready' => true])]);
+        $this->signInAdmin();
+        $inGroup = fn (int $id, string $status): array => ['my_chat_member' => ['chat' => ['id' => $id, 'type' => 'supergroup', 'title' => 'YourHost team'], 'new_chat_member' => ['status' => $status]]];
+
+        // Anyone on Telegram can add the bot to a group with any name. That alone lists nothing.
+        $this->telegramUpdate($inGroup(-100900, 'member'))->assertOk();
+        $this->assertSame([], setting('chat.telegram_groups'));
+        $page = $this->get(route('admin.settings.chat.edit'))->assertOk()->assertDontSee('YourHost team');
+        $this->put(route('admin.settings.chat.telegram.staff'), ['staff_chat' => '-100900'])->assertSessionHasErrors('staff_chat');
+        $this->assertSame('', setting('chat.telegram_staff_chat'));
+
+        // The settings page shows the message to send. Another code does nothing.
+        $command = app(TelegramGroups::class)->command();
+        $this->assertMatchesRegularExpression('/^\/start@YourHostBot [A-Za-z0-9]{12}$/', $command);
+        $page->assertSee($command)->assertSee('https://t.me/YourHostBot?startgroup='.substr($command, -12), false);
+        $this->groupMessage(-100900, 'YourHost team', '/start@YourHostBot notTheCode12')->assertOk();
+        $this->groupMessage(-100900, 'YourHost team', str_replace('@YourHostBot', '@OtherBot', $command))->assertOk();
+        $this->assertSame([], setting('chat.telegram_groups'));
+        Http::assertNotSent(fn (Request $request): bool => str_contains($request->url(), 'api.telegram.org'));
+
+        // Sent in the team's own group, the group becomes a choice and the bot says so there.
+        $this->groupMessage(-100200, 'Staff room', $command)->assertOk();
+        Http::assertSent(fn (Request $request): bool => str_contains($request->url(), '/sendMessage') && $request['chat_id'] === '-100200' && str_contains($request['text'], 'staff alerts'));
+        $this->assertTrue(ActivityLog::query()->where('action', 'chat.telegram')->where('description', 'like', '%Staff room%by Mer%')->exists());
+        $this->get(route('admin.settings.chat.edit'))->assertSee('Staff room');
+        $this->put(route('admin.settings.chat.telegram.staff'), ['staff_chat' => '-100200'])->assertSessionHas('status');
+        $this->assertSame('-100200', setting('chat.telegram_staff_chat'));
+
+        // The code worked once, and a new one stops working after an hour.
+        $this->groupMessage(-100900, 'YourHost team', $command)->assertOk();
+        $next = app(TelegramGroups::class)->command();
+        $this->assertNotSame($command, $next);
+        $this->travel(61)->minutes();
+        $this->groupMessage(-100900, 'YourHost team', $next)->assertOk();
+        $this->assertSame(['-100200'], array_map('strval', array_keys(setting('chat.telegram_groups'))));
+
+        // A group the bot left is no longer a choice.
+        $this->telegramUpdate($inGroup(-100200, 'left'))->assertOk();
+        $this->assertSame([], setting('chat.telegram_groups'));
+    }
+
+    public function test_groups_listed_before_staff_confirmed_them_are_dropped_except_the_one_already_chosen(): void
+    {
+        $this->connectTelegram();
+        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true, 'result' => []]), 'my.nuvabill.com/*' => Http::response(['ready' => true])]);
+        // As an older version saved them: every group the bot was added to, by name.
+        $this->setSettings(['chat.telegram_staff_chat' => '-100200', 'chat.telegram_groups' => ['-100200' => 'Staff room', '-100900' => 'Staff room two', '-100901' => 'Other']]);
+        $this->signInAdmin();
+
+        $this->get(route('admin.settings.chat.edit'))->assertOk()->assertSee('Staff room')->assertDontSee('Staff room two')->assertDontSee('Other');
+        $this->assertSame(['-100200'], array_map('strval', array_keys(setting('chat.telegram_groups'))));
+
+        // Alerts keep going to the chosen group, and it can be saved again. The others need the message.
+        $this->put(route('admin.settings.chat.telegram.staff'), ['staff_chat' => '-100900'])->assertSessionHasErrors('staff_chat');
+        $this->put(route('admin.settings.chat.telegram.staff'), ['staff_chat' => '-100200'])->assertSessionHas('status');
+        $this->assertSame('-100200', setting('chat.telegram_staff_chat'));
+
+        // Only the newest groups are kept, and never without the chosen one.
+        foreach (range(1, TelegramGroups::LIMIT + 2) as $number) {
+            $this->groupMessage(-100300 - $number, 'Group '.$number, app(TelegramGroups::class)->command())->assertOk();
+        }
+
+        $kept = array_map('strval', array_keys(setting('chat.telegram_groups')));
+        $this->assertCount(TelegramGroups::LIMIT, $kept);
+        $this->assertContains('-100200', $kept);
+        $this->assertNotContains('-100301', $kept);
+        $this->assertContains((string) (-100300 - TelegramGroups::LIMIT - 2), $kept);
+    }
+
     public function test_the_owner_chooses_which_messages_go_where(): void
     {
         $this->signInAdmin();
@@ -545,22 +618,111 @@ class ChatAppsTest extends TestCase
         $this->assertSame(0, ChatLink::query()->count());
     }
 
-    public function test_a_link_code_works_when_the_cache_gives_the_client_id_back_as_text(): void
+    public function test_a_link_code_works_once_and_stays_the_same_between_page_views(): void
     {
         $client = Client::factory()->create(['first_name' => 'Raz']);
-        // Redis gives numbers back as strings.
-        Cache::put('chat-link:ABCD2345', (string) $client->id, now()->addMinutes(30));
+        $code = LinkCodes::for($client);
 
-        $link = LinkCodes::redeem('abcd2345', ChatLink::TELEGRAM, '555', 'Raz');
+        $this->assertSame($code, LinkCodes::for($client), 'The code on the account page stays the same between page views.');
+        // What the cache keeps is text on every cache store, Redis included.
+        $this->assertIsString(Cache::get('chat-link:'.$code));
+
+        $link = LinkCodes::redeem(strtolower($code), ChatLink::TELEGRAM, '555', 'Raz');
 
         $this->assertSame($client->id, $link?->client_id);
-        $this->assertNull(Cache::get('chat-link:ABCD2345'), 'A code works once.');
-        $this->assertNull(LinkCodes::redeem('abcd2345', ChatLink::TELEGRAM, '556', 'Raz'));
+        $this->assertNull(Cache::get('chat-link:'.$code), 'A code works once.');
+        $this->assertNull(LinkCodes::redeem($code, ChatLink::TELEGRAM, '556', 'Raz'));
+        $this->assertNotSame($code, LinkCodes::for($client));
+    }
 
-        // The code on the account page stays the same between page views.
+    public function test_a_code_shown_before_a_new_password_links_nothing(): void
+    {
+        $client = Client::factory()->create(['first_name' => 'Raz', 'password' => 'old-password-1']);
         $code = LinkCodes::for($client);
-        Cache::put('chat-link:'.$code, (string) $client->id, now()->addMinutes(30));
-        $this->assertSame($code, LinkCodes::for($client));
+
+        $client->forceFill(['password' => 'new-password-1'])->save();
+
+        $this->assertNull(LinkCodes::redeem($code, ChatLink::TELEGRAM, '555', 'Raz'));
+        $this->assertSame(0, ChatLink::query()->count());
+
+        // The account page shows a new code, and that one links.
+        $fresh = LinkCodes::for($client);
+        $this->assertNotSame($code, $fresh);
+        $this->assertNotNull(LinkCodes::redeem($fresh, ChatLink::TELEGRAM, '555', 'Raz'));
+
+        // A code kept the way older versions did (the client number alone) links nothing either.
+        Cache::put('chat-link:ABCD2345', (string) $client->id, now()->addMinutes(30));
+        $this->assertNull(LinkCodes::redeem('ABCD2345', ChatLink::TELEGRAM, '556', 'Raz'));
+    }
+
+    public function test_a_new_password_saved_while_a_chat_is_being_linked_ends_that_link_too(): void
+    {
+        Mail::fake();
+        $client = Client::factory()->create(['first_name' => 'Raz', 'password' => 'old-password-1']);
+        $code = LinkCodes::for($client);
+
+        // The new password is saved between the check of the code and the moment the link is written.
+        ChatLink::created(fn () => Client::query()->findOrFail($client->id)->forceFill(['password' => 'new-password-1'])->save());
+
+        $this->assertNull(LinkCodes::redeem($code, ChatLink::TELEGRAM, '555', 'Raz'));
+        $this->assertSame(0, ChatLink::query()->count());
+        Mail::assertNothingSent();
+    }
+
+    public function test_linking_a_chat_emails_the_account_owner_and_is_logged(): void
+    {
+        Mail::fake();
+        $this->connectTelegram();
+        Http::fake(['api.telegram.org/*' => Http::response(['ok' => true, 'result' => []])]);
+        $client = Client::factory()->create(['first_name' => 'Raz', 'last_name' => '']);
+        $start = fn (int $chat): TestResponse => $this->telegramUpdate(['message' => ['chat' => ['id' => $chat, 'type' => 'private'], 'from' => ['first_name' => 'Las'], 'text' => '/start '.LinkCodes::for($client)]])->assertOk();
+
+        $start(555);
+
+        Mail::assertSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => $mail->hasTo($client->email)
+            && $mail->subjectLine === 'A chat app was connected to your account'
+            && str_contains($mail->bodyHtml, 'Hi Raz,')
+            && str_contains($mail->bodyHtml, 'A Telegram chat was connected to your')
+            && str_contains($mail->bodyHtml, 'Name of the chat: Las')
+            && str_contains($mail->bodyHtml, 'If this was not you')
+            && str_contains($mail->bodyHtml, '<a href="'.route('client.account.edit').'">'));
+        $log = ActivityLog::query()->where('action', 'client.chat_linked')->sole();
+        $this->assertSame('Raz connected a Telegram chat (Las)', $log->description);
+        $this->assertSame($client->id, $log->client_id);
+
+        // The same chat with a new code of the same account gives nobody new access: no second email.
+        $start(555);
+        Mail::assertSentCount(1);
+
+        // Another chat does.
+        $start(777);
+        Mail::assertSentCount(2);
+        $this->assertSame(2, ActivityLog::query()->where('action', 'client.chat_linked')->count());
+    }
+
+    public function test_the_name_of_the_chat_is_plain_text_in_that_email(): void
+    {
+        Mail::fake();
+        $client = Client::factory()->create(['first_name' => 'Raz']);
+
+        LinkCodes::redeem(LinkCodes::for($client), ChatLink::WHATSAPP, '9647501234567', '[Open](https://other.example.test) <b>Las</b>');
+
+        Mail::assertSent(TemplatedMessage::class, fn (TemplatedMessage $mail): bool => str_contains($mail->bodyHtml, 'A WhatsApp chat was connected')
+            && str_contains($mail->bodyHtml, 'Name of the chat: [Open](https://other.example.test) &lt;b&gt;Las&lt;/b&gt; +9647501234567')
+            && ! str_contains($mail->bodyHtml, 'href="https://other.example.test'));
+    }
+
+    public function test_a_closed_account_gets_no_email_about_a_chat(): void
+    {
+        Mail::fake();
+        $client = Client::factory()->create();
+        $code = LinkCodes::for($client);
+        $client->forceFill(['status' => ClientStatus::Closed])->save();
+
+        $this->assertNull(LinkCodes::redeem($code, ChatLink::TELEGRAM, '555', 'Raz'));
+
+        Mail::assertNothingSent();
+        $this->assertSame(0, ActivityLog::query()->where('action', 'client.chat_linked')->count());
     }
 
     public function test_qr_connect_shows_no_pin_when_meta_did_not_register_the_number(): void
@@ -626,6 +788,14 @@ class ChatAppsTest extends TestCase
             'chat.whatsapp_via' => 'qr',
             'chat.whatsapp_templates' => $templates,
         ]);
+    }
+
+    /**
+     * A message someone sent in a Telegram group the bot is in.
+     */
+    private function groupMessage(int $chatId, string $title, string $text): TestResponse
+    {
+        return $this->telegramUpdate(['message' => ['chat' => ['id' => $chatId, 'type' => 'supergroup', 'title' => $title], 'from' => ['id' => 7, 'first_name' => 'Mer'], 'text' => $text]]);
     }
 
     /**

@@ -109,6 +109,22 @@ class PasswordChangeEndsOtherSessionsTest extends TestCase
         $this->assertTrue($client->fresh()->hasTwoFactorEnabled());
     }
 
+    public function test_turning_on_two_factor_shares_the_limit_of_the_other_password_checks(): void
+    {
+        $client = Client::factory()->create(['password' => 'old-password-1']);
+        $this->actingAs($client, 'web');
+
+        foreach (range(1, 3) as $try) {
+            $this->post(route('client.account.two-factor.app'), ['two_factor_current_password' => 'wrong-password-'.$try])->assertSessionHasErrors('two_factor_current_password');
+            $this->post(route('client.account.two-factor.email'), ['two_factor_current_password' => 'wrong-password-'.$try])->assertSessionHasErrors('two_factor_current_password');
+        }
+
+        $this->post(route('client.account.two-factor.app'), ['two_factor_current_password' => 'old-password-1'])->assertStatus(429);
+        $this->post(route('client.account.two-factor.email'), ['two_factor_current_password' => 'old-password-1'])->assertStatus(429);
+        $this->put(route('client.account.password'), ['current_password' => 'old-password-1', 'password' => 'new-password-1', 'password_confirmation' => 'new-password-1'])->assertStatus(429);
+        $this->assertNull($client->fresh()->two_factor_secret);
+    }
+
     public function test_every_password_check_on_the_account_page_shares_one_limit(): void
     {
         $client = Client::factory()->create(['password' => 'old-password-1']);

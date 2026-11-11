@@ -5,6 +5,7 @@ namespace Tests\Feature\Auth;
 use App\Mail\TemplatedMessage;
 use App\Models\Client;
 use App\Models\SocialAccount;
+use App\Security\Totp;
 use App\Support\Settings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -81,6 +82,72 @@ class SocialLoginTest extends TestCase
 
         $this->assertAuthenticatedAs($client, 'web');
         $this->assertSame(1, Client::query()->count());
+    }
+
+    public function test_only_the_exact_email_signs_in_to_an_existing_account(): void
+    {
+        // Like MySQL and MariaDB, the database finds the account for other spellings of its address.
+        $this->compareEmailsLikeMysql('clients');
+        $client = Client::factory()->create(['email' => 'raz@example.com', 'email_verified_at' => now()]);
+        $client->socialAccounts()->create(['provider' => 'github', 'provider_user_id' => 'gh-own']);
+        $this->enable('google');
+
+        // Google answers with the profile set at that moment.
+        $profile = [];
+        Http::fake([
+            'oauth2.googleapis.com/token' => Http::response(['access_token' => 'g-token']),
+            'openidconnect.googleapis.com/v1/userinfo' => function () use (&$profile) {
+                return Http::response($profile);
+            },
+        ]);
+
+        foreach (['räz@example.com', 'ｒaz@example.com', 'raz@exämple.com'] as $try => $spelling) {
+            $this->assertTrue($client->is(Client::query()->where('email', $spelling)->first()));
+            $profile = ['sub' => 'g-other-'.$try, 'email' => $spelling, 'email_verified' => true];
+
+            // It is another mailbox, so it gets neither this account nor a second one.
+            $this->completeSignIn('google')
+                ->assertRedirect(route('client.login'))
+                ->assertSessionHas('error', 'An account with this email already exists. Sign in with your password, then connect Google on your Account page.');
+            $this->assertGuest('web');
+        }
+
+        $this->assertSame(1, Client::query()->count());
+        $this->assertSame(['gh-own'], SocialAccount::query()->pluck('provider_user_id')->all());
+
+        // The exact address still signs in, in any letter case.
+        $profile = ['sub' => 'g-own', 'email' => 'Raz@Example.com', 'email_verified' => true];
+        $this->completeSignIn('google')->assertRedirect(route('client.dashboard'));
+        $this->assertAuthenticatedAs($client, 'web');
+        $this->assertTrue($client->socialAccounts()->where('provider', 'google')->where('provider_user_id', 'g-own')->exists());
+        Http::assertSentCount(8);
+    }
+
+    public function test_signing_in_by_email_keeps_the_provider_account_the_client_connected(): void
+    {
+        $client = Client::factory()->create(['email' => 'raz@example.com', 'email_verified_at' => now()]);
+        $client->socialAccounts()->create(['provider' => 'google', 'provider_user_id' => 'g-own', 'email' => 'mer@example.com']);
+        $this->enable('google');
+        $this->fakeGoogle(['sub' => 'g-second', 'email' => 'raz@example.com', 'email_verified' => true]);
+
+        // Another Google account with the account's confirmed email signs in, but the connected one
+        // is only replaced on the Account page, with the password.
+        $this->completeSignIn('google')->assertRedirect(route('client.dashboard'));
+        $this->assertAuthenticatedAs($client, 'web');
+        $this->assertSame(['g-own'], $client->socialAccounts()->pluck('provider_user_id')->all());
+    }
+
+    public function test_signing_in_by_email_connects_nothing_before_the_two_factor_code(): void
+    {
+        $client = Client::factory()->create(['email' => 'raz@example.com', 'email_verified_at' => now()]);
+        $client->forceFill(['two_factor_method' => 'totp', 'two_factor_secret' => Totp::generateSecret(), 'two_factor_confirmed_at' => now()])->save();
+        $this->enable('google');
+        $this->fakeGoogle(['sub' => 'g-9', 'email' => 'raz@example.com', 'email_verified' => true]);
+
+        // The code is still asked, and until it is typed the Google account is not connected.
+        $this->completeSignIn('google')->assertRedirect(route('client.two-factor.challenge'));
+        $this->assertGuest('web');
+        $this->assertSame(0, SocialAccount::query()->count());
     }
 
     public function test_google_does_not_take_over_an_account_whose_email_was_never_confirmed(): void

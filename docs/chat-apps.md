@@ -19,9 +19,19 @@ from the internet over https for this to work.
 
 ### Staff alerts in a Telegram group
 
-To get new tickets, client replies and orders in your team's Telegram group, add the bot to the group, reload Settings
-→ Chat apps and pick the group under **Staff alerts go to**. Alerts are sent for the same things your staff get
-emails about.
+To get new tickets, client replies and orders in your team's Telegram group:
+
+1. Add the bot to the group.
+2. Open Settings → Chat apps. Under **Staff alerts go to** it shows a message that starts with `/start@YourBot`. Copy
+   it and send it in the group. Or press **Pick the group in Telegram**, which adds the bot and sends the message for
+   you.
+3. The bot answers in the group. Reload Settings → Chat apps, pick the group and save.
+
+Anyone on Telegram can add a bot to a group, so a group is only listed after this message was sent in it. The message
+works once and for 30 minutes; the settings page shows a new one after that. Groups that an older version listed
+without this step are no longer shown. The group you already chose keeps getting alerts.
+
+Alerts are sent for the same things your staff get emails about.
 
 ## WhatsApp
 
@@ -106,9 +116,11 @@ are sent next to the email: emails always go out as before.
 
 Clients open **Account → Get alerts on your phone** in the client area. There is a QR code and a link for each
 connected app. Scanning the code opens the chat with a one-time code ready; the client presses Start or send, and
-the chat is linked to their account. The code only works for that client and for 30 minutes.
+the chat is linked to their account. The code only works for that client and for 30 minutes. The client gets an
+email each time a new chat is linked, and the link is noted in the activity log.
 
-A client can disconnect from the client area, or by sending `/stop` in the chat.
+A client can disconnect from the client area, or by sending `/stop` in the chat. A password reset, or a new password
+set by staff, also disconnects every linked chat; when clients change their own password, a ticked box does the same.
 
 ### What clients can send
 
