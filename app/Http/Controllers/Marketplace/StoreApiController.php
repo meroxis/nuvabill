@@ -215,6 +215,8 @@ class StoreApiController extends Controller
 
         $build = $builder->build($version, $owner);
 
-        return response()->download($build['path'], $version->packageSlug().'-'.$version->version.'.zip', ['Content-Type' => 'application/zip']);
+        // A file response marks itself public. A paid build carries the buyer's license stamp, so no cache may keep it.
+        return response()->download($build['path'], $version->packageSlug().'-'.$version->version.'.zip', ['Content-Type' => 'application/zip'])
+            ->setCache(['private' => true, 'no_store' => true]);
     }
 }

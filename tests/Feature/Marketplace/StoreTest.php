@@ -199,6 +199,22 @@ class StoreTest extends TestCase
         $this->get(str_replace('https://', 'http://', $url).'1')->assertForbidden();
     }
 
+    public function test_package_downloads_in_review_or_with_a_license_stamp_are_never_cached(): void
+    {
+        $paid = $this->liveItem('aurora', 'theme', 5900, 1900);
+        $license = License::create(['key' => License::newKey(), 'marketplace_item_id' => $paid->id, 'client_id' => $this->client()->id, 'status' => 'active', 'updates_until' => now()->addYear()]);
+        $url = $this->postJson(route('marketplace.api.download'), ['slug' => 'aurora', 'license_key' => $license->key, 'site' => 'billing.example.org', 'nuvabill' => '0.3.0'])->assertOk()->json('url');
+
+        $this->get($url)->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+
+        $pending = app(VersionUploader::class)->upload($this->item('calm', 'theme', 2500, 900), $this->zip('calm', '1.0.0', 'theme.json', ['requires' => '>=0.3.0']));
+        $this->signInAdmin();
+
+        $this->get(route('admin.store.reviews.download', $pending))->assertOk()
+            ->assertDownload('calm-1.0.0.zip')
+            ->assertHeader('Cache-Control', 'no-store, private');
+    }
+
     public function test_buying_an_item_issues_a_license_and_pays_the_developer_their_share(): void
     {
         $item = $this->liveItem('swift', 'orderform', 3900, 1500);

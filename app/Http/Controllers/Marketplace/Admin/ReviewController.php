@@ -38,7 +38,9 @@ class ReviewController extends Controller
     {
         $version->loadMissing('item');
 
-        return response()->download($version->path(), $version->item->slug.'-'.$version->version.'.zip');
+        // A file response marks itself public. A package still in review must not be kept by any cache.
+        return response()->download($version->path(), $version->item->slug.'-'.$version->version.'.zip')
+            ->setCache(['private' => true, 'no_store' => true]);
     }
 
     public function checklist(Request $request, MarketplaceVersion $version): RedirectResponse
