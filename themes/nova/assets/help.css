@@ -156,6 +156,34 @@
         padding-inline-start: 1.4em;
     }
 
+    /* Tailwind's reset removes list markers, so bring them back for written content. */
+    .prose ul {
+        list-style: disc;
+    }
+
+    .prose ol {
+        list-style: decimal;
+    }
+
+    .prose ul ul,
+    .prose ol ul {
+        list-style: circle;
+    }
+
+    .prose ol ol,
+    .prose ul ol {
+        list-style: lower-alpha;
+    }
+
+    .prose li > ul,
+    .prose li > ol {
+        margin: 0.3em 0 0;
+    }
+
+    .prose li::marker {
+        color: var(--nb-muted);
+    }
+
     .prose li + li {
         margin-top: 0.3em;
     }
@@ -243,6 +271,7 @@
     .help-suggestions ul {
         margin: 0;
         padding-inline-start: 1.2em;
+        list-style: disc;
     }
 
     .news-date {

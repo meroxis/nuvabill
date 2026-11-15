@@ -533,6 +533,29 @@
         margin-bottom: 0;
     }
 
+    /* Release notes and payment instructions can hold Markdown lists; Tailwind's reset hides their markers. */
+    .prose-sm ul,
+    .prose-sm ol {
+        margin: 0 0 0.6rem;
+        padding-inline-start: 1.3em;
+    }
+
+    .prose-sm ul {
+        list-style: disc;
+    }
+
+    .prose-sm ol {
+        list-style: decimal;
+    }
+
+    .prose-sm :is(ul, ol):last-child {
+        margin-bottom: 0;
+    }
+
+    .prose-sm li + li {
+        margin-top: 0.2em;
+    }
+
     /* Pagination */
     .pagination {
         display: flex;
