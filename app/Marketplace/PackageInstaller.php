@@ -6,6 +6,7 @@ use App\Extensions\ExtensionManager;
 use App\Extensions\ExtensionManifest;
 use App\Models\Extension;
 use App\Models\MarketplaceInstall;
+use App\Seo\Sitemap;
 use App\Support\Activity;
 use App\Support\Settings;
 use App\Support\Themes;
@@ -202,6 +203,11 @@ class PackageInstaller
         $install->delete();
         $this->extensions->refresh();
         Cache::forget(LicenseChecker::UNLICENSED_CACHE_KEY);
+
+        // A removed add-on's pages leave sitemap.xml now, not when the cached copy runs out.
+        if ($type->isExtension()) {
+            rescue(fn () => Sitemap::forget());
+        }
 
         Activity::log('marketplace.removed', "Removed {$install->name} from the marketplace installs");
     }

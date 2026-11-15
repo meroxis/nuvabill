@@ -4,9 +4,12 @@ namespace Tests\Feature\Marketplace;
 
 use App\Extensions\ExtensionManager;
 use App\Http\Controllers\HomePageController;
+use App\Marketplace\PackageInstaller;
+use App\Models\MarketplaceInstall;
 use App\Seo\Sitemap;
 use Database\Seeders\DefaultDataSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
@@ -77,6 +80,41 @@ class AddonPublicPagesTest extends TestCase
 
         $this->assertStringContainsString('<loc>'.url('hello').'</loc>', $xml);
         $this->assertStringContainsString('<loc>'.url('store').'</loc>', $xml);
+    }
+
+    public function test_the_sitemap_changes_at_once_when_an_addon_is_switched_on_or_off(): void
+    {
+        $page = '<loc>'.url('hello').'</loc>';
+        $this->assertStringNotContainsString($page, app(Sitemap::class)->xml());
+
+        app(ExtensionManager::class)->saveSettings('homepage', [], true);
+        $this->assertStringContainsString($page, app(Sitemap::class)->xml());
+
+        app(ExtensionManager::class)->saveSettings('homepage', [], false);
+        $this->assertStringNotContainsString($page, app(Sitemap::class)->xml());
+    }
+
+    public function test_removing_an_addon_takes_its_pages_out_of_the_sitemap_at_once(): void
+    {
+        // Removing an add-on deletes its folder, so work on a copy of the fixtures.
+        $path = sys_get_temp_dir().'/nuvabill-addon-pages-'.uniqid();
+        File::copyDirectory(base_path('tests/Fixtures/extensions'), $path);
+        config(['nuvabill.extensions_path' => $path]);
+        $this->app->forgetInstance(ExtensionManager::class);
+        $page = '<loc>'.url('hello').'</loc>';
+
+        try {
+            app(ExtensionManager::class)->saveSettings('homepage', [], true);
+            $this->assertStringContainsString($page, app(Sitemap::class)->xml());
+
+            $install = MarketplaceInstall::query()->create(['slug' => 'homepage', 'type' => 'addon', 'name' => 'Home page add-on', 'version' => '1.0.0']);
+            app(PackageInstaller::class)->uninstall($install);
+
+            $this->assertDirectoryDoesNotExist($path.'/addons/homepage');
+            $this->assertStringNotContainsString($page, app(Sitemap::class)->xml());
+        } finally {
+            File::deleteDirectory($path);
+        }
     }
 
     public function test_an_addon_without_the_public_page_permission_gets_no_pages(): void

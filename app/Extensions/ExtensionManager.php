@@ -8,6 +8,7 @@ use App\Contracts\ServerModule;
 use App\Extensions\Addons\Addon;
 use App\Http\Middleware\EnsureAdminPermission;
 use App\Models\Extension;
+use App\Seo\Sitemap;
 use App\Support\Installation;
 use App\Support\Settings;
 use Illuminate\Console\Scheduling\Schedule;
@@ -141,6 +142,9 @@ class ExtensionManager
     }
 
     /**
+     * Save an extension's settings and whether it is switched on. Saving an add-on makes sitemap.xml
+     * again, because its pages there depend on it being switched on and set up.
+     *
      * @param  array<string, mixed>  $settings
      */
     public function saveSettings(string $slug, array $settings, bool $enabled): void
@@ -149,6 +153,10 @@ class ExtensionManager
         $record->update(['settings' => $settings, 'is_enabled' => $enabled]);
         $this->records = null;
         $this->activeAddons = null;
+
+        if ($this->find($slug)?->type === ExtensionManifest::TYPE_ADDON) {
+            rescue(fn () => Sitemap::forget());
+        }
     }
 
     /**
