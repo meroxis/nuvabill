@@ -5315,5 +5315,7 @@
     "The exchange rate changed after a payment for this invoice was started, so that payment did not cover the full amount. The rest is still to pay.": "อัตราแลกเปลี่ยนเปลี่ยนไปหลังจากเริ่มการชำระเงินสำหรับใบแจ้งหนี้นี้ การชำระเงินนั้นจึงไม่ครอบคลุมยอดเต็ม ยังต้องชำระส่วนที่เหลือ",
     "Coupon :code is not for this plan, so it gives no discount there.": "คูปอง :code ใช้ไม่ได้กับแผนนี้ จึงไม่ได้รับส่วนลดสำหรับแผนนี้",
     "not for your current plan": "ใช้ไม่ได้กับแผนปัจจุบันของคุณ",
-    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "ยืนยันก่อนว่านี่คือบัญชีของคุณ จากนั้นคุณจะเปิดการยืนยันตัวตนสองขั้นตอนได้"
+    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "ยืนยันก่อนว่านี่คือบัญชีของคุณ จากนั้นคุณจะเปิดการยืนยันตัวตนสองขั้นตอนได้",
+    "Only link languages that are translated": "ลิงก์เฉพาะภาษาที่แปลแล้ว",
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "เวอร์ชันภาษาจะถูกเสนอให้ Google ก็ต่อเมื่อเขียนชื่อและคำอธิบายสำหรับการค้นหาแล้วเท่านั้น เวอร์ชันที่ยังไม่แปลจะชี้ไปยังภาษาหลัก"
 }

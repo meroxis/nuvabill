@@ -5315,5 +5315,7 @@
     "The exchange rate changed after a payment for this invoice was started, so that payment did not cover the full amount. The rest is still to pay.": "此账单的一笔付款开始后汇率发生了变化，因此该付款未能覆盖全部金额。剩余金额仍需支付。",
     "Coupon :code is not for this plan, so it gives no discount there.": "优惠码 :code 不适用于此套餐，因此在该套餐上没有折扣。",
     "not for your current plan": "不适用于您当前的套餐",
-    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "请先确认这是您的账户。然后即可开启两步验证。"
+    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "请先确认这是您的账户。然后即可开启两步验证。",
+    "Only link languages that are translated": "只链接已翻译的语言",
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "只有写好搜索标题和描述的语言版本才会提供给 Google。未翻译的版本指向主语言。"
 }

@@ -2,6 +2,7 @@
 
 namespace App\Seo;
 
+use App\Support\Locales;
 use Illuminate\Contracts\Pagination\Paginator;
 use Illuminate\Http\Request;
 
@@ -12,7 +13,7 @@ use Illuminate\Http\Request;
  *
  * Add-ons with public pages call allowIndexing() on it: every page that is not on the list
  * below is hidden from search engines unless it asks. Public lists split into pages also call
- * paginated().
+ * paginated(). Pages translated into only some languages call setReadyLanguages() (0.7.4+).
  */
 class Seo
 {
@@ -68,6 +69,25 @@ class Seo
      */
     private array $data = [];
 
+    /**
+     * The other languages this page is really translated into; null when every language is.
+     *
+     * @var list<string>|null
+     */
+    private ?array $readyLanguages = null;
+
+    /**
+     * The page this one is a copy of, as a path on this site.
+     */
+    private ?string $canonicalPath = null;
+
+    private bool $followLinks = false;
+
+    /**
+     * hide() was called: search engines may not follow the page's links either.
+     */
+    private bool $hidden = false;
+
     public function setTitle(?string $title): static
     {
         $this->title = self::clean($title);
@@ -90,8 +110,94 @@ class Seo
     public function hide(): static
     {
         $this->indexable = false;
+        $this->hidden = true;
+        $this->followLinks = false;
 
         return $this;
+    }
+
+    /**
+     * Hides the page from search engines, but lets them follow its links, for pages such as an
+     * empty list or an overview that another page replaces. hide() wins when both are called.
+     */
+    public function hideButFollowLinks(): static
+    {
+        $this->indexable = false;
+        $this->followLinks = ! $this->hidden;
+
+        return $this;
+    }
+
+    public function followsLinks(): bool
+    {
+        return $this->followLinks;
+    }
+
+    /**
+     * The languages this page is really translated into. The default language always counts, so
+     * pass the others. Untranslated language versions then point search engines to the main
+     * language and get no language links. Add-ons call this from their page code; null means
+     * every language is ready (the default).
+     *
+     * @param  list<string>|null  $locales
+     */
+    public function setReadyLanguages(?array $locales): static
+    {
+        $this->readyLanguages = $locales === null ? null : array_values(array_unique(array_filter(
+            $locales,
+            fn (mixed $locale): bool => is_string($locale) && isset(Locales::ALL[$locale]),
+        )));
+
+        return $this;
+    }
+
+    /**
+     * The default language and the ready ones, in the order of the language menu, or null when
+     * every language is ready.
+     *
+     * @return list<string>|null
+     */
+    public function readyLanguages(): ?array
+    {
+        if ($this->readyLanguages === null) {
+            return null;
+        }
+
+        $default = Locales::default();
+
+        return array_values(array_filter(
+            array_keys(Locales::enabled()),
+            fn (string $locale): bool => $locale === $default || in_array($locale, $this->readyLanguages, true),
+        ));
+    }
+
+    /**
+     * This page is a copy of another page of this site, such as a plan shown on its group's page:
+     * search engines are sent there, and the page gets no language links. Takes a path on this
+     * site ("store/web-hosting"); full addresses and anything else are ignored. Null undoes it.
+     */
+    public function setCanonicalPath(?string $path): static
+    {
+        if ($path === null) {
+            $this->canonicalPath = null;
+
+            return $this;
+        }
+
+        $path = trim($path);
+
+        if (mb_strlen($path) > 2000 || preg_match('#//|\\\\|[?\#]|[\x00-\x1F\x7F]|^[a-z][a-z0-9+.\-]*:#i', $path)) {
+            return $this;
+        }
+
+        $this->canonicalPath = trim($path, '/');
+
+        return $this;
+    }
+
+    public function canonicalPath(): ?string
+    {
+        return $this->canonicalPath;
     }
 
     public function allowIndexing(): static

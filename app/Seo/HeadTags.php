@@ -90,25 +90,33 @@ class HeadTags
         $tags = [];
 
         if (! $indexable) {
-            return $has('name="robots"') ? '' : '<meta name="robots" content="noindex, nofollow">';
+            // Empty lists and overview pages stay out of the results, but their links still count.
+            $follow = $this->seo->followsLinks() && setting('seo.visible');
+
+            return $has('name="robots"') ? '' : '<meta name="robots" content="'.($follow ? 'noindex, follow' : 'noindex, nofollow').'">';
         }
 
         // Odd values, such as ?lang[]=x, count as none.
         $lang = $request->query('lang');
         $lang = is_string($lang) && isset(Locales::enabled()[$lang]) ? $lang : null;
+        $ready = $this->seo->readyLanguages();
+        // A language the page is not translated into is a copy of the main language.
+        $own = $lang === null || LanguageVersions::isOwnVersion($lang, $ready);
+        // A page that copies another page of this site sends search engines there.
+        $copyOf = $this->seo->canonicalPath();
         // Each page of a list, such as /announcements?page=2, is a page of its own. Anywhere
         // else ?page= is ignored, so /?page=7 still points to /.
         $page = $this->seo->page();
-        $canonical = SiteAddress::url($request->path(), $lang, $page);
+        $canonical = SiteAddress::url($copyOf ?? $request->path(), $own ? $lang : null, $copyOf === null ? $page : null);
 
         if (! $has('rel="canonical"')) {
             $tags[] = '<link rel="canonical" href="'.e($canonical).'">';
         }
 
-        $locales = array_keys(Locales::enabled());
+        $offered = $copyOf === null && $own ? LanguageVersions::offered($ready) : [];
 
-        if (setting('seo.language_links') && count($locales) > 1 && ! $has('hreflang=')) {
-            foreach ($locales as $locale) {
+        if ($offered !== [] && ! $has('hreflang=')) {
+            foreach ($offered as $locale) {
                 $tags[] = '<link rel="alternate" hreflang="'.e(Locales::htmlLang($locale)).'" href="'.e(SiteAddress::url($request->path(), $locale, $page)).'">';
             }
 

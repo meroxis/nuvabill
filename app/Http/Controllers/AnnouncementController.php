@@ -30,7 +30,7 @@ class AnnouncementController extends Controller
     {
         $this->ensureEnabled();
         $announcement = Announcement::query()->public()->withTranslation()->where('slug', $announcement)->firstOrFail();
-        $seo->setDescription($announcement->excerpt())->setType('article');
+        $seo->setDescription($announcement->excerpt())->setType('article')->setReadyLanguages($announcement->readyLocales());
 
         return view('theme::announcements.show', [
             'announcement' => $announcement,

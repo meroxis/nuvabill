@@ -170,8 +170,10 @@ abstract class Addon
 
     /**
      * The add-on's public pages for sitemap.xml: paths without the first slash, and when each last changed.
+     * From 0.7.4 an entry may add "languages": the other languages the page is translated into, such
+     * as ['ar', 'de']. Only those then get language links. Leave it out when every language is ready.
      *
-     * @return list<array{path: string, updated: Carbon|null}>
+     * @return list<array{path: string, updated: Carbon|null, languages?: list<string>|null}>
      */
     public function sitemapPages(): array
     {

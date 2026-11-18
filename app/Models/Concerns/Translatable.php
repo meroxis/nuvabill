@@ -3,6 +3,7 @@
 namespace App\Models\Concerns;
 
 use App\Models\ContentTranslation;
+use App\Support\ContentLanguages;
 use App\Support\Locales;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -21,6 +22,43 @@ trait Translatable
     public function translations(): MorphMany
     {
         return $this->morphMany(ContentTranslation::class, 'translatable');
+    }
+
+    /**
+     * Every language, for lists that need them all at once, such as the sitemap. Eager-load this
+     * one (not "translations", which pages load for one language only) before readyLocales().
+     *
+     * @return MorphMany<ContentTranslation, $this>
+     */
+    public function allTranslations(): MorphMany
+    {
+        return $this->morphMany(ContentTranslation::class, 'translatable');
+    }
+
+    /**
+     * Other switched-on languages whose translation is complete: a title, and a text when
+     * $needsBody. Uses allTranslations when it is loaded, else asks the database.
+     *
+     * @return list<string> In the order of the language menu; the main language is not included.
+     */
+    public function readyLocales(bool $needsBody = true): array
+    {
+        $others = array_keys(ContentLanguages::others());
+
+        if ($others === []) {
+            return [];
+        }
+
+        $rows = $this->relationLoaded('allTranslations')
+            ? $this->getRelation('allTranslations')
+            : $this->translations()->whereIn('locale', $others)->get(['locale', 'title', 'body']);
+
+        $complete = $rows
+            ->filter(fn (ContentTranslation $row): bool => filled($row->title) && (! $needsBody || filled($row->body)))
+            ->pluck('locale')
+            ->all();
+
+        return array_values(array_filter($others, fn (string $locale): bool => in_array($locale, $complete, true)));
     }
 
     /**

@@ -5315,5 +5315,7 @@
     "The exchange rate changed after a payment for this invoice was started, so that payment did not cover the full amount. The rest is still to pay.": "نرخی گۆڕینەوەی دراو دوای دەستپێکردنی پارەدانێک بۆ ئەم پسوولەیە گۆڕا، بۆیە ئەو پارەدانە هەموو بڕەکەی نەگرتەوە. باقییەکەی هێشتا ماوە بدرێت.",
     "Coupon :code is not for this plan, so it gives no discount there.": "کۆپۆنی :code بۆ ئەم پلانە نییە، بۆیە لەوێ داشکاندن نادات.",
     "not for your current plan": "بۆ پلانی ئێستات نییە",
-    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "سەرەتا پشتڕاستی بکەرەوە کە ئەمە ئەکاونتی تۆیە. پاشان دەتوانیت چوونەژوورەوەی دوو هەنگاوی چالاک بکەیت."
+    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "سەرەتا پشتڕاستی بکەرەوە کە ئەمە ئەکاونتی تۆیە. پاشان دەتوانیت چوونەژوورەوەی دوو هەنگاوی چالاک بکەیت.",
+    "Only link languages that are translated": "تەنها ئەو زمانانە ببەستە کە وەرگێڕدراون",
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "وەشانی زمانێک تەنها کاتێک بە Google پێشکەش دەکرێت کە ناونیشان و وەسفی گەڕانەکەی نووسرابن. وەشانە وەرنەگێڕدراوەکان ئاماژە بە زمانی سەرەکی دەکەن."
 }

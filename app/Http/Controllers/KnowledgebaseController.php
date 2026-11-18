@@ -47,7 +47,7 @@ class KnowledgebaseController extends Controller
     {
         $this->ensureEnabled();
         $category = KbCategory::query()->visible()->withTranslation()->where('slug', $category)->firstOrFail();
-        $seo->setDescription($category->localized('body') ?: null);
+        $seo->setDescription($category->localized('body') ?: null)->setReadyLanguages($category->readyLocales(false));
 
         return view('theme::knowledgebase.category', [
             'category' => $category,
@@ -59,7 +59,7 @@ class KnowledgebaseController extends Controller
     {
         $this->ensureEnabled();
         $article = $this->find($category, $article);
-        $seo->setDescription($article->excerpt())->setType('article');
+        $seo->setDescription($article->excerpt())->setType('article')->setReadyLanguages($article->readyLocales());
 
         return view('theme::knowledgebase.article', [
             'article' => $article,

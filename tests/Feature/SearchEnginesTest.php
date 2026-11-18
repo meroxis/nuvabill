@@ -165,7 +165,8 @@ class SearchEnginesTest extends TestCase
 
     public function test_the_sitemap_lists_store_pages_and_their_language_versions(): void
     {
-        app(Settings::class)->setMany(['locale.enabled' => ['en', 'de']]);
+        // Every language version, as before 0.7.4 (see SeoLanguagesTest for translated ones only).
+        app(Settings::class)->setMany(['locale.enabled' => ['en', 'de'], 'seo.ready_languages_only' => false]);
         $product = Product::factory()->priced(500)->create();
         $emptyGroup = ProductGroup::factory()->create(['slug' => 'nothing-here']);
 
@@ -200,7 +201,8 @@ class SearchEnginesTest extends TestCase
 
     public function test_language_versions_link_to_each_other(): void
     {
-        app(Settings::class)->setMany(['locale.enabled' => ['en', 'de', 'ar']]);
+        // Every language version, as before 0.7.4 (see SeoLanguagesTest for translated ones only).
+        app(Settings::class)->setMany(['locale.enabled' => ['en', 'de', 'ar'], 'seo.ready_languages_only' => false]);
         $product = Product::factory()->priced(500)->create();
         $path = $product->storePath();
 

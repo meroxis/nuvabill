@@ -87,6 +87,42 @@ class SeoText
     }
 
     /**
+     * The home page title in a language: the one written for it, else the main one.
+     */
+    public static function homeTitleIn(string $locale): string
+    {
+        return SeoTranslations::title(SeoTranslations::HOME, $locale) ?? self::homeTitle();
+    }
+
+    /**
+     * The home page description in a language: the one written for it, else the main one.
+     */
+    public static function homeDescriptionIn(string $locale): string
+    {
+        return SeoTranslations::description(SeoTranslations::HOME, $locale) ?? self::homeDescription();
+    }
+
+    public static function groupTitleIn(ProductGroup $group, string $locale): string
+    {
+        return SeoTranslations::title($group, $locale) ?? self::groupTitle($group);
+    }
+
+    public static function groupDescriptionIn(ProductGroup $group, string $locale): string
+    {
+        return SeoTranslations::description($group, $locale) ?? self::groupDescription($group);
+    }
+
+    public static function productTitleIn(Product $product, string $locale): string
+    {
+        return SeoTranslations::title($product, $locale) ?? self::productTitle($product);
+    }
+
+    public static function productDescriptionIn(Product $product, string $locale): string
+    {
+        return SeoTranslations::description($product, $locale) ?? self::productDescription($product);
+    }
+
+    /**
      * A title made from the product and group names, with the company name when it fits.
      */
     public static function suggestProductTitle(Product $product): string

@@ -7,6 +7,7 @@ use App\Enums\BillingCycle;
 use App\Enums\ProductType;
 use App\Enums\ServiceStatus;
 use App\Provisioning\Hardware\MachineInventory;
+use App\Seo\SeoTranslations;
 use App\Seo\Sitemap;
 use Database\Factories\ProductFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -78,7 +79,10 @@ class Product extends Model
     protected static function booted(): void
     {
         static::saved(fn () => Sitemap::forget());
-        static::deleted(fn () => Sitemap::forget());
+        static::deleted(function (Product $product): void {
+            SeoTranslations::forget($product);
+            Sitemap::forget();
+        });
 
         // A new web address or group: the old store address forwards to the new one.
         static::updated(function (Product $product): void {

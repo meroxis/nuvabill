@@ -251,6 +251,8 @@ class Settings
         'seo.sitemap' => true,
         'seo.structured_data' => true,
         'seo.language_links' => true,
+        // Only language versions with their own search texts are offered to search engines.
+        'seo.ready_languages_only' => true,
         'seo.robots_extra' => '',
         'seo.share_image' => null,
         'backups.last_at' => null,

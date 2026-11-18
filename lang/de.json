@@ -5315,5 +5315,7 @@
     "The exchange rate changed after a payment for this invoice was started, so that payment did not cover the full amount. The rest is still to pay.": "Der Wechselkurs hat sich geändert, nachdem eine Zahlung für diese Rechnung begonnen wurde, daher hat diese Zahlung nicht den vollen Betrag gedeckt. Der Rest ist noch zu zahlen.",
     "Coupon :code is not for this plan, so it gives no discount there.": "Gutschein :code gilt nicht für diesen Tarif und gibt dort daher keinen Rabatt.",
     "not for your current plan": "nicht für Ihren aktuellen Tarif",
-    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "Bestätigen Sie zuerst, dass dies Ihr Konto ist. Dann können Sie die Zwei-Faktor-Authentifizierung aktivieren."
+    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "Bestätigen Sie zuerst, dass dies Ihr Konto ist. Dann können Sie die Zwei-Faktor-Authentifizierung aktivieren.",
+    "Only link languages that are translated": "Nur übersetzte Sprachen verknüpfen",
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "Eine Sprachversion wird Google nur angeboten, wenn ihr Suchtitel und ihre Beschreibung geschrieben sind. Nicht übersetzte Versionen verweisen auf die Hauptsprache."
 }

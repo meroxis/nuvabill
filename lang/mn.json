@@ -5315,5 +5315,7 @@
     "The exchange rate changed after a payment for this invoice was started, so that payment did not cover the full amount. The rest is still to pay.": "Энэ нэхэмжлэхийн төлбөрийг эхлүүлсний дараа валютын ханш өөрчлөгдсөн тул тэр төлбөр бүтэн дүнг хамраагүй. Үлдэгдлийг төлөх шаардлагатай хэвээр байна.",
     "Coupon :code is not for this plan, so it gives no discount there.": ":code купон энэ багцад хамаарахгүй тул тэнд хөнгөлөлт өгөхгүй.",
     "not for your current plan": "таны одоогийн багцад хамаарахгүй",
-    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "Эхлээд энэ таны бүртгэл гэдгийг баталгаажуулна уу. Дараа нь хоёр шатлалт нэвтрэлтийг асааж болно."
+    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "Эхлээд энэ таны бүртгэл гэдгийг баталгаажуулна уу. Дараа нь хоёр шатлалт нэвтрэлтийг асааж болно.",
+    "Only link languages that are translated": "Зөвхөн орчуулсан хэлүүдийг холбох",
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "Хайлтын гарчиг, тайлбар нь бичигдсэн үед л хэлний хувилбарыг Google-д санал болгоно. Орчуулаагүй хувилбарууд үндсэн хэл рүү заана."
 }

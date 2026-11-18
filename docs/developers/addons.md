@@ -100,7 +100,7 @@ call it from your code.
 | `publicRouteName(string $name): string` | use | Full name of a visitor route. | 0.6.1 |
 | `servesHomePage(): bool` | override | Return `true` to show your own home page. | 0.6.1 |
 | `homePage(Request $request): mixed` | override | The home page response. | 0.6.1 |
-| `sitemapPages(): array` | override | Your visitor pages for `sitemap.xml`. | 0.6.1 |
+| `sitemapPages(): array` | override | Your visitor pages for `sitemap.xml`. `languages` per page from 0.7.4. | 0.6.1 |
 | `webhookRoutes(): void` | override | Addresses other services send data to. | 0.6.10 |
 | `webhookRouteName(string $name): string` | use | Full name of a webhook route. | 0.6.10 |
 | `hardwareRoutes(): void` | override | Pages under Admin → Hardware. | 0.7.0 |
@@ -519,6 +519,39 @@ public function sitemapPages(): array
 
 A leading `/` is removed. Entries without a string `path` are skipped. The sitemap is cached: call
 `App\Seo\Sitemap::forget()` when your pages change.
+
+From 0.7.4 an entry may also say which other languages the page is translated into, with `languages`. Only those
+languages (and the main one) then get language links in the sitemap. Leave it out when the page is the same in
+every language, for example when only the menus change. Unknown language codes are ignored, and older versions of
+Nuvabill ignore the key.
+
+```php
+['path' => 'about-acme', 'updated' => null, 'languages' => ['ar', 'de']],
+```
+
+### Language versions (0.7.4+)
+
+Visitors pick a language with `?lang=de`. Search engines are told about every language version of a page, unless
+the page says it is translated into only some of them. With "Only link languages that are translated" on (Settings
+→ Search engines, on by default), an untranslated version then points to the main language and gets no language
+links. Call these in your page code:
+
+```php
+$seo = app(\App\Seo\Seo::class)->allowIndexing();
+
+// Runs on 0.7.3 and older too: the methods are new in 0.7.4.
+if (method_exists($seo, 'setReadyLanguages')) {
+    $seo->setReadyLanguages(['ar', 'de']); // the main language always counts
+}
+```
+
+| Method | What it does |
+|---|---|
+| `setReadyLanguages(?array $locales)` | The other languages this page is really translated into. `null` (the default) means all. |
+| `setCanonicalPath(?string $path)` | This page is a copy of another page of this site, such as `store/web-hosting`. Search engines are sent there, and the page gets no language links. Only paths on this site are accepted. |
+| `hideButFollowLinks()` | Keeps the page out of search results, but lets search engines follow its links (`noindex, follow`), for empty lists or overview pages. `hide()` wins when both are called. |
+
+Give the same `languages` in `sitemapPages()`, so the sitemap and the page agree.
 
 ## Webhooks
 

@@ -5315,5 +5315,7 @@
     "The exchange rate changed after a payment for this invoice was started, so that payment did not cover the full amount. The rest is still to pay.": "Bu faturanın bir ödemesi başlatıldıktan sonra döviz kuru değişti, bu yüzden o ödeme tutarın tamamını karşılamadı. Kalanın hâlâ ödenmesi gerekiyor.",
     "Coupon :code is not for this plan, so it gives no discount there.": ":code kuponu bu paket için geçerli değil, bu yüzden bu pakette indirim sağlamaz.",
     "not for your current plan": "mevcut paketiniz için geçerli değil",
-    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "Önce bu hesabın size ait olduğunu onaylayın. Ardından iki adımlı doğrulamayı açabilirsiniz."
+    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "Önce bu hesabın size ait olduğunu onaylayın. Ardından iki adımlı doğrulamayı açabilirsiniz.",
+    "Only link languages that are translated": "Yalnızca çevrilmiş dilleri bağla",
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "Bir dil sürümü, yalnızca arama başlığı ve açıklaması yazıldığında Google'a sunulur. Çevrilmemiş sürümler ana dile yönlendirir."
 }

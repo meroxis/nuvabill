@@ -5315,5 +5315,7 @@
     "The exchange rate changed after a payment for this invoice was started, so that payment did not cover the full amount. The rest is still to pay.": "Курс обмена изменился после начала оплаты этого счёта, поэтому тот платёж не покрыл всю сумму. Остаток ещё нужно оплатить.",
     "Coupon :code is not for this plan, so it gives no discount there.": "Купон :code не действует для этого тарифа, поэтому скидки на него нет.",
     "not for your current plan": "не для вашего текущего тарифа",
-    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "Сначала подтвердите, что это ваша учётная запись. Затем можно включить двухфакторную аутентификацию."
+    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "Сначала подтвердите, что это ваша учётная запись. Затем можно включить двухфакторную аутентификацию.",
+    "Only link languages that are translated": "Связывать только переведённые языки",
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "Языковая версия предлагается Google, только когда для неё написаны заголовок и описание для поиска. Непереведённые версии указывают на основной язык."
 }

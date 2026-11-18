@@ -5315,5 +5315,7 @@
     "The exchange rate changed after a payment for this invoice was started, so that payment did not cover the full amount. The rest is still to pay.": "تغيّر سعر الصرف بعد بدء دفعة لهذه الفاتورة، لذا لم تغطِّ تلك الدفعة المبلغ كاملًا. ما زال الباقي مستحق الدفع.",
     "Coupon :code is not for this plan, so it gives no discount there.": "الكوبون :code ليس لهذه الخطة، لذا لا يمنح خصمًا عليها.",
     "not for your current plan": "ليس لخطتك الحالية",
-    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "أكّد أولًا أن هذا حسابك. بعدها يمكنك تفعيل التحقق بخطوتين."
+    "First confirm that this is your account. Then you can turn on two-factor sign-in.": "أكّد أولًا أن هذا حسابك. بعدها يمكنك تفعيل التحقق بخطوتين.",
+    "Only link languages that are translated": "اربط اللغات المترجمة فقط",
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "لا تُعرض نسخة اللغة على Google إلا بعد كتابة عنوان البحث والوصف الخاصين بها. النسخ غير المترجمة تشير إلى اللغة الرئيسية."
 }

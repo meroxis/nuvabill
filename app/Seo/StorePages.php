@@ -19,7 +19,9 @@ class StorePages
     public function home(): void
     {
         $company = (string) setting('company.name');
-        $this->seo->setTitle(SeoText::homeTitle())->setDescription(SeoText::homeDescription());
+        $locale = app()->getLocale();
+        $this->seo->setTitle(SeoText::homeTitleIn($locale))->setDescription(SeoText::homeDescriptionIn($locale))
+            ->setReadyLanguages(SeoTranslations::readyLocales(SeoTranslations::HOME, SeoText::homeTitle(), SeoText::homeDescription()));
 
         $this->data(array_filter([
             '@context' => 'https://schema.org',
@@ -45,7 +47,9 @@ class StorePages
             $this->seo->hide();
         }
 
-        $this->seo->setTitle(SeoText::groupTitle($group))->setDescription(SeoText::groupDescription($group));
+        $locale = app()->getLocale();
+        $this->seo->setTitle(SeoText::groupTitleIn($group, $locale))->setDescription(SeoText::groupDescriptionIn($group, $locale))
+            ->setReadyLanguages(SeoTranslations::readyLocales($group, SeoText::groupTitle($group), SeoText::groupDescription($group)));
         $this->breadcrumbs([[$group->name, 'store/'.$group->slug]]);
     }
 
@@ -58,8 +62,10 @@ class StorePages
             $this->seo->hide();
         }
 
-        $description = SeoText::productDescription($product);
-        $this->seo->setTitle(SeoText::productTitle($product))->setDescription($description)->setType('product');
+        $locale = app()->getLocale();
+        $description = SeoText::productDescriptionIn($product, $locale);
+        $this->seo->setTitle(SeoText::productTitleIn($product, $locale))->setDescription($description)->setType('product')
+            ->setReadyLanguages(SeoTranslations::readyLocales($product, SeoText::productTitle($product), SeoText::productDescription($product)));
 
         $amounts = $prices->map(fn (ProductPrice $price): int => $price->price)->values();
 

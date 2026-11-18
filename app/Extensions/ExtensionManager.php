@@ -10,6 +10,7 @@ use App\Http\Middleware\EnsureAdminPermission;
 use App\Models\Extension;
 use App\Seo\Sitemap;
 use App\Support\Installation;
+use App\Support\Locales;
 use App\Support\Settings;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Database\QueryException;
@@ -498,9 +499,10 @@ class ExtensionManager
     }
 
     /**
-     * Public pages of active add-ons for sitemap.xml.
+     * Public pages of active add-ons for sitemap.xml. "languages" is the list of other languages a
+     * page is translated into (unknown codes left out), or null when the add-on does not say.
      *
-     * @return list<array{path: string, updated: Carbon|null}>
+     * @return list<array{path: string, updated: Carbon|null, languages: list<string>|null}>
      */
     public function sitemapPages(): array
     {
@@ -509,7 +511,12 @@ class ExtensionManager
         foreach ($this->publicAddons() as $addon) {
             foreach ((array) $this->tryMake(fn (): array => $addon->sitemapPages()) as $page) {
                 if (is_array($page) && is_string($page['path'] ?? null)) {
-                    $pages[] = ['path' => ltrim($page['path'], '/'), 'updated' => $page['updated'] ?? null];
+                    $languages = $page['languages'] ?? null;
+                    $languages = is_array($languages) && array_is_list($languages) && array_filter($languages, 'is_string') === $languages
+                        ? array_values(array_intersect(array_keys(Locales::ALL), $languages))
+                        : null;
+
+                    $pages[] = ['path' => ltrim($page['path'], '/'), 'updated' => $page['updated'] ?? null, 'languages' => $languages];
                 }
             }
         }

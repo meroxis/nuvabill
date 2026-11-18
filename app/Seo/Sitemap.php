@@ -15,15 +15,16 @@ use Illuminate\Support\Facades\Cache;
 
 /**
  * sitemap.xml: every store page search engines may show, and add-on pages such as a website, with
- * their language versions. Made
- * again within the hour, and at once when a product or group changes.
+ * their language versions. A page that says which languages it is translated into ("languages")
+ * lists only those, when "Only link languages that are translated" is on. Made again within the
+ * hour, and at once when a product, group or search text changes.
  */
 class Sitemap
 {
     public const CACHE_KEY = 'seo.sitemap';
 
     /**
-     * @return list<array{path: string, updated: Carbon|null}>
+     * @return list<array{path: string, updated: Carbon|null, languages?: list<string>|null}>
      */
     public function pages(): array
     {
@@ -36,21 +37,50 @@ class Sitemap
         // The marketplace store's home page goes to the marketplace, so it is not listed itself. With a
         // website from an add-on, the store's first page is /store and the add-on lists the home page.
         $addonHome = app(ExtensionManager::class)->homePageAddon() !== null;
+        // The search texts written in other languages, for every store page in one go.
+        $texts = SeoTranslations::many([
+            SeoTranslations::HOME,
+            ...$groups->map(fn (ProductGroup $group): string => SeoTranslations::subject($group))->all(),
+            ...$products->map(fn (Product $product): string => SeoTranslations::subject($product))->all(),
+        ]);
+        // A page without texts in other languages is ready in the main language only, so its
+        // main texts are not worked out for nothing.
+        $ready = function (string $subject, callable $main) use ($texts): array {
+            if (! isset($texts[$subject])) {
+                return [];
+            }
+
+            [$title, $description] = $main();
+
+            return SeoTranslations::readyLocales($subject, $title, $description, $texts[$subject]);
+        };
 
         if (! $store) {
-            $pages[] = ['path' => $addonHome ? 'store' : '', 'updated' => $products->max('updated_at')];
+            $pages[] = [
+                'path' => $addonHome ? 'store' : '',
+                'updated' => $products->max('updated_at'),
+                'languages' => $ready(SeoTranslations::HOME, fn (): array => [SeoText::homeTitle(), SeoText::homeDescription()]),
+            ];
         }
 
         foreach ($groups as $group) {
             $inGroup = $products->where('product_group_id', $group->id);
 
             if ($inGroup->isNotEmpty()) {
-                $pages[] = ['path' => 'store/'.$group->slug, 'updated' => collect([$group->updated_at, $inGroup->max('updated_at')])->filter()->max()];
+                $pages[] = [
+                    'path' => 'store/'.$group->slug,
+                    'updated' => collect([$group->updated_at, $inGroup->max('updated_at')])->filter()->max(),
+                    'languages' => $ready(SeoTranslations::subject($group), fn (): array => [SeoText::groupTitle($group), SeoText::groupDescription($group)]),
+                ];
             }
         }
 
         foreach ($products as $product) {
-            $pages[] = ['path' => $product->storePath(), 'updated' => $product->updated_at];
+            $pages[] = [
+                'path' => $product->storePath(),
+                'updated' => $product->updated_at,
+                'languages' => $ready(SeoTranslations::subject($product), fn (): array => [SeoText::productTitle($product), SeoText::productDescription($product)]),
+            ];
         }
 
         if (TldPrice::query()->where('is_enabled', true)->exists()) {
@@ -75,36 +105,37 @@ class Sitemap
     /**
      * The knowledge base, announcements and the network status page, when switched on.
      *
-     * @return list<array{path: string, updated: Carbon|null}>
+     * @return list<array{path: string, updated: Carbon|null, languages?: list<string>|null}>
      */
     private function helpPages(): array
     {
         $pages = [];
 
         if (setting('knowledgebase.enabled')) {
-            $articles = KbArticle::query()->public()->with('category')->orderBy('kb_category_id')->orderBy('sort_order')->orderBy('id')->limit(5000)->get();
+            $articles = KbArticle::query()->public()->with(['allTranslations', 'category.allTranslations'])->orderBy('kb_category_id')->orderBy('sort_order')->orderBy('id')->limit(5000)->get();
 
             if ($articles->isNotEmpty()) {
                 $pages[] = ['path' => 'knowledgebase', 'updated' => $articles->max('updated_at')];
 
                 foreach ($articles->groupBy('kb_category_id') as $inCategory) {
-                    $pages[] = ['path' => 'knowledgebase/'.$inCategory->first()->category->slug, 'updated' => $inCategory->max('updated_at')];
+                    $category = $inCategory->first()->category;
+                    $pages[] = ['path' => 'knowledgebase/'.$category->slug, 'updated' => $inCategory->max('updated_at'), 'languages' => $category->readyLocales(false)];
                 }
 
                 foreach ($articles as $article) {
-                    $pages[] = ['path' => 'knowledgebase/'.$article->category->slug.'/'.$article->slug, 'updated' => $article->updated_at];
+                    $pages[] = ['path' => 'knowledgebase/'.$article->category->slug.'/'.$article->slug, 'updated' => $article->updated_at, 'languages' => $article->readyLocales()];
                 }
             }
         }
 
         if (setting('announcements.enabled')) {
-            $news = Announcement::query()->public()->newestFirst()->limit(1000)->get(['slug', 'published_at', 'updated_at']);
+            $news = Announcement::query()->public()->newestFirst()->limit(1000)->with('allTranslations')->get(['id', 'slug', 'published_at', 'updated_at']);
 
             if ($news->isNotEmpty()) {
                 $pages[] = ['path' => 'announcements', 'updated' => $news->first()->published_at];
 
                 foreach ($news as $item) {
-                    $pages[] = ['path' => 'announcements/'.$item->slug, 'updated' => $item->updated_at];
+                    $pages[] = ['path' => 'announcements/'.$item->slug, 'updated' => $item->updated_at, 'languages' => $item->readyLocales()];
                 }
             }
         }
@@ -119,11 +150,10 @@ class Sitemap
     public function xml(): string
     {
         return Cache::remember(self::CACHE_KEY, now()->addHour(), function (): string {
-            $locales = setting('seo.language_links') ? array_keys(Locales::enabled()) : [];
-            $locales = count($locales) > 1 ? $locales : [];
+            $linked = setting('seo.language_links') && count(Locales::enabled()) > 1;
             $lines = [
                 '<?xml version="1.0" encoding="UTF-8"?>',
-                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"'.($locales !== [] ? ' xmlns:xhtml="http://www.w3.org/1999/xhtml"' : '').'>',
+                '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"'.($linked ? ' xmlns:xhtml="http://www.w3.org/1999/xhtml"' : '').'>',
             ];
 
             foreach ($this->pages() as $page) {
@@ -134,8 +164,14 @@ class Sitemap
                     $lines[] = '    <lastmod>'.$page['updated']->toDateString().'</lastmod>';
                 }
 
-                foreach ($locales as $locale) {
+                $offered = LanguageVersions::offered($page['languages'] ?? null);
+
+                foreach ($offered as $locale) {
                     $lines[] = '    <xhtml:link rel="alternate" hreflang="'.e(Locales::htmlLang($locale)).'" href="'.e(SiteAddress::url($page['path'], $locale)).'"/>';
+                }
+
+                if ($offered !== []) {
+                    $lines[] = '    <xhtml:link rel="alternate" hreflang="x-default" href="'.e(SiteAddress::url($page['path'])).'"/>';
                 }
 
                 $lines[] = '  </url>';

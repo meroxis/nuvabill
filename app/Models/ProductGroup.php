@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Seo\SeoTranslations;
 use App\Seo\Sitemap;
 use Database\Factories\ProductGroupFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -28,7 +29,10 @@ class ProductGroup extends Model
     protected static function booted(): void
     {
         static::saved(fn () => Sitemap::forget());
-        static::deleted(fn () => Sitemap::forget());
+        static::deleted(function (ProductGroup $group): void {
+            SeoTranslations::forget($group);
+            Sitemap::forget();
+        });
 
         // A new web address: the group page and its product pages forward from the old addresses.
         static::updated(function (ProductGroup $group): void {
