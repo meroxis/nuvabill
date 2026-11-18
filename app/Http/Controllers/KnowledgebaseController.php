@@ -36,6 +36,11 @@ class KnowledgebaseController extends Controller
             ->get()
             ->filter(fn (KbCategory $category): bool => $category->articles_count > 0);
 
+        // Nothing to read yet: keep the empty page out of search results until the first article.
+        if ($categories->isEmpty()) {
+            $seo->hideButFollowLinks();
+        }
+
         return view('theme::knowledgebase.index', [
             'categories' => $categories,
             'popular' => KbArticle::query()->public()->withTranslation()->with('category')
@@ -48,10 +53,15 @@ class KnowledgebaseController extends Controller
         $this->ensureEnabled();
         $category = KbCategory::query()->visible()->withTranslation()->where('slug', $category)->firstOrFail();
         $seo->setDescription($category->localized('body') ?: null)->setReadyLanguages($category->readyLocales(false));
+        $articles = $category->articles()->where('is_published', true)->withTranslation()->ordered()->get();
+
+        if ($articles->isEmpty()) {
+            $seo->hideButFollowLinks();
+        }
 
         return view('theme::knowledgebase.category', [
             'category' => $category,
-            'articles' => $category->articles()->where('is_published', true)->withTranslation()->ordered()->get(),
+            'articles' => $articles,
         ]);
     }
 

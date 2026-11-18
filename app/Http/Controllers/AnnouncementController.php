@@ -21,6 +21,11 @@ class AnnouncementController extends Controller
         $seo->setDescription(__('News from :company: new services, changes and planned work.', ['company' => setting('company.name')]))
             ->paginated($announcements);
 
+        // No news yet: keep the empty page out of search results until the first announcement.
+        if ($announcements->total() === 0) {
+            $seo->hideButFollowLinks();
+        }
+
         return view('theme::announcements.index', [
             'announcements' => $announcements,
         ]);
