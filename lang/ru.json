@@ -5317,5 +5317,10 @@
     "not for your current plan": "не для вашего текущего тарифа",
     "First confirm that this is your account. Then you can turn on two-factor sign-in.": "Сначала подтвердите, что это ваша учётная запись. Затем можно включить двухфакторную аутентификацию.",
     "Only link languages that are translated": "Связывать только переведённые языки",
-    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "Языковая версия предлагается Google, только когда для неё написаны заголовок и описание для поиска. Непереведённые версии указывают на основной язык."
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "Языковая версия предлагается Google, только когда для неё написаны заголовок и описание для поиска. Непереведённые версии указывают на основной язык.",
+    "Other languages": "Другие языки",
+    ":ready of :count ready": "Готово :ready из :count",
+    "Ready": "Готово",
+    "Not offered to search engines": "Не предлагается поисковым системам",
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Пустые поля используют основной язык. Язык предлагается Google, когда оба поля заполнены на этом языке."
 }

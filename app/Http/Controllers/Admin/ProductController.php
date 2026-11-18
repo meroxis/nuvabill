@@ -19,6 +19,7 @@ use App\Models\ProductGroup;
 use App\Models\Server;
 use App\Provisioning\Provisioner;
 use App\Seo\SeoText;
+use App\Seo\SeoTranslations;
 use App\Seo\SiteAddress;
 use App\Support\Activity;
 use App\Support\Money;
@@ -63,6 +64,7 @@ class ProductController extends Controller
         $product = DB::transaction(function () use ($request): Product {
             $product = Product::create($this->attributes($request));
             $this->syncPrices($product, $request->input('prices', []));
+            SeoTranslations::save($product, (array) $request->validated('seo_translations', []));
 
             return $product;
         });
@@ -82,6 +84,7 @@ class ProductController extends Controller
         DB::transaction(function () use ($request, $product): void {
             $product->update($this->attributes($request));
             $this->syncPrices($product, $request->input('prices', []));
+            SeoTranslations::save($product, (array) $request->validated('seo_translations', []));
         });
 
         Activity::log('product.updated', "Product {$product->name} updated", $product);
@@ -127,7 +130,21 @@ class ProductController extends Controller
                 'suggestDescription' => $product->exists ? SeoText::suggestProductDescription($product) : null,
                 'url' => SiteAddress::url($product->exists ? $product->storePath() : 'store'),
             ],
+            'seoTranslations' => $this->seoTranslations($product),
         ]);
+    }
+
+    /**
+     * The "Other languages" search texts of the form, with the main-language texts they fall back to.
+     *
+     * @return array{values: array<string, array{title: string, description: string}>, ready: list<string>, mainTitle: string, mainDescription: string}
+     */
+    private function seoTranslations(Product $product): array
+    {
+        $mainTitle = $product->exists ? SeoText::productTitle($product) : '';
+        $mainDescription = $product->exists ? SeoText::productDescription($product) : '';
+
+        return SeoTranslations::form($product, $mainTitle, $mainDescription) + ['mainTitle' => $mainTitle, 'mainDescription' => $mainDescription];
     }
 
     /**
@@ -135,7 +152,7 @@ class ProductController extends Controller
      */
     private function attributes(ProductRequest $request): array
     {
-        $data = $request->safe()->except('prices', 'panel_sections');
+        $data = $request->safe()->except('prices', 'panel_sections', 'seo_translations');
         $data['module_config'] = $data['server_module'] ? array_filter($data['module_config'] ?? [], fn ($value) => $value !== null) : null;
         $saved = $request->route('product');
 

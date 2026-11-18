@@ -5317,5 +5317,10 @@
     "not for your current plan": "بۆ پلانی ئێستات نییە",
     "First confirm that this is your account. Then you can turn on two-factor sign-in.": "سەرەتا پشتڕاستی بکەرەوە کە ئەمە ئەکاونتی تۆیە. پاشان دەتوانیت چوونەژوورەوەی دوو هەنگاوی چالاک بکەیت.",
     "Only link languages that are translated": "تەنها ئەو زمانانە ببەستە کە وەرگێڕدراون",
-    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "وەشانی زمانێک تەنها کاتێک بە Google پێشکەش دەکرێت کە ناونیشان و وەسفی گەڕانەکەی نووسرابن. وەشانە وەرنەگێڕدراوەکان ئاماژە بە زمانی سەرەکی دەکەن."
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "وەشانی زمانێک تەنها کاتێک بە Google پێشکەش دەکرێت کە ناونیشان و وەسفی گەڕانەکەی نووسرابن. وەشانە وەرنەگێڕدراوەکان ئاماژە بە زمانی سەرەکی دەکەن.",
+    "Other languages": "زمانەکانی تر",
+    ":ready of :count ready": ":ready لە :count ئامادەن",
+    "Ready": "ئامادەیە",
+    "Not offered to search engines": "پێشکەشی بزوێنەرەکانی گەڕان ناکرێت",
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "خانە بەتاڵەکان زمانی سەرەکی بەکاردەهێنن. زمانێک پێشکەشی Google دەکرێت کاتێک هەردوو خانەکە بەو زمانە نووسران."
 }

@@ -13,6 +13,8 @@
                     </div>
                     <x-search-appearance :title="setting('seo.home_title')" :description="setting('seo.home_description')" :default-title="setting('company.name')"
                         :default-description="\App\Seo\SeoText::groupsDescription()" :url="$siteUrl" title-name="home_title" description-name="home_description" />
+                    <x-seo-languages :values="$homeTranslations['values']" :ready="$homeTranslations['ready']"
+                        :main-title="\App\Seo\SeoText::homeTitle()" :main-description="\App\Seo\SeoText::homeDescription()" />
                 </section>
 
                 <section class="card" style="display:grid;gap:1rem">

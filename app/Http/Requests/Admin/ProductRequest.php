@@ -10,6 +10,7 @@ use App\Extensions\Servers\ModuleConfig;
 use App\Models\Machine;
 use App\Models\Product;
 use App\Models\Service;
+use App\Seo\SeoTranslations;
 use Illuminate\Contracts\Validation\Validator as ValidatorContract;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
@@ -70,7 +71,16 @@ class ProductRequest extends FormRequest
             'prices.*.enabled' => ['boolean'],
             'prices.*.price' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
             'prices.*.setup_fee' => ['nullable', 'numeric', 'min:0', 'max:1000000'],
+            ...SeoTranslations::rules(),
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return SeoTranslations::attributes();
     }
 
     /**

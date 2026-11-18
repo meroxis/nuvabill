@@ -7,6 +7,7 @@ use App\Models\SeoRedirect;
 use App\Seo\HeadTags;
 use App\Seo\RobotsTxt;
 use App\Seo\SeoText;
+use App\Seo\SeoTranslations;
 use App\Seo\ShareImage;
 use App\Seo\SiteAddress;
 use App\Seo\Sitemap;
@@ -31,6 +32,7 @@ class SeoSettingsController extends Controller
             'shareImageSize' => ShareImage::size(),
             'redirects' => SeoRedirect::query()->latest()->limit(50)->get(),
             'siteUrl' => SiteAddress::url(''),
+            'homeTranslations' => SeoTranslations::form(SeoTranslations::HOME, SeoText::homeTitle(), SeoText::homeDescription()),
         ]);
     }
 
@@ -49,9 +51,10 @@ class SeoSettingsController extends Controller
             'ready_languages_only' => ['boolean'],
             'robots_extra' => ['nullable', 'string', 'max:5000'],
             'share_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048', 'dimensions:min_width=600,min_height=315'],
+            ...SeoTranslations::rules(),
         ], [
             'title_pattern.regex' => __('The pattern needs {page}, where the page name goes.'),
-        ]);
+        ], SeoTranslations::attributes());
 
         $settings->setMany([
             'seo.visible' => (bool) ($data['visible'] ?? false),
@@ -66,6 +69,8 @@ class SeoSettingsController extends Controller
             'seo.ready_languages_only' => (bool) ($data['ready_languages_only'] ?? false),
             'seo.robots_extra' => RobotsTxt::cleanExtra((string) ($data['robots_extra'] ?? '')),
         ]);
+
+        SeoTranslations::save(SeoTranslations::HOME, $data['seo_translations'] ?? []);
 
         if ($request->hasFile('share_image')) {
             ShareImage::store($request->file('share_image'));

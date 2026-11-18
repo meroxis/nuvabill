@@ -27,6 +27,59 @@ class SeoTranslations
     public const DESCRIPTION_LIMIT = 320;
 
     /**
+     * Form rules for the "Other languages" fields (seo_translations[de][title] and so on). Only the
+     * site's other switched-on languages are allowed; anything else is refused.
+     *
+     * @return array<string, list<string>>
+     */
+    public static function rules(): array
+    {
+        $codes = array_keys(ContentLanguages::others());
+
+        if ($codes === []) {
+            return ['seo_translations' => ['prohibited']];
+        }
+
+        return [
+            'seo_translations' => ['nullable', 'array:'.implode(',', $codes)],
+            'seo_translations.*' => ['array:title,description'],
+            'seo_translations.*.title' => ['nullable', 'string', 'max:'.self::TITLE_LIMIT],
+            'seo_translations.*.description' => ['nullable', 'string', 'max:'.self::DESCRIPTION_LIMIT],
+        ];
+    }
+
+    /**
+     * Field names for the error messages of rules().
+     *
+     * @return array<string, string>
+     */
+    public static function attributes(): array
+    {
+        return [
+            'seo_translations' => __('Other languages'),
+            'seo_translations.*.title' => __('Title in search results'),
+            'seo_translations.*.description' => __('Description in search results'),
+        ];
+    }
+
+    /**
+     * What the "Other languages" fields of an edit page show: the saved texts and the languages
+     * that are ready. A page that is not saved yet has neither.
+     *
+     * @return array{values: array<string, array{title: string, description: string}>, ready: list<string>}
+     */
+    public static function form(Model|string $subject, string $mainTitle, string $mainDescription): array
+    {
+        if ($subject instanceof Model && ! $subject->exists) {
+            return ['values' => [], 'ready' => []];
+        }
+
+        $values = self::all($subject);
+
+        return ['values' => $values, 'ready' => self::readyLocales($subject, $mainTitle, $mainDescription, $values)];
+    }
+
+    /**
      * The name a page is saved under: "home", "product_group:12" or "product:7".
      */
     public static function subject(Model|string $subject): string

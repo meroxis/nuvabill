@@ -5317,5 +5317,10 @@
     "not for your current plan": "таны одоогийн багцад хамаарахгүй",
     "First confirm that this is your account. Then you can turn on two-factor sign-in.": "Эхлээд энэ таны бүртгэл гэдгийг баталгаажуулна уу. Дараа нь хоёр шатлалт нэвтрэлтийг асааж болно.",
     "Only link languages that are translated": "Зөвхөн орчуулсан хэлүүдийг холбох",
-    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "Хайлтын гарчиг, тайлбар нь бичигдсэн үед л хэлний хувилбарыг Google-д санал болгоно. Орчуулаагүй хувилбарууд үндсэн хэл рүү заана."
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "Хайлтын гарчиг, тайлбар нь бичигдсэн үед л хэлний хувилбарыг Google-д санал болгоно. Орчуулаагүй хувилбарууд үндсэн хэл рүү заана.",
+    "Other languages": "Бусад хэл",
+    ":ready of :count ready": ":count-аас :ready бэлэн",
+    "Ready": "Бэлэн",
+    "Not offered to search engines": "Хайлтын системд санал болгоогүй",
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Хоосон талбарт үндсэн хэл хэрэглэгдэнэ. Хоёр талбарыг хоёуланг нь тухайн хэлээр бичсэн үед уг хэлийг Google-д санал болгоно."
 }

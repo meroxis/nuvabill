@@ -5317,5 +5317,10 @@
     "not for your current plan": "不适用于您当前的套餐",
     "First confirm that this is your account. Then you can turn on two-factor sign-in.": "请先确认这是您的账户。然后即可开启两步验证。",
     "Only link languages that are translated": "只链接已翻译的语言",
-    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "只有写好搜索标题和描述的语言版本才会提供给 Google。未翻译的版本指向主语言。"
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "只有写好搜索标题和描述的语言版本才会提供给 Google。未翻译的版本指向主语言。",
+    "Other languages": "其他语言",
+    ":ready of :count ready": ":count 种中已就绪 :ready 种",
+    "Ready": "已就绪",
+    "Not offered to search engines": "未提供给搜索引擎",
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "空白字段使用主语言。两个字段都用该语言填写后，该语言才会提供给 Google。"
 }

@@ -135,6 +135,8 @@
             <div class="card-header" style="margin:0"><h2>{{ __('Search appearance') }}</h2></div>
             <x-search-appearance :title="$product->seo_title" :description="$product->seo_description" :default-title="$seo['title']" :default-description="$seo['description']"
                 :suggest-title="$seo['suggestTitle']" :suggest-description="$seo['suggestDescription']" :url="$seo['url']" :hidden="(bool) $product->seo_hidden" />
+            <x-seo-languages :values="$seoTranslations['values']" :ready="$seoTranslations['ready']"
+                :main-title="$seoTranslations['mainTitle']" :main-description="$seoTranslations['mainDescription']" />
         </section>
 
         <div class="form-actions">

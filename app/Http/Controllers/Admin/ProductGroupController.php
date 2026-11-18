@@ -4,8 +4,12 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProductGroup;
+use App\Seo\SeoText;
+use App\Seo\SeoTranslations;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
@@ -14,24 +18,34 @@ class ProductGroupController extends Controller
 {
     public function create(): View
     {
-        return view('admin.products.group-form', ['group' => new ProductGroup(['is_visible' => true])]);
+        return $this->form(new ProductGroup(['is_visible' => true]));
     }
 
     public function store(Request $request): RedirectResponse
     {
-        ProductGroup::create($this->validated($request));
+        $data = $this->validated($request);
+
+        DB::transaction(function () use ($data): void {
+            $group = ProductGroup::create(Arr::except($data, 'seo_translations'));
+            SeoTranslations::save($group, $data['seo_translations'] ?? []);
+        });
 
         return redirect()->route('admin.products.index')->with('status', __('Group created.'));
     }
 
     public function edit(ProductGroup $productGroup): View
     {
-        return view('admin.products.group-form', ['group' => $productGroup]);
+        return $this->form($productGroup);
     }
 
     public function update(Request $request, ProductGroup $productGroup): RedirectResponse
     {
-        $productGroup->update($this->validated($request, $productGroup));
+        $data = $this->validated($request, $productGroup);
+
+        DB::transaction(function () use ($data, $productGroup): void {
+            $productGroup->update(Arr::except($data, 'seo_translations'));
+            SeoTranslations::save($productGroup, $data['seo_translations'] ?? []);
+        });
 
         return redirect()->route('admin.products.index')->with('status', __('Group saved.'));
     }
@@ -45,6 +59,17 @@ class ProductGroupController extends Controller
         $productGroup->delete();
 
         return redirect()->route('admin.products.index')->with('status', __('Group deleted.'));
+    }
+
+    private function form(ProductGroup $group): View
+    {
+        $mainTitle = $group->exists ? SeoText::groupTitle($group) : '';
+        $mainDescription = $group->exists ? SeoText::groupDescription($group) : '';
+
+        return view('admin.products.group-form', [
+            'group' => $group,
+            'seoTranslations' => SeoTranslations::form($group, $mainTitle, $mainDescription) + ['mainTitle' => $mainTitle, 'mainDescription' => $mainDescription],
+        ]);
     }
 
     /**
@@ -63,7 +88,8 @@ class ProductGroupController extends Controller
             'seo_title' => ['nullable', 'string', 'max:120'],
             'seo_description' => ['nullable', 'string', 'max:320'],
             'seo_hidden' => ['boolean'],
-        ]);
+            ...SeoTranslations::rules(),
+        ], [], SeoTranslations::attributes());
 
         // An empty field arrives as null, and the column needs a number.
         $data['sort_order'] = (int) ($data['sort_order'] ?? 0);

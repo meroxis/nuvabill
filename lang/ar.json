@@ -5317,5 +5317,10 @@
     "not for your current plan": "ليس لخطتك الحالية",
     "First confirm that this is your account. Then you can turn on two-factor sign-in.": "أكّد أولًا أن هذا حسابك. بعدها يمكنك تفعيل التحقق بخطوتين.",
     "Only link languages that are translated": "اربط اللغات المترجمة فقط",
-    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "لا تُعرض نسخة اللغة على Google إلا بعد كتابة عنوان البحث والوصف الخاصين بها. النسخ غير المترجمة تشير إلى اللغة الرئيسية."
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "لا تُعرض نسخة اللغة على Google إلا بعد كتابة عنوان البحث والوصف الخاصين بها. النسخ غير المترجمة تشير إلى اللغة الرئيسية.",
+    "Other languages": "لغات أخرى",
+    ":ready of :count ready": ":ready من :count جاهزة",
+    "Ready": "جاهزة",
+    "Not offered to search engines": "غير معروضة على محركات البحث",
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "الحقول الفارغة تستخدم اللغة الرئيسية. تُعرض اللغة على Google عندما يُكتب الحقلان بتلك اللغة."
 }

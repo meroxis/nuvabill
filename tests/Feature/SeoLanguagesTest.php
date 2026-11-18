@@ -246,6 +246,106 @@ class SeoLanguagesTest extends TestCase
         $this->assertSame(['product_group:'.$this->group->id], SeoTranslation::query()->pluck('subject')->all());
     }
 
+    public function test_staff_write_the_home_page_search_text_in_other_languages(): void
+    {
+        $this->signInAdmin();
+        $settings = ['visible' => '1', 'sitemap' => '1', 'structured_data' => '1', 'language_links' => '1', 'ready_languages_only' => '1',
+            'home_title' => 'Raz Hosting', 'home_description' => 'Web hosting, domains and servers for small companies.'];
+
+        $this->put(route('admin.settings.seo.update'), $settings + [
+            'seo_translations' => ['de' => ['title' => '  Raz Hosting  ', 'description' => 'Webhosting, Domains und Server für kleine Firmen.'], 'ar' => ['title' => '', 'description' => '']],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame([['de', 'Raz Hosting', 'Webhosting, Domains und Server für kleine Firmen.']],
+            SeoTranslation::query()->where('subject', SeoTranslations::HOME)->get()->map(fn (SeoTranslation $row): array => [$row->locale, $row->title, $row->description])->all());
+
+        $this->get('/?lang=de')->assertOk()
+            ->assertSee('<meta name="description" content="Webhosting, Domains und Server für kleine Firmen.">', false)
+            ->assertSee('hreflang="de"', false)
+            ->assertDontSee('hreflang="ar"', false);
+        $this->get('/?lang=en')->assertOk()->assertSee('<meta name="description" content="Web hosting, domains and servers for small companies.">', false);
+
+        // Both fields emptied: the language goes back to the main text.
+        $this->put(route('admin.settings.seo.update'), $settings + ['seo_translations' => ['de' => ['title' => '', 'description' => '']]])->assertSessionHasNoErrors();
+
+        $this->assertSame(0, SeoTranslation::query()->count());
+        $this->get('/?lang=de')->assertOk()->assertSee('<meta name="description" content="Web hosting, domains and servers for small companies.">', false);
+    }
+
+    public function test_staff_write_group_and_product_search_text_in_other_languages(): void
+    {
+        $this->signInAdmin();
+
+        $this->post(route('admin.product-groups.store'), [
+            'name' => 'VPS', 'slug' => 'vps', 'is_visible' => '1',
+            'seo_translations' => ['de' => ['title' => 'Virtuelle Server', 'description' => 'Schnelle virtuelle Server mit Root-Zugang.']],
+        ])->assertRedirect(route('admin.products.index'))->assertSessionHasNoErrors();
+
+        $vps = ProductGroup::query()->where('slug', 'vps')->sole();
+        $this->assertSame('Virtuelle Server', SeoTranslations::title($vps, 'de'));
+
+        $this->put(route('admin.product-groups.update', $this->group), [
+            'name' => $this->group->name, 'slug' => $this->group->slug, 'is_visible' => '1',
+            'seo_title' => 'Fast web hosting', 'seo_description' => 'Web hosting with free SSL and daily backups.',
+            'seo_translations' => ['ar' => ['title' => 'استضافة سريعة', 'description' => 'استضافة مواقع مع SSL مجاني ونسخ احتياطي يومي.']],
+        ])->assertRedirect(route('admin.products.index'))->assertSessionHasNoErrors();
+
+        $this->get('/store/'.$this->group->slug.'?lang=ar')->assertOk()->assertSee('<title>استضافة سريعة</title>', false);
+
+        $product = $this->group->products()->firstOrFail();
+        $this->put(route('admin.products.update', $product), [
+            'product_group_id' => $product->product_group_id,
+            'name' => $product->name,
+            'slug' => $product->slug,
+            'type' => 'hosting',
+            'auto_setup' => 'payment',
+            'prices' => ['monthly' => ['enabled' => '1', 'price' => '5.00', 'setup_fee' => '0']],
+            'seo_translations' => ['de' => ['title' => 'Starter-Paket', 'description' => 'Das kleine Paket für den Anfang.']],
+        ])->assertRedirect()->assertSessionHasNoErrors();
+
+        $this->assertSame(['de' => ['title' => 'Starter-Paket', 'description' => 'Das kleine Paket für den Anfang.']], SeoTranslations::all($product));
+        $this->assertNull($product->fresh()->getAttribute('seo_translations'));
+    }
+
+    public function test_search_text_for_a_language_that_is_off_is_refused(): void
+    {
+        $this->signInAdmin();
+
+        // th is a Nuvabill language but is not switched on here; xx is no language at all.
+        foreach (['th', 'xx'] as $code) {
+            $this->put(route('admin.product-groups.update', $this->group), [
+                'name' => $this->group->name, 'slug' => $this->group->slug,
+                'seo_translations' => [$code => ['title' => 'Hosting', 'description' => 'Hosting text.']],
+            ])->assertSessionHasErrors('seo_translations');
+        }
+
+        $this->put(route('admin.settings.seo.update'), ['seo_translations' => ['de' => ['title' => str_repeat('a', 121)]]])
+            ->assertSessionHasErrors('seo_translations.de.title');
+        $this->put(route('admin.settings.seo.update'), ['seo_translations' => ['de' => ['title' => 'Hallo', 'colour' => 'red']]])
+            ->assertSessionHasErrors('seo_translations.de');
+
+        $this->assertSame(0, SeoTranslation::query()->count());
+    }
+
+    public function test_the_admin_form_shows_which_languages_are_ready(): void
+    {
+        $this->signInAdmin();
+        $this->translateGroupToGerman();
+        SeoTranslations::save($this->group, ['ar' => ['title' => 'استضافة سريعة', 'description' => '']]);
+
+        $this->get(route('admin.product-groups.edit', $this->group))->assertOk()
+            ->assertSeeInOrder(['Other languages', '1 of 2 ready', 'German', 'Ready', 'Schnelles Webhosting', 'Arabic', 'Not offered to search engines', 'استضافة سريعة'])
+            ->assertSee('name="seo_translations[ar][description]"', false)
+            ->assertSee('lang="ar" dir="rtl"', false);
+
+        $this->get(route('admin.products.create'))->assertOk()->assertSee('0 of 2 ready');
+        $this->get(route('admin.settings.seo.edit'))->assertOk()->assertSee('name="seo_translations[de][title]"', false);
+
+        // With one language there is nothing to translate.
+        app(Settings::class)->setMany(['locale.enabled' => ['en']]);
+        $this->get(route('admin.product-groups.edit', $this->group))->assertOk()->assertDontSee('Other languages');
+    }
+
     private function switchOnFixtureAddon(): void
     {
         $this->seed(DefaultDataSeeder::class);

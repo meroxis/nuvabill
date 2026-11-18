@@ -5317,5 +5317,10 @@
     "not for your current plan": "no es para tu plan actual",
     "First confirm that this is your account. Then you can turn on two-factor sign-in.": "Primero confirma que esta es tu cuenta. Después podrás activar la verificación en dos pasos.",
     "Only link languages that are translated": "Enlazar solo los idiomas traducidos",
-    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "Una versión de idioma solo se ofrece a Google cuando su título y su descripción de búsqueda están escritos. Las versiones sin traducir apuntan al idioma principal."
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "Una versión de idioma solo se ofrece a Google cuando su título y su descripción de búsqueda están escritos. Las versiones sin traducir apuntan al idioma principal.",
+    "Other languages": "Otros idiomas",
+    ":ready of :count ready": ":ready de :count listos",
+    "Ready": "Listo",
+    "Not offered to search engines": "No se ofrece a los buscadores",
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Los campos vacíos usan el idioma principal. Un idioma se ofrece a Google cuando los dos campos están escritos en ese idioma."
 }

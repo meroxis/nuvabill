@@ -5317,5 +5317,10 @@
     "not for your current plan": "ใช้ไม่ได้กับแผนปัจจุบันของคุณ",
     "First confirm that this is your account. Then you can turn on two-factor sign-in.": "ยืนยันก่อนว่านี่คือบัญชีของคุณ จากนั้นคุณจะเปิดการยืนยันตัวตนสองขั้นตอนได้",
     "Only link languages that are translated": "ลิงก์เฉพาะภาษาที่แปลแล้ว",
-    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "เวอร์ชันภาษาจะถูกเสนอให้ Google ก็ต่อเมื่อเขียนชื่อและคำอธิบายสำหรับการค้นหาแล้วเท่านั้น เวอร์ชันที่ยังไม่แปลจะชี้ไปยังภาษาหลัก"
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "เวอร์ชันภาษาจะถูกเสนอให้ Google ก็ต่อเมื่อเขียนชื่อและคำอธิบายสำหรับการค้นหาแล้วเท่านั้น เวอร์ชันที่ยังไม่แปลจะชี้ไปยังภาษาหลัก",
+    "Other languages": "ภาษาอื่น",
+    ":ready of :count ready": "พร้อม :ready จาก :count",
+    "Ready": "พร้อม",
+    "Not offered to search engines": "ไม่ได้เสนอให้เครื่องมือค้นหา",
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "ช่องที่ว่างจะใช้ภาษาหลัก ภาษาจะถูกเสนอให้ Google เมื่อเขียนทั้งสองช่องเป็นภาษานั้นแล้ว"
 }

@@ -18,6 +18,8 @@
         <x-search-appearance :title="$group->seo_title" :description="$group->seo_description" :default-title="$group->exists ? \App\Seo\SeoText::withPattern($group->name) : ''"
             :default-description="$group->exists ? \App\Seo\SeoText::limit(\App\Seo\SeoText::plain($group->description), \App\Seo\Seo::DESCRIPTION_LIMIT) : ''"
             :url="\App\Seo\SiteAddress::url('store/'.$group->slug)" :hidden="(bool) $group->seo_hidden" />
+        <x-seo-languages :values="$seoTranslations['values']" :ready="$seoTranslations['ready']"
+            :main-title="$seoTranslations['mainTitle']" :main-description="$seoTranslations['mainDescription']" />
         <div class="form-actions">
             <button class="btn btn-primary" type="submit">{{ __('Save group') }}</button>
             <a class="btn" href="{{ route('admin.products.index') }}">{{ __('Cancel') }}</a>

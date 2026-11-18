@@ -5317,5 +5317,10 @@
     "not for your current plan": "mevcut paketiniz için geçerli değil",
     "First confirm that this is your account. Then you can turn on two-factor sign-in.": "Önce bu hesabın size ait olduğunu onaylayın. Ardından iki adımlı doğrulamayı açabilirsiniz.",
     "Only link languages that are translated": "Yalnızca çevrilmiş dilleri bağla",
-    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "Bir dil sürümü, yalnızca arama başlığı ve açıklaması yazıldığında Google'a sunulur. Çevrilmemiş sürümler ana dile yönlendirir."
+    "A language version is offered to Google only when its search title and description are written. Untranslated versions point to the main language.": "Bir dil sürümü, yalnızca arama başlığı ve açıklaması yazıldığında Google'a sunulur. Çevrilmemiş sürümler ana dile yönlendirir.",
+    "Other languages": "Diğer diller",
+    ":ready of :count ready": ":count dilden :ready tanesi hazır",
+    "Ready": "Hazır",
+    "Not offered to search engines": "Arama motorlarına sunulmuyor",
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Boş alanlar ana dili kullanır. Bir dil, iki alan da o dilde yazıldığında Google'a sunulur."
 }
