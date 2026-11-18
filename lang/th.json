@@ -5323,5 +5323,8 @@
     "Ready": "พร้อม",
     "Not offered to search engines": "ไม่ได้เสนอให้เครื่องมือค้นหา",
     "Empty fields use the main language. A language is offered to Google once both are written in that language.": "ช่องที่ว่างจะใช้ภาษาหลัก ภาษาจะถูกเสนอให้ Google เมื่อเขียนทั้งสองช่องเป็นภาษานั้นแล้ว",
-    "Our services": "บริการของเรา"
+    "Our services": "บริการของเรา",
+    "List each plan as its own page": "แสดงแต่ละแพ็กเกจเป็นหน้าของตัวเอง",
+    "Off: plan pages send search engines to their group page, because most order forms show the same page for every plan. Turn it on when your plan pages have their own text.": "ปิด: หน้าแพ็กเกจจะส่งเครื่องมือค้นหาไปยังหน้ากลุ่มของมัน เพราะฟอร์มสั่งซื้อส่วนใหญ่แสดงหน้าเดียวกันสำหรับทุกแพ็กเกจ เปิดเมื่อหน้าแพ็กเกจของคุณมีข้อความของตัวเอง",
+    "Search engines are sent to the group page for this plan. Change it in Settings → Search engines.": "เครื่องมือค้นหาจะถูกส่งไปยังหน้ากลุ่มสำหรับแพ็กเกจนี้ เปลี่ยนได้ที่ การตั้งค่า → เครื่องมือค้นหา"
 }

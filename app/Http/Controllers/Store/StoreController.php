@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Store;
 
 use App\Billing\ResourceOptions;
+use App\Extensions\ExtensionManager;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\ProductAddon;
@@ -30,7 +31,12 @@ class StoreController extends Controller
             ->get()
             ->filter(fn (ProductGroup $group): bool => $group->products->isNotEmpty());
 
-        $seo->home();
+        // With a website from an add-on at "/", this page lives at /store and the website is the home page.
+        if (rescue(fn (): bool => app(ExtensionManager::class)->homePageAddon() !== null, false, report: false)) {
+            $seo->storeOverview();
+        } else {
+            $seo->home();
+        }
 
         return view('theme::store.index', [
             'groups' => $groups,

@@ -5323,5 +5323,8 @@
     "Ready": "Bereit",
     "Not offered to search engines": "Suchmaschinen nicht angeboten",
     "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Leere Felder verwenden die Hauptsprache. Eine Sprache wird Google angeboten, sobald beide Felder in dieser Sprache ausgefüllt sind.",
-    "Our services": "Unsere Leistungen"
+    "Our services": "Unsere Leistungen",
+    "List each plan as its own page": "Jeden Tarif als eigene Seite führen",
+    "Off: plan pages send search engines to their group page, because most order forms show the same page for every plan. Turn it on when your plan pages have their own text.": "Aus: Tarifseiten verweisen Suchmaschinen auf die Seite ihrer Gruppe, weil die meisten Bestellformulare für jeden Tarif dieselbe Seite zeigen. Schalten Sie es ein, wenn Ihre Tarifseiten eigenen Text haben.",
+    "Search engines are sent to the group page for this plan. Change it in Settings → Search engines.": "Suchmaschinen werden für diesen Tarif auf die Gruppenseite geschickt. Ändern Sie das unter Einstellungen → Suchmaschinen."
 }

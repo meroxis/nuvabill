@@ -5323,5 +5323,8 @@
     "Ready": "Бэлэн",
     "Not offered to search engines": "Хайлтын системд санал болгоогүй",
     "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Хоосон талбарт үндсэн хэл хэрэглэгдэнэ. Хоёр талбарыг хоёуланг нь тухайн хэлээр бичсэн үед уг хэлийг Google-д санал болгоно.",
-    "Our services": "Манай үйлчилгээ"
+    "Our services": "Манай үйлчилгээ",
+    "List each plan as its own page": "Багц бүрийг тусдаа хуудас болгох",
+    "Off: plan pages send search engines to their group page, because most order forms show the same page for every plan. Turn it on when your plan pages have their own text.": "Унтраалттай: багцын хуудсууд хайлтын системүүдийг бүлгийнхээ хуудас руу илгээнэ, учир нь ихэнх захиалгын маягт багц бүрт ижил хуудас харуулдаг. Багцын хуудсууд тань өөрийн гэсэн тексттэй бол асаана уу.",
+    "Search engines are sent to the group page for this plan. Change it in Settings → Search engines.": "Хайлтын системүүдийг энэ багцын хувьд бүлгийн хуудас руу илгээнэ. Үүнийг Тохиргоо → Хайлтын системүүд хэсэгт өөрчилнө үү."
 }

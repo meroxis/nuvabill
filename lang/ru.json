@@ -5323,5 +5323,8 @@
     "Ready": "Готово",
     "Not offered to search engines": "Не предлагается поисковым системам",
     "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Пустые поля используют основной язык. Язык предлагается Google, когда оба поля заполнены на этом языке.",
-    "Our services": "Наши услуги"
+    "Our services": "Наши услуги",
+    "List each plan as its own page": "Каждый тариф — отдельная страница",
+    "Off: plan pages send search engines to their group page, because most order forms show the same page for every plan. Turn it on when your plan pages have their own text.": "Выключено: страницы тарифов отправляют поисковики на страницу своей группы, потому что большинство форм заказа показывают одну и ту же страницу для каждого тарифа. Включите, если у страниц тарифов есть свой текст.",
+    "Search engines are sent to the group page for this plan. Change it in Settings → Search engines.": "Для этого тарифа поисковики отправляются на страницу группы. Измените это в Настройки → Поисковики."
 }

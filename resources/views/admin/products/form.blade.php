@@ -133,6 +133,14 @@
 
         <section class="card" style="display:grid;gap:1.1rem">
             <div class="card-header" style="margin:0"><h2>{{ __('Search appearance') }}</h2></div>
+            @unless (setting('seo.product_pages'))
+                <p class="muted" style="margin:0;font-size:.9rem">
+                    {{ __('Search engines are sent to the group page for this plan. Change it in Settings → Search engines.') }}
+                    @if (auth('admin')->user()?->hasPermission('settings.manage'))
+                        <a href="{{ route('admin.settings.seo.edit') }}">{{ __('Search engine settings') }}</a>
+                    @endif
+                </p>
+            @endunless
             <x-search-appearance :title="$product->seo_title" :description="$product->seo_description" :default-title="$seo['title']" :default-description="$seo['description']"
                 :suggest-title="$seo['suggestTitle']" :suggest-description="$seo['suggestDescription']" :url="$seo['url']" :hidden="(bool) $product->seo_hidden" />
             <x-seo-languages :values="$seoTranslations['values']" :ready="$seoTranslations['ready']"

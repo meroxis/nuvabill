@@ -253,6 +253,8 @@ class Settings
         'seo.language_links' => true,
         // Only language versions with their own search texts are offered to search engines.
         'seo.ready_languages_only' => true,
+        // Off: plan pages send search engines to their group page, because most order forms show the same page.
+        'seo.product_pages' => false,
         'seo.robots_extra' => '',
         'seo.share_image' => null,
         'backups.last_at' => null,

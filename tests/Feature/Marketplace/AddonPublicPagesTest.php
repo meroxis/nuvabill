@@ -79,7 +79,8 @@ class AddonPublicPagesTest extends TestCase
         $xml = app(Sitemap::class)->xml();
 
         $this->assertStringContainsString('<loc>'.url('hello').'</loc>', $xml);
-        $this->assertStringContainsString('<loc>'.url('store').'</loc>', $xml);
+        // The store's first page at /store repeats the website and group pages, so it is left out (0.7.4).
+        $this->assertStringNotContainsString('<loc>'.url('store').'</loc>', $xml);
     }
 
     public function test_the_sitemap_changes_at_once_when_an_addon_is_switched_on_or_off(): void

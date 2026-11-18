@@ -5323,5 +5323,8 @@
     "Ready": "Listo",
     "Not offered to search engines": "No se ofrece a los buscadores",
     "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Los campos vacíos usan el idioma principal. Un idioma se ofrece a Google cuando los dos campos están escritos en ese idioma.",
-    "Our services": "Nuestros servicios"
+    "Our services": "Nuestros servicios",
+    "List each plan as its own page": "Mostrar cada plan como una página propia",
+    "Off: plan pages send search engines to their group page, because most order forms show the same page for every plan. Turn it on when your plan pages have their own text.": "Desactivado: las páginas de planes envían a los buscadores a la página de su grupo, porque la mayoría de los formularios de pedido muestran la misma página para cada plan. Actívalo cuando tus páginas de planes tengan texto propio.",
+    "Search engines are sent to the group page for this plan. Change it in Settings → Search engines.": "Los buscadores se envían a la página del grupo de este plan. Cámbialo en Ajustes → Buscadores."
 }

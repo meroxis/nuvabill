@@ -41,6 +41,16 @@ class StorePages
         ]);
     }
 
+    /**
+     * The store's first page at /store, when a website from an add-on shows the home page. It
+     * shows what the website home and the group pages already show, so search engines skip it
+     * but still follow its links to the groups.
+     */
+    public function storeOverview(): void
+    {
+        $this->seo->hideButFollowLinks();
+    }
+
     public function group(ProductGroup $group): void
     {
         if ($group->seo_hidden) {
@@ -64,8 +74,21 @@ class StorePages
 
         $locale = app()->getLocale();
         $description = SeoText::productDescriptionIn($product, $locale);
-        $this->seo->setTitle(SeoText::productTitleIn($product, $locale))->setDescription($description)->setType('product')
-            ->setReadyLanguages(SeoTranslations::readyLocales($product, SeoText::productTitle($product), SeoText::productDescription($product)));
+        $this->seo->setTitle(SeoText::productTitleIn($product, $locale))->setDescription($description)->setType('product');
+
+        if (setting('seo.product_pages')) {
+            $this->seo->setReadyLanguages(SeoTranslations::readyLocales($product, SeoText::productTitle($product), SeoText::productDescription($product)));
+        } else {
+            // Most order forms show the group's page with this plan picked, so search engines are
+            // sent to the group page, in the languages the group is written in.
+            $this->seo->setCanonicalPath('store/'.$group->slug)
+                ->setReadyLanguages(SeoTranslations::readyLocales($group, SeoText::groupTitle($group), SeoText::groupDescription($group)));
+
+            // The group page is kept out of search results, so its copy is too.
+            if ($group->seo_hidden) {
+                $this->seo->hide();
+            }
+        }
 
         $amounts = $prices->map(fn (ProductPrice $price): int => $price->price)->values();
 

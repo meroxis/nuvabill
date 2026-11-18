@@ -5323,5 +5323,8 @@
     "Ready": "جاهزة",
     "Not offered to search engines": "غير معروضة على محركات البحث",
     "Empty fields use the main language. A language is offered to Google once both are written in that language.": "الحقول الفارغة تستخدم اللغة الرئيسية. تُعرض اللغة على Google عندما يُكتب الحقلان بتلك اللغة.",
-    "Our services": "خدماتنا"
+    "Our services": "خدماتنا",
+    "List each plan as its own page": "اعرض كل خطة كصفحة مستقلة",
+    "Off: plan pages send search engines to their group page, because most order forms show the same page for every plan. Turn it on when your plan pages have their own text.": "عند الإيقاف: صفحات الخطط ترسل محركات البحث إلى صفحة مجموعتها، لأن أغلب نماذج الطلب تعرض الصفحة نفسها لكل خطة. شغّله عندما يكون لصفحات خططك نص خاص بها.",
+    "Search engines are sent to the group page for this plan. Change it in Settings → Search engines.": "تُرسَل محركات البحث إلى صفحة المجموعة لهذه الخطة. غيّر ذلك من الإعدادات ← محركات البحث."
 }

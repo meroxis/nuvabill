@@ -5323,5 +5323,8 @@
     "Ready": "Prête",
     "Not offered to search engines": "Non proposée aux moteurs de recherche",
     "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Les champs vides utilisent la langue principale. Une langue est proposée à Google dès que les deux champs sont écrits dans cette langue.",
-    "Our services": "Nos services"
+    "Our services": "Nos services",
+    "List each plan as its own page": "Faire de chaque offre une page à part",
+    "Off: plan pages send search engines to their group page, because most order forms show the same page for every plan. Turn it on when your plan pages have their own text.": "Désactivé : les pages des offres envoient les moteurs de recherche vers la page de leur groupe, car la plupart des bons de commande affichent la même page pour chaque offre. Activez-le quand vos pages d'offres ont leur propre texte.",
+    "Search engines are sent to the group page for this plan. Change it in Settings → Search engines.": "Les moteurs de recherche sont envoyés vers la page du groupe pour cette offre. Modifiez cela dans Paramètres → Moteurs de recherche."
 }

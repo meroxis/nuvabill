@@ -5323,5 +5323,8 @@
     "Ready": "Hazır",
     "Not offered to search engines": "Arama motorlarına sunulmuyor",
     "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Boş alanlar ana dili kullanır. Bir dil, iki alan da o dilde yazıldığında Google'a sunulur.",
-    "Our services": "Hizmetlerimiz"
+    "Our services": "Hizmetlerimiz",
+    "List each plan as its own page": "Her paketi ayrı bir sayfa olarak listele",
+    "Off: plan pages send search engines to their group page, because most order forms show the same page for every plan. Turn it on when your plan pages have their own text.": "Kapalı: paket sayfaları arama motorlarını gruplarının sayfasına gönderir, çünkü çoğu sipariş formu her paket için aynı sayfayı gösterir. Paket sayfalarınızın kendi metni olduğunda açın.",
+    "Search engines are sent to the group page for this plan. Change it in Settings → Search engines.": "Arama motorları bu paket için grup sayfasına gönderilir. Bunu Ayarlar → Arama motorları bölümünden değiştirin."
 }

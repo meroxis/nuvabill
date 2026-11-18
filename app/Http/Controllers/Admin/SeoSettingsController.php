@@ -49,6 +49,7 @@ class SeoSettingsController extends Controller
             'structured_data' => ['boolean'],
             'language_links' => ['boolean'],
             'ready_languages_only' => ['boolean'],
+            'product_pages' => ['boolean'],
             'robots_extra' => ['nullable', 'string', 'max:5000'],
             'share_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048', 'dimensions:min_width=600,min_height=315'],
             ...SeoTranslations::rules(),
@@ -67,6 +68,7 @@ class SeoSettingsController extends Controller
             'seo.structured_data' => (bool) ($data['structured_data'] ?? false),
             'seo.language_links' => (bool) ($data['language_links'] ?? false),
             'seo.ready_languages_only' => (bool) ($data['ready_languages_only'] ?? false),
+            'seo.product_pages' => (bool) ($data['product_pages'] ?? false),
             'seo.robots_extra' => RobotsTxt::cleanExtra((string) ($data['robots_extra'] ?? '')),
         ]);
 

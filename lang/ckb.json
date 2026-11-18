@@ -5323,5 +5323,8 @@
     "Ready": "ئامادەیە",
     "Not offered to search engines": "پێشکەشی بزوێنەرەکانی گەڕان ناکرێت",
     "Empty fields use the main language. A language is offered to Google once both are written in that language.": "خانە بەتاڵەکان زمانی سەرەکی بەکاردەهێنن. زمانێک پێشکەشی Google دەکرێت کاتێک هەردوو خانەکە بەو زمانە نووسران.",
-    "Our services": "خزمەتگوزارییەکانمان"
+    "Our services": "خزمەتگوزارییەکانمان",
+    "List each plan as its own page": "هەر پلانێک وەک پەڕەیەکی جیا پیشان بدە",
+    "Off: plan pages send search engines to their group page, because most order forms show the same page for every plan. Turn it on when your plan pages have their own text.": "کوژاوە: پەڕەی پلانەکان بزوێنەرەکانی گەڕان دەنێرنە پەڕەی گرووپەکەیان، چونکە زۆربەی فۆرمەکانی داواکردن هەمان پەڕە بۆ هەموو پلانێک پیشان دەدەن. کاتێک پەڕەی پلانەکانت دەقی تایبەتی خۆیان هەیە، هەڵیبکە.",
+    "Search engines are sent to the group page for this plan. Change it in Settings → Search engines.": "بزوێنەرەکانی گەڕان بۆ ئەم پلانە دەنێردرێنە پەڕەی گرووپەکە. لە ڕێکخستنەکان ← بزوێنەرەکانی گەڕان بیگۆڕە."
 }

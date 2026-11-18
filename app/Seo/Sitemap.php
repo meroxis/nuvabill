@@ -33,15 +33,19 @@ class Sitemap
         $groups = ProductGroup::query()->visible()->where('seo_hidden', false)->orderBy('sort_order')->orderBy('id')->get();
         $products = Product::query()->visible()->where('seo_hidden', false)->whereIn('product_group_id', $groups->pluck('id'))
             ->with('group')->orderBy('sort_order')->orderBy('id')->get();
+        // Plan pages are listed only when they are pages of their own. Otherwise they send search
+        // engines to their group page, which is listed instead.
+        $productPages = (bool) setting('seo.product_pages');
 
         // The marketplace store's home page goes to the marketplace, so it is not listed itself. With a
-        // website from an add-on, the store's first page is /store and the add-on lists the home page.
+        // website from an add-on, the add-on lists the home page, and the store's first page at /store
+        // is left out: search engines skip it and follow its links to the groups.
         $addonHome = app(ExtensionManager::class)->homePageAddon() !== null;
         // The search texts written in other languages, for every store page in one go.
         $texts = SeoTranslations::many([
             SeoTranslations::HOME,
             ...$groups->map(fn (ProductGroup $group): string => SeoTranslations::subject($group))->all(),
-            ...$products->map(fn (Product $product): string => SeoTranslations::subject($product))->all(),
+            ...($productPages ? $products->map(fn (Product $product): string => SeoTranslations::subject($product))->all() : []),
         ]);
         // A page without texts in other languages is ready in the main language only, so its
         // main texts are not worked out for nothing.
@@ -55,9 +59,9 @@ class Sitemap
             return SeoTranslations::readyLocales($subject, $title, $description, $texts[$subject]);
         };
 
-        if (! $store) {
+        if (! $store && ! $addonHome) {
             $pages[] = [
-                'path' => $addonHome ? 'store' : '',
+                'path' => '',
                 'updated' => $products->max('updated_at'),
                 'languages' => $ready(SeoTranslations::HOME, fn (): array => [SeoText::homeTitle(), SeoText::homeDescription()]),
             ];
@@ -75,7 +79,7 @@ class Sitemap
             }
         }
 
-        foreach ($products as $product) {
+        foreach ($productPages ? $products : [] as $product) {
             $pages[] = [
                 'path' => $product->storePath(),
                 'updated' => $product->updated_at,
