@@ -3,6 +3,10 @@
 namespace App\Seo;
 
 use App\Models\SeoRedirect;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
+use Throwable;
 
 /**
  * robots.txt: which parts of the site search engines should leave alone, and where the sitemap
@@ -141,8 +145,12 @@ class RobotsTxt
         $paths = array_filter($paths, function (string $path): bool {
             foreach (self::PRIVATE_PATHS as $private) {
                 if (str_starts_with('/'.$path, $private)) {
-                    // Robots.txt reads * and $ as patterns, so such addresses are left out.
-                    return ! preg_match('/[\s*$#]/u', $path);
+                    // "Allow: /cart" would be as long as "Disallow: /cart" and open all of /cart/…
+                    // to search engines, so only addresses longer than the private part count.
+                    // Robots.txt reads * and $ as patterns, so such addresses are left out too.
+                    return strlen('/'.$path) > strlen(rtrim($private, '/'))
+                        && ! preg_match('/[\s*$#]/u', $path)
+                        && ! self::answeredByNuvabill($path);
                 }
             }
 
@@ -153,5 +161,22 @@ class RobotsTxt
         sort($paths);
 
         return array_slice($paths, 0, 100);
+    }
+
+    /**
+     * Whether one of Nuvabill's own pages answers the address. A redirect there never runs, so it
+     * must not open a private page to search engines.
+     */
+    private static function answeredByNuvabill(string $path): bool
+    {
+        try {
+            Route::getRoutes()->match(Request::create('/'.$path, 'GET'));
+
+            return true;
+        } catch (NotFoundHttpException) {
+            return false;
+        } catch (Throwable) {
+            return true;
+        }
     }
 }

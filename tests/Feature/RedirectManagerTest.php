@@ -69,9 +69,34 @@ class RedirectManagerTest extends TestCase
             $this->addRedirect(['from' => $from, 'to' => '/login'])->assertSessionHasErrors('from');
         }
 
+        // A first slash must not hide a full address or another kind of link.
+        foreach (['/https://evil.example/x', '/javascript://x%0aalert(1)', '/mailto:raz@example.com', '/HTTPS://evil.example/x', '///evil.example/x'] as $target) {
+            $this->addRedirect(['from' => 'old-page', 'to' => $target])->assertSessionHasErrors(['to' => 'Use an address on this site.']);
+            $this->assertNull(SeoRedirect::cleanTarget($target), $target);
+        }
+
         $this->assertSame(0, SeoRedirect::query()->count());
         $this->assertNull(SeoRedirect::cleanTarget('mailto:raz@example.com'));
         $this->assertNull(SeoRedirect::cleanTarget('data:text/html,hi'));
+    }
+
+    public function test_an_older_saved_redirect_to_another_site_stays_on_this_site(): void
+    {
+        $host = parse_url(url('/'), PHP_URL_HOST);
+        SeoRedirect::query()->create(['from_path' => 'old-a', 'to_path' => 'https://evil.example/x', 'hits' => 0, 'status' => 301]);
+        SeoRedirect::query()->create(['from_path' => 'old-b', 'to_path' => 'javascript://x%0aalert(1)', 'hits' => 0, 'status' => 301]);
+
+        $location = $this->get('/old-a')->assertStatus(301)->headers->get('Location');
+        $this->assertSame($host, parse_url((string) $location, PHP_URL_HOST));
+        $this->assertSame(url('/').'/https://evil.example/x', $location);
+        $this->assertSame(url('/').'/javascript://x%0aalert(1)', $this->get('/old-b')->assertStatus(301)->headers->get('Location'));
+
+        // The admin list links to the same safe address.
+        $this->signInAdmin();
+        $this->get(route('admin.settings.seo.redirects.index'))->assertOk()
+            ->assertSee('href="'.url('/').'/javascript://x%0aalert(1)"', false)
+            ->assertDontSee('href="javascript:', false)
+            ->assertDontSee('href="https://evil.example', false);
     }
 
     public function test_a_full_address_on_this_site_is_kept_as_a_path(): void
@@ -171,6 +196,29 @@ class RedirectManagerTest extends TestCase
         $this->assertStringNotContainsString('Allow: /login.php', $robots);
         $this->assertLessThan(strpos($robots, 'Disallow: /client'), strpos($robots, 'Allow: /clientarea.php'));
         $this->assertLessThan(strpos($robots, 'Disallow: /cart'), strpos($robots, 'Allow: /cart.php'));
+    }
+
+    public function test_robots_txt_never_opens_a_whole_private_part(): void
+    {
+        $this->signInAdmin();
+
+        // As long as the Disallow line, these would open all of /cart/…, /client/… and /two-factor/….
+        foreach (['cart', 'client', 'two-factor'] as $from) {
+            $this->addRedirect(['from' => $from, 'to' => '/knowledgebase'])->assertSessionHasNoErrors();
+        }
+
+        // Nuvabill's own page answers here, so the redirect never runs.
+        $this->addRedirect(['from' => 'client/invoices', 'to' => '/knowledgebase'])->assertSessionHasNoErrors();
+        $this->addRedirect(['from' => 'clientarea.php', 'to' => '/client'])->assertSessionHasNoErrors();
+
+        $robots = $this->get('/robots.txt')->assertOk()->getContent();
+
+        $this->assertStringNotContainsString("Allow: /cart\n", $robots);
+        $this->assertStringNotContainsString("Allow: /client\n", $robots);
+        $this->assertStringNotContainsString("Allow: /two-factor\n", $robots);
+        $this->assertStringNotContainsString('Allow: /client/invoices', $robots);
+        $this->assertStringContainsString("Allow: /clientarea.php\n", $robots);
+        $this->assertStringContainsString("Disallow: /cart\n", $robots);
     }
 
     public function test_staff_see_when_their_own_robots_line_blocks_a_redirect(): void

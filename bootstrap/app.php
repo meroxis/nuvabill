@@ -195,7 +195,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
             $status = in_array($redirect->status, SeoRedirect::STATUSES, true) ? $redirect->status : 301;
             $query = $redirect->keep_query === false ? null : $request->getQueryString();
-            $target = url($redirect->to_path);
+            $target = $redirect->targetUrl();
 
             return redirect($query ? $target.(str_contains($target, '?') ? '&' : '?').$query : $target, $status);
         });

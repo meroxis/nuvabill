@@ -37,7 +37,7 @@
                         $isLink = in_array($code, $linked, true);
                     @endphp
                     @if ($isLink)
-                        <a href="{{ \App\Seo\SiteAddress::url(request()->path(), $code, $seo->page()) }}" hreflang="{{ \App\Support\Locales::htmlLang($code) }}" @click.prevent="choose(@js($code))"
+                        <a href="{{ \App\Seo\SiteAddress::url(request()->path(), $code, $seo->page()) }}" hreflang="{{ \App\Support\Locales::htmlLang($code) }}" lang="{{ \App\Support\Locales::htmlLang($code) }}" @click.prevent="choose(@js($code))"
                     @else
                         <button type="submit" name="locale" value="{{ $code }}"
                     @endif
@@ -49,7 +49,7 @@
                         <span class="lang-menu-names">
                             <span class="lang-menu-native" lang="{{ \App\Support\Locales::htmlLang($code) }}" dir="{{ \App\Support\Locales::isRtl($code) ? 'rtl' : 'ltr' }}">{{ $native }}</span>
                             @if (mb_strtolower($name) !== mb_strtolower($native))
-                                <span class="lang-menu-local">{{ $name }}</span>
+                                <span class="lang-menu-local" @if ($isLink) lang="{{ \App\Support\Locales::htmlLang($current) }}" @endif>{{ $name }}</span>
                             @endif
                         </span>
                         @if ($code === $current)

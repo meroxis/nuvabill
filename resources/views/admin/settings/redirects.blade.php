@@ -96,7 +96,7 @@
                                         <br><x-pill tone="warn">{{ __('Site hidden from search engines') }}</x-pill>
                                     @endif
                                 </td>
-                                <td class="mono" dir="ltr" style="overflow-wrap:anywhere"><a href="{{ url($redirect->to_path) }}" target="_blank" rel="noopener">/{{ $redirect->to_path }}</a></td>
+                                <td class="mono" dir="ltr" style="overflow-wrap:anywhere"><a href="{{ $redirect->targetUrl() }}" target="_blank" rel="noopener">/{{ $redirect->to_path }}</a></td>
                                 <td>{{ $status }}</td>
                                 <td><x-pill :tone="$redirect->source === 'manual' ? 'info' : null">{{ $sources[$redirect->source ?? 'auto'] ?? __('Automatic') }}</x-pill></td>
                                 <td class="num">{{ number_format($redirect->hits) }}</td>

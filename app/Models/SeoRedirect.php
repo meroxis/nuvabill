@@ -83,6 +83,17 @@ class SeoRedirect extends Model
         return $rows->first();
     }
 
+    /**
+     * The full address this redirect sends visitors to. Always on this site, even for an older
+     * saved row that looks like a full address: url() would keep that unchanged.
+     */
+    public function targetUrl(): string
+    {
+        $path = ltrim((string) $this->to_path, '/');
+
+        return $path === '' ? url('/') : rtrim(url('/'), '/').'/'.$path;
+    }
+
     public static function normalise(string $path): string
     {
         return mb_substr(trim($path, '/'), 0, 191);
@@ -212,8 +223,14 @@ class SeoRedirect extends Model
         }
 
         [$path, $query] = array_pad(explode('?', $value, 2), 2, null);
+        $path = trim($path, '/');
 
-        return trim($path, '/').($query !== null && $query !== '' ? '?'.$query : '');
+        // "/https://other.site" or "/javascript:…" would lose the first slash and leave the site.
+        if (preg_match(self::SCHEME, $path)) {
+            return null;
+        }
+
+        return $path.($query !== null && $query !== '' ? '?'.$query : '');
     }
 
     /**

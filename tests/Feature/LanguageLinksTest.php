@@ -38,6 +38,9 @@ class LanguageLinksTest extends TestCase
 
         $this->assertMatchesRegularExpression('#<a href="'.preg_quote(url('/'), '#').'/\?lang=de" hreflang="de"[^>]*class="lang-menu-item"#', $html);
         $this->assertMatchesRegularExpression('#<a href="'.preg_quote(url('/'), '#').'/" hreflang="en"#', $html);
+        // Screen readers read each language link in its own language.
+        $this->assertStringContainsString('hreflang="de" lang="de"', $html);
+        $this->assertStringContainsString('hreflang="en" lang="en"', $html);
         // A click still goes through the form, so a signed-in client's choice is saved.
         $this->assertStringContainsString('@click.prevent="choose(\'de\')"', $html);
         // Arabic is not translated yet: it stays a button, not a link.

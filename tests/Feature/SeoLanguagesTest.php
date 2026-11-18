@@ -337,7 +337,11 @@ class SeoLanguagesTest extends TestCase
         $this->get(route('admin.product-groups.edit', $this->group))->assertOk()
             ->assertSeeInOrder(['Other languages', '1 of 2 ready', 'German', 'Ready', 'Schnelles Webhosting', 'Arabic', 'Not offered to search engines', 'استضافة سريعة'])
             ->assertSee('name="seo_translations[ar][description]"', false)
-            ->assertSee('lang="ar" dir="rtl"', false);
+            ->assertSee('lang="ar" dir="rtl"', false)
+            // Each language's two fields are named by that language for screen readers.
+            ->assertSee('role="group" aria-labelledby="f-seo-de-name"', false)
+            ->assertSee('<strong id="f-seo-de-name">German</strong>', false)
+            ->assertSee('role="group" aria-labelledby="f-seo-ar-name"', false);
 
         $this->get(route('admin.products.create'))->assertOk()->assertSee('0 of 2 ready');
         $this->get(route('admin.settings.seo.edit'))->assertOk()->assertSee('name="seo_translations[de][title]"', false);

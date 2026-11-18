@@ -37,13 +37,13 @@
                 $descriptionValue = old($descriptionKey, $values[$code]['description'] ?? '');
                 $descriptionValue = is_string($descriptionValue) ? $descriptionValue : '';
             @endphp
-            <div style="display:grid;gap:.6rem;padding-top:.9rem;margin-top:.9rem;border-top:1px solid var(--nb-line)" x-data="{
+            <div role="group" aria-labelledby="{{ $id }}-name" style="display:grid;gap:.6rem;padding-top:.9rem;margin-top:.9rem;border-top:1px solid var(--nb-line)" x-data="{
                 title: @js($titleValue),
                 description: @js($descriptionValue),
                 meter(value, limit) { const length = value.trim().length; return { width: Math.min(100, Math.round(length / limit * 100)) + '%', state: length > limit ? 'long' : 'good', length } },
             }">
                 <div style="display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-                    <strong>{{ \App\Support\Locales::displayName($code) }}</strong>
+                    <strong id="{{ $id }}-name">{{ \App\Support\Locales::displayName($code) }}</strong>
                     @if (in_array($code, $ready, true))
                         <span class="pill" data-tone="good">{{ __('Ready') }}</span>
                     @else
