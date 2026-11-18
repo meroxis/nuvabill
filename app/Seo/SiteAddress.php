@@ -10,11 +10,36 @@ use App\Support\Locales;
  */
 class SiteAddress
 {
+    /**
+     * The site address without a slash at the end, such as https://site.com or
+     * https://site.com/billing. Never ends in /index.php: on a real server a request for
+     * /index.php?rp=... comes in through index.php, and Laravel's own root and url() then end
+     * in /index.php.
+     */
     public static function root(): string
     {
         $configured = rtrim((string) config('app.url'), '/');
 
-        return self::isReal($configured) ? $configured : rtrim(request()->root(), '/');
+        if (self::isReal($configured)) {
+            return $configured;
+        }
+
+        $request = request();
+
+        return rtrim($request->getSchemeAndHttpHost().$request->getBasePath(), '/');
+    }
+
+    /**
+     * The full address of a path on this site, with the part after ? as it is, for redirects.
+     * The path always comes after the site address, so it can never lead to another site. The
+     * home page has no slash at the end.
+     */
+    public static function to(string $path, string $query = ''): string
+    {
+        $path = trim($path, '/');
+        $url = self::root().($path === '' ? '' : '/'.$path);
+
+        return $query === '' ? $url : $url.'?'.$query;
     }
 
     /**

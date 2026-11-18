@@ -184,6 +184,45 @@ class RedirectManagerTest extends TestCase
         }
     }
 
+    /**
+     * On a real server /index.php?rp= comes in through index.php, so Laravel's own addresses
+     * start with /index.php. The redirect must still go to the clean address.
+     */
+    public function test_rp_links_through_index_php_go_to_the_clean_address(): void
+    {
+        app(Settings::class)->setMany(['seo.whmcs_addresses' => true]);
+        $this->withServerVariables(['SCRIPT_NAME' => '/index.php', 'SCRIPT_FILENAME' => public_path('index.php'), 'PHP_SELF' => '/index.php']);
+
+        $this->assertSame('http://localhost/knowledgebase', $this->get('http://localhost/index.php?rp=/knowledgebase/1/x')->assertStatus(301)->headers->get('Location'));
+        $this->assertSame('http://localhost/store/web-hosting', $this->get('http://localhost/index.php?rp=/store/web-hosting')->assertStatus(301)->headers->get('Location'));
+        $this->assertSame('http://localhost', $this->get('http://localhost/index.php?rp=/unknown')->assertStatus(301)->headers->get('Location'));
+    }
+
+    public function test_rp_links_in_a_site_folder_go_to_the_clean_address(): void
+    {
+        app(Settings::class)->setMany(['seo.whmcs_addresses' => true]);
+        config(['app.url' => 'https://hosting-shop.net/billing']);
+        $this->withServerVariables(['SCRIPT_NAME' => '/billing/index.php', 'SCRIPT_FILENAME' => public_path('index.php'), 'PHP_SELF' => '/billing/index.php']);
+
+        $this->assertSame('https://hosting-shop.net/billing/knowledgebase',
+            $this->get('https://hosting-shop.net/billing/index.php?rp=/knowledgebase/1/x')->assertStatus(301)->headers->get('Location'));
+    }
+
+    public function test_a_redirect_reached_through_index_php_goes_to_the_clean_address(): void
+    {
+        SeoRedirect::saveManual('old-page', '/knowledgebase', 301, false);
+        $this->withServerVariables(['SCRIPT_NAME' => '/index.php', 'SCRIPT_FILENAME' => public_path('index.php'), 'PHP_SELF' => '/index.php']);
+
+        $this->assertSame('http://localhost/knowledgebase', $this->get('http://localhost/index.php/old-page')->assertStatus(301)->headers->get('Location'));
+        $this->assertSame('http://localhost/knowledgebase', $this->get('http://localhost/old-page')->assertStatus(301)->headers->get('Location'));
+
+        // In a site folder, from the site address in .env.
+        config(['app.url' => 'https://hosting-shop.net/billing']);
+        $this->withServerVariables(['SCRIPT_NAME' => '/billing/index.php', 'SCRIPT_FILENAME' => public_path('index.php'), 'PHP_SELF' => '/billing/index.php']);
+        $this->assertSame('https://hosting-shop.net/billing/knowledgebase',
+            $this->get('https://hosting-shop.net/billing/index.php/old-page')->assertStatus(301)->headers->get('Location'));
+    }
+
     public function test_robots_txt_lets_search_engines_see_redirected_private_paths(): void
     {
         $this->signInAdmin();

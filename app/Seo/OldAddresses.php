@@ -100,7 +100,7 @@ class OldAddresses
             return null;
         }
 
-        return redirect(url(self::rpTarget($request->query('rp'))), 301);
+        return redirect(SiteAddress::to(self::rpTarget($request->query('rp'))), 301);
     }
 
     private static function rpTarget(mixed $rp): string
@@ -125,7 +125,7 @@ class OldAddresses
             default => '',
         };
 
-        // Only ever a path on this site: url() puts it after the site address.
+        // Only ever a path on this site: SiteAddress::to() puts it after the site address.
         return '/'.ltrim((string) $target, '/');
     }
 }

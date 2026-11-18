@@ -73,6 +73,28 @@ class LanguageLinksTest extends TestCase
         $this->get('/?lang=en')->assertOk();
     }
 
+    /**
+     * On a real server /index.php?lang= comes in through index.php, so Laravel's own addresses
+     * start with /index.php. The redirect must still go to the clean address.
+     */
+    public function test_an_unknown_language_through_index_php_goes_to_the_clean_address(): void
+    {
+        $this->withServerVariables(['SCRIPT_NAME' => '/index.php', 'SCRIPT_FILENAME' => public_path('index.php'), 'PHP_SELF' => '/index.php']);
+
+        $this->assertSame('http://localhost', $this->get('http://localhost/index.php?lang=xx')->assertStatus(301)->headers->get('Location'));
+        $this->assertSame('http://localhost?cycle=annually', $this->get('http://localhost/index.php?lang=xx&cycle=annually')->assertStatus(301)->headers->get('Location'));
+        $this->assertSame('http://localhost/store/'.$this->group->slug,
+            $this->get('http://localhost/index.php/store/'.$this->group->slug.'?lang=th')->assertStatus(301)->headers->get('Location'));
+
+        // A site in a folder keeps its folder, but never index.php.
+        $this->withServerVariables(['SCRIPT_NAME' => '/billing/index.php', 'SCRIPT_FILENAME' => public_path('index.php'), 'PHP_SELF' => '/billing/index.php']);
+        $this->assertSame('http://localhost/billing', $this->get('http://localhost/billing/index.php?lang=xx')->assertStatus(301)->headers->get('Location'));
+
+        config(['app.url' => 'https://hosting-shop.net/billing']);
+        $this->assertSame('https://hosting-shop.net/billing/store/'.$this->group->slug,
+            $this->get('https://hosting-shop.net/billing/index.php/store/'.$this->group->slug.'?lang=xx')->assertStatus(301)->headers->get('Location'));
+    }
+
     public function test_choosing_a_language_leaves_the_language_address(): void
     {
         $page = url('/store/'.$this->group->slug);

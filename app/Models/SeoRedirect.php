@@ -85,13 +85,14 @@ class SeoRedirect extends Model
 
     /**
      * The full address this redirect sends visitors to. Always on this site, even for an older
-     * saved row that looks like a full address: url() would keep that unchanged.
+     * saved row that looks like a full address (url() would keep that unchanged), and never with
+     * /index.php, which url() adds when the old address went through index.php.
      */
     public function targetUrl(): string
     {
         $path = ltrim((string) $this->to_path, '/');
 
-        return $path === '' ? url('/') : rtrim(url('/'), '/').'/'.$path;
+        return $path === '' ? SiteAddress::root() : SiteAddress::root().'/'.$path;
     }
 
     public static function normalise(string $path): string

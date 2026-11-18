@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Seo\OldAddresses;
+use App\Seo\SiteAddress;
 use App\Support\Installation;
 use App\Support\Locales;
 use Closure;
@@ -47,11 +48,10 @@ class CleanPublicAddress
         $query = $request->query();
         unset($query['lang']);
         $query = http_build_query($query, '', '&', PHP_QUERY_RFC3986);
-        // Always this site's own address: the path is added to it, never read as an address.
-        $path = trim($request->path(), '/');
-        $target = rtrim(url('/'), '/').($path === '' ? '' : '/'.$path);
 
-        return redirect($target.($query === '' ? '' : '?'.$query), 301);
+        // Always this site's own address, never with /index.php: the path is added to it, never
+        // read as an address.
+        return redirect(SiteAddress::to($request->path(), $query), 301);
     }
 
     private function isPrivateArea(Request $request): bool
