@@ -9,6 +9,7 @@ the [roadmap](ROADMAP.md).
 
 | Version | Released | Highlights |
 |---|---|---|
+| [0.7.4](https://github.com/meroxis/nuvabill/releases/tag/v0.7.4) | 18 Nov 2026 | Search texts in every language, only translated languages offered to Google, a redirect manager with the old WHMCS addresses, fewer copies of the same store page |
 | [0.7.3](https://github.com/meroxis/nuvabill/releases/tag/v0.7.3) | 11 Nov 2026 | Security fixes for sign-ins, staff permissions, affiliates, refunds and disputes, coupons, the marketplace and the installer; every add-on in 12 languages; OpenSRS fixes |
 | [0.7.2](https://github.com/meroxis/nuvabill/releases/tag/v0.7.2) | 28 Oct 2026 | Security fixes: API keys after a password reset, typed secrets after form errors, refunds never sent twice, no server passwords over plain HTTP on the internet |
 | [0.7.1](https://github.com/meroxis/nuvabill/releases/tag/v0.7.1) | 28 Oct 2026 | Mongolian (off until you turn it on), 155 currencies, the public demo can switch chosen add-ons on again after every reset; marketplace listings are checked for length before they are saved; the client side follows the admin language when no client language was picked |
@@ -57,6 +58,75 @@ the [roadmap](ROADMAP.md).
 | [0.1.2](https://github.com/meroxis/nuvabill/releases/tag/v0.1.2) | 26 Sep 2026 | Faster demo resets |
 | [0.1.1](https://github.com/meroxis/nuvabill/releases/tag/v0.1.1) | 26 Sep 2026 | Demo mode and security headers |
 | [0.1.0](https://github.com/meroxis/nuvabill/releases/tag/v0.1.0) | 26 Sep 2026 | First release |
+
+## 0.7.4
+
+Better results on Google: search texts in every language, only translated languages offered to search engines, a
+redirect manager with the old WHMCS addresses, and fewer copies of the same store page.
+
+**Do this after the update**
+
+- **Write your search texts in your other languages**: the home page under **Settings → Search engines**, and each
+  product group (and each plan, if you list plans on their own). Until a language has its search title and
+  description, only your main language is offered to Google for that page.
+- **Moving from WHMCS?** Open **Settings → Search engines → Redirects** and click **Add the WHMCS addresses**.
+- **On Nginx:** send unknown `.php` addresses to `index.php`, and let browsers keep `/build/assets` for a year. The
+  [installation guide](docs/installation.md#nginx) has the lines to add.
+- **Security headers sent twice?** Site health now finds them. Remove the copies your web server or CDN adds, or
+  name them in `NUVABILL_SERVER_HEADERS` in `.env`.
+- Then send your sitemap to Google Search Console again.
+
+**Search engines**
+
+- Search titles and descriptions in every language: for the home page, product groups and plans, side by side.
+- A language version is offered to search engines (language links and sitemap) only once it is translated. Until
+  then it points to the main language. The sitemap also gets an `x-default` address.
+- The language menu holds plain links search engines can follow. An address with an unknown or switched-off
+  `?lang=` forwards to the clean address.
+- Choosing a language on a `?lang=` page now sticks.
+- Plan pages send search engines to their group page, because most order forms show the same page for every plan.
+  Turn on **List each plan as its own page** when your plan pages have their own text.
+- When a website add-on shows your home page, `/store` is left out of search.
+- The knowledge base and announcements pages stay out of search while they are empty.
+- The footer links to every store group, domains and the help pages.
+
+**Redirects**
+
+- A new redirect manager: add your own (301 or 302), keep the part after `?` if you like, and see visits for each.
+  Redirects only go to pages on this site, and loops are refused.
+- A list of the addresses people could not open, most visited first, with **Make a redirect** next to each. Only the
+  address is kept, nothing about the visitor.
+- One click adds the old WHMCS addresses (`/clientarea.php`, `/cart.php` and others, plus `?rp=` links).
+- robots.txt lets search engines see old addresses that redirect, so they drop them from their results.
+
+**Speed and site health**
+
+- 2 font weights are preloaded instead of 4.
+- New `.env` settings: `NUVABILL_SERVER_HEADERS` (headers your server already sends) and `NUVABILL_HSTS`.
+- Site health finds security headers sent twice, design files cached for too short a time, and old addresses your
+  web server answers itself.
+- The one-line installer's Nginx setup sends old `.php` addresses to Nuvabill and runs no other PHP file.
+
+**Fixes**
+
+- Lists in articles, announcements and release notes show their bullets and numbers again.
+- sitemap.xml updates at once when an add-on is saved or removed.
+- Private package downloads are never cached.
+
+**On the Marketplace**
+
+- Website Builder 1.0.4: search texts and page names in every language, an honest translation check, a Google
+  preview that shows exactly what Google gets, publishing stops while text in [brackets] is on a page, uploaded
+  pictures are saved without camera or location data, and your logo, social links, contact and address for Google.
+
+**Languages**
+
+- Every new text is in all 12 languages.
+
+**For developers**
+
+- New for add-ons: `Seo::setReadyLanguages()`, `Seo::setCanonicalPath()`, `Seo::hideButFollowLinks()`, a
+  `languages` key in `sitemapPages()`, and `SiteLinks::store()`. See the add-on guide.
 
 ## 0.7.3
 

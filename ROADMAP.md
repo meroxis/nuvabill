@@ -35,11 +35,13 @@ already shipped is in the [changelog](CHANGELOG.md).
 | 0.7.1 | Mongolian, 155 currencies, the client side follows the admin language; the public demo keeps chosen add-ons on; marketplace listings are checked for length |
 | 0.7.2 | Security fixes: API keys, typed secrets, refunds sent once, server connections |
 | 0.7.3 | Security fixes for sign-ins, permissions, billing, the marketplace and the installer; every add-on in 12 languages |
+| 0.7.4 | Search texts in every language, only translated languages offered to Google, a redirect manager with the old WHMCS addresses, fewer copies of the same store page |
 
 ## Next
 
 | Version | Focus |
 |---|---|
+| Next | **Language addresses as paths** (/ar/…, /de/…) for search engines, as an option next to `?lang=` |
 | Later | **ClientExec importer**, once we have tested it against a real ClientExec database |
 
 ## The path to 1.0
