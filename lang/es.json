@@ -5369,5 +5369,17 @@
     "Make a redirect": "Crear una redirección",
     "Manage redirects": "Gestionar redirecciones",
     "Old addresses that forward: :count.": "Direcciones antiguas que redirigen: :count.",
-    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "Añade las tuyas, añade las direcciones antiguas de WHMCS y mira qué direcciones no pudo abrir la gente."
+    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "Añade las tuyas, añade las direcciones antiguas de WHMCS y mira qué direcciones no pudo abrir la gente.",
+    "Security headers are sent once": "Las cabeceras de seguridad se envían una vez",
+    "Your web server or CDN adds these headers too. Browsers then get two copies, sometimes with different values.": "Su servidor web o CDN también añade estas cabeceras. Los navegadores reciben dos copias, a veces con valores distintos.",
+    "Remove them from the web server or CDN, or add their names to NUVABILL_SERVER_HEADERS in .env.": "Quítelas del servidor web o del CDN, o añada sus nombres a NUVABILL_SERVER_HEADERS en .env.",
+    "Browsers keep design files for a year": "Los navegadores guardan los archivos de diseño un año",
+    "The design files are not built yet.": "Los archivos de diseño aún no están generados.",
+    "Browsers are not told how long to keep design files.": "No se indica a los navegadores cuánto tiempo guardar los archivos de diseño.",
+    "Browsers keep design files for only :hours hours, not a year.": "Los navegadores guardan los archivos de diseño solo :hours horas, no un año.",
+    "In Nginx, add a location /build/assets/ block with add_header Cache-Control \"public, max-age=31536000, immutable\". In Cloudflare, set Browser Cache TTL to \"Respect existing headers\". See the installation guide.": "En Nginx, añada un bloque location /build/assets/ con add_header Cache-Control \"public, max-age=31536000, immutable\". En Cloudflare, ponga Browser Cache TTL en \"Respect existing headers\". Consulte la guía de instalación.",
+    "Old WHMCS addresses reach Nuvabill": "Las direcciones antiguas de WHMCS llegan a Nuvabill",
+    "Old WHMCS addresses are not forwarded, so there is nothing to check.": "Las direcciones antiguas de WHMCS no se redirigen, así que no hay nada que comprobar.",
+    "Your web server answers old .php addresses itself, so they cannot be forwarded.": "Su servidor web responde él mismo a las direcciones .php antiguas, así que no se pueden redirigir.",
+    "Send unknown .php addresses to index.php. See the installation guide.": "Envíe las direcciones .php desconocidas a index.php. Consulte la guía de instalación."
 }

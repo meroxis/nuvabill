@@ -13,8 +13,10 @@ use App\Health\DatabaseInspector;
 use App\Health\SiteHealth;
 use App\Health\Status;
 use App\Models\HealthRun;
+use App\Seo\OldAddresses;
 use App\Support\Cloudflare;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
@@ -216,6 +218,60 @@ class SiteHealthSettingsTest extends TestCase
 
         $this->assertStringContainsString("table_schema in ('nuvabill_test')", $sql);
         $this->assertStringNotContainsString("not in ('information_schema'", $sql);
+    }
+
+    public function test_duplicate_headers_short_asset_cache_and_unforwarded_old_addresses_are_reported(): void
+    {
+        config(['app.url' => 'https://billing.nuvabill-check.net']);
+        $this->setSettings(['health.outside_check' => true, 'seo.visible' => true, 'seo.sitemap' => false]);
+        OldAddresses::addWhmcsPack();
+        $good = false;
+        Http::fake(function (Request $request) use (&$good) {
+            $path = (string) parse_url($request->url(), PHP_URL_PATH);
+
+            return match (true) {
+                // Nginx adds its own copies, as on a site set up by hand; Cloudflare joins one pair into one line.
+                $path === '/robots.txt' => Http::response("User-agent: *\n# Made by Nuvabill\n", 200, $good ? [
+                    'X-Frame-Options' => 'SAMEORIGIN',
+                    'Strict-Transport-Security' => 'max-age=31536000',
+                    'Permissions-Policy' => 'camera=(), microphone=(), geolocation=(), browsing-topics=()',
+                ] : [
+                    'X-Frame-Options' => ['SAMEORIGIN', 'SAMEORIGIN'],
+                    'Strict-Transport-Security' => ['max-age=31536000', 'max-age=31536000; includeSubDomains'],
+                    'X-Content-Type-Options' => 'nosniff, nosniff',
+                    'Permissions-Policy' => 'camera=(), microphone=(), geolocation=(), browsing-topics=()',
+                ]),
+                str_starts_with($path, '/build/assets/') => Http::response('body{}', 200, ['Cache-Control' => $good ? 'public, max-age=31536000, immutable' : 'max-age=14400']),
+                $path === '/clientarea.php' => $good ? Http::response('', 301, ['Location' => 'https://billing.nuvabill-check.net/login']) : Http::response('<center>nginx</center>', 404),
+                default => Http::response('Not found', 404),
+            };
+        });
+
+        $checks = collect(app(SearchSetupChecks::class)->run())->keyBy('id');
+
+        $this->assertSame(Status::Warning, $checks['seo.headers_once']->status);
+        $this->assertSame(['X-Content-Type-Options', 'X-Frame-Options', 'Strict-Transport-Security'], array_column($checks['seo.headers_once']->items, 'label'));
+        $this->assertSame(Status::Warning, $checks['seo.asset_cache']->status);
+        $this->assertSame(['hours' => '4'], $checks['seo.asset_cache']->params);
+        $this->assertStringStartsWith('/build/assets/theme-', $checks['seo.asset_cache']->items[0]['label']);
+        $this->assertSame(Status::Warning, $checks['seo.old_addresses']->status);
+        $this->assertSame(Status::Passed, $checks['seo.outside']->status);
+        // robots.txt is opened once for both checks that read it.
+        $this->assertCount(1, Http::recorded(fn (Request $request): bool => str_ends_with($request->url(), '/robots.txt')));
+
+        $good = true;
+        $checks = collect(app(SearchSetupChecks::class)->run())->keyBy('id');
+
+        foreach (['seo.headers_once', 'seo.asset_cache', 'seo.old_addresses'] as $id) {
+            $this->assertSame(Status::Passed, $checks[$id]->status, $id);
+        }
+
+        // Without forwarded WHMCS addresses there is nothing to open, and none of it runs with the outside check off.
+        $this->setSettings(['seo.whmcs_addresses' => false]);
+        $this->assertSame(Status::Skipped, $this->searchCheck('seo.old_addresses')->status);
+        $this->setSettings(['health.outside_check' => false]);
+        $this->assertSame(Status::Skipped, $this->searchCheck('seo.headers_once')->status);
+        $this->assertSame(Status::Skipped, $this->searchCheck('seo.asset_cache')->status);
     }
 
     public function test_a_trailing_dot_host_is_not_another_address(): void

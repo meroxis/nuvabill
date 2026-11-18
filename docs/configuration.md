@@ -153,6 +153,8 @@ credit must stay visible (see the [license](../LICENSE) and [NOTICE](../NOTICE))
 | `APP_DEBUG` | Keep `false` on a live site |
 | `SESSION_ENCRYPT` | `true` keeps session data encrypted (new installs since 0.7.2). Older sites switch it on with the **Site health** fix; everyone signs in again once |
 | `NUVABILL_TRUSTED_PROXIES` | `cloudflare`, a list of proxy IPs, or `*` (see [below](#behind-cloudflare-or-another-proxy)) |
+| `NUVABILL_SERVER_HEADERS` | Security headers your web server or CDN already sends, such as `x-frame-options,strict-transport-security`. Nuvabill then leaves them out (see [Your own web server](installation.md#nginx)) |
+| `NUVABILL_HSTS` | The `Strict-Transport-Security` value, such as `max-age=31536000; includeSubDomains`. Other values fall back to one year |
 | `NUVABILL_DEMO` | `true` only on a public demo site: it locks settings, sends no email and puts fresh demo data in every hour |
 | `NUVABILL_DEMO_ADDONS` | Demo sites only: add-ons to switch on again after every reset, separated by commas, such as `dedicated-server-power` |
 | `DB_*` | Database connection, written by the installer |

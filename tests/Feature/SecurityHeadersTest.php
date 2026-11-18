@@ -28,6 +28,63 @@ class SecurityHeadersTest extends TestCase
             ->assertHeader('Strict-Transport-Security', 'max-age=31536000');
     }
 
+    public function test_headers_the_web_server_sends_are_left_out(): void
+    {
+        config(['nuvabill.security_headers.from_server' => ['x-frame-options', 'strict-transport-security']]);
+
+        $this->get(str_replace('http://', 'https://', route('store.index')))
+            ->assertOk()
+            ->assertHeaderMissing('X-Frame-Options')
+            ->assertHeaderMissing('Strict-Transport-Security')
+            ->assertHeader('X-Content-Type-Options', 'nosniff')
+            ->assertHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+            ->assertHeader('Content-Security-Policy');
+
+        // robots.txt sets nosniff itself; that copy is left out too, so the browser gets the server's only.
+        config(['nuvabill.security_headers.from_server' => ['x-content-type-options']]);
+        $this->get('/robots.txt')->assertOk()->assertHeaderMissing('X-Content-Type-Options')->assertHeader('X-Frame-Options', 'SAMEORIGIN');
+
+        // The Content-Security-Policy cannot be left out, and unknown names are ignored.
+        $_SERVER['NUVABILL_SERVER_HEADERS'] = ' X-Frame-Options , Strict-Transport-Security,content-security-policy, x-powered-by';
+
+        try {
+            $this->assertSame(['x-frame-options', 'strict-transport-security'], (require config_path('nuvabill.php'))['security_headers']['from_server']);
+        } finally {
+            unset($_SERVER['NUVABILL_SERVER_HEADERS']);
+        }
+    }
+
+    public function test_the_hsts_value_can_include_subdomains_and_bad_values_fall_back(): void
+    {
+        $plain = route('store.index');
+        $secure = str_replace('http://', 'https://', $plain);
+
+        config(['nuvabill.security_headers.hsts' => 'max-age=63072000; includeSubDomains; preload']);
+        $this->get($secure)->assertHeader('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+
+        config(['nuvabill.security_headers.hsts' => 'max-age=31536000;includeSubDomains']);
+        $this->get($secure)->assertHeader('Strict-Transport-Security', 'max-age=31536000;includeSubDomains');
+
+        foreach (['max-age=1; report-uri=https://evil.example', "max-age=1\r\nSet-Cookie: a=b", 'includeSubDomains', '', 'max-age=9999999999'] as $bad) {
+            config(['nuvabill.security_headers.hsts' => $bad]);
+            $this->get($secure)->assertHeader('Strict-Transport-Security', 'max-age=31536000');
+        }
+
+        // Plain HTTP never gets it.
+        $this->get($plain)->assertHeaderMissing('Strict-Transport-Security');
+    }
+
+    public function test_each_security_header_is_sent_once(): void
+    {
+        foreach ([str_replace('http://', 'https://', route('store.index')), str_replace('http://', 'https://', url('/robots.txt'))] as $url) {
+            $headers = $this->get($url)->assertOk()->baseResponse->headers;
+
+            foreach (['X-Content-Type-Options', 'X-Frame-Options', 'Referrer-Policy', 'Permissions-Policy', 'Cross-Origin-Opener-Policy', 'Strict-Transport-Security'] as $name) {
+                $this->assertCount(1, $headers->all($name), $name.' on '.$url);
+            }
+        }
+    }
+
     public function test_cloudflare_web_analytics_may_load_only_on_pages_served_through_cloudflare(): void
     {
         $this->assertStringNotContainsString('cloudflareinsights.com', (string) $this->get(route('store.index'))->headers->get('Content-Security-Policy'));

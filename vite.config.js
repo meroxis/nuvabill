@@ -18,6 +18,8 @@ export default defineConfig({
             refresh: ['resources/views/**', 'themes/**/views/**', 'extensions/**/*.php'],
             fonts: [
                 local('Figtree', {
+                    // Only the body and bold weights are preloaded; 500 and 600 load when a page uses them.
+                    preload: [{ weight: 400 }, { weight: 700 }],
                     variants: [400, 500, 600, 700].map((weight) => ({
                         src: `resources/fonts/figtree/figtree-latin-${weight}-normal.woff2`,
                         weight,

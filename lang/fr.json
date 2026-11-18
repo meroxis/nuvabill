@@ -5369,5 +5369,17 @@
     "Make a redirect": "Créer une redirection",
     "Manage redirects": "Gérer les redirections",
     "Old addresses that forward: :count.": "Anciennes adresses qui redirigent : :count.",
-    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "Ajoutez les vôtres, ajoutez les anciennes adresses WHMCS et voyez quelles adresses les gens n’ont pas pu ouvrir."
+    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "Ajoutez les vôtres, ajoutez les anciennes adresses WHMCS et voyez quelles adresses les gens n’ont pas pu ouvrir.",
+    "Security headers are sent once": "Les en-têtes de sécurité sont envoyés une fois",
+    "Your web server or CDN adds these headers too. Browsers then get two copies, sometimes with different values.": "Votre serveur web ou CDN ajoute aussi ces en-têtes. Les navigateurs reçoivent alors deux copies, parfois avec des valeurs différentes.",
+    "Remove them from the web server or CDN, or add their names to NUVABILL_SERVER_HEADERS in .env.": "Retirez-les du serveur web ou du CDN, ou ajoutez leurs noms à NUVABILL_SERVER_HEADERS dans .env.",
+    "Browsers keep design files for a year": "Les navigateurs gardent les fichiers de design un an",
+    "The design files are not built yet.": "Les fichiers de design ne sont pas encore générés.",
+    "Browsers are not told how long to keep design files.": "Les navigateurs ne savent pas combien de temps garder les fichiers de design.",
+    "Browsers keep design files for only :hours hours, not a year.": "Les navigateurs gardent les fichiers de design seulement :hours heures, pas un an.",
+    "In Nginx, add a location /build/assets/ block with add_header Cache-Control \"public, max-age=31536000, immutable\". In Cloudflare, set Browser Cache TTL to \"Respect existing headers\". See the installation guide.": "Dans Nginx, ajoutez un bloc location /build/assets/ avec add_header Cache-Control \"public, max-age=31536000, immutable\". Dans Cloudflare, réglez Browser Cache TTL sur \"Respect existing headers\". Voir le guide d'installation.",
+    "Old WHMCS addresses reach Nuvabill": "Les anciennes adresses WHMCS arrivent à Nuvabill",
+    "Old WHMCS addresses are not forwarded, so there is nothing to check.": "Les anciennes adresses WHMCS ne sont pas redirigées, il n'y a donc rien à vérifier.",
+    "Your web server answers old .php addresses itself, so they cannot be forwarded.": "Votre serveur web répond lui-même aux anciennes adresses .php, elles ne peuvent donc pas être redirigées.",
+    "Send unknown .php addresses to index.php. See the installation guide.": "Envoyez les adresses .php inconnues vers index.php. Voir le guide d'installation."
 }

@@ -273,11 +273,16 @@ server {
         try_files \$uri =404;
     }
 
-    location ~ \.php\$ {
+    location = /index.php {
         include snippets/fastcgi-php.conf;
         fastcgi_pass unix:/run/php/php$PHP_SERVER_VERSION-fpm.sock;
         fastcgi_param SCRIPT_FILENAME \$realpath_root\$fastcgi_script_name;
         fastcgi_param DOCUMENT_ROOT \$realpath_root;
+    }
+
+    # Old addresses such as /clientarea.php go to Nuvabill, which forwards them. No other PHP file runs.
+    location ~ \.php\$ {
+        rewrite ^ /index.php last;
     }
 
     location ~ /\.(?!well-known).* {

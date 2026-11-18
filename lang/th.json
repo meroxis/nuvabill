@@ -5369,5 +5369,17 @@
     "Make a redirect": "สร้างการเปลี่ยนเส้นทาง",
     "Manage redirects": "จัดการการเปลี่ยนเส้นทาง",
     "Old addresses that forward: :count.": "ที่อยู่เก่าที่เปลี่ยนเส้นทาง: :count",
-    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "เพิ่มของคุณเอง เพิ่มที่อยู่ WHMCS เก่า และดูว่าผู้คนเปิดที่อยู่ใดไม่ได้"
+    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "เพิ่มของคุณเอง เพิ่มที่อยู่ WHMCS เก่า และดูว่าผู้คนเปิดที่อยู่ใดไม่ได้",
+    "Security headers are sent once": "ส่งเฮดเดอร์ความปลอดภัยเพียงครั้งเดียว",
+    "Your web server or CDN adds these headers too. Browsers then get two copies, sometimes with different values.": "เว็บเซิร์ฟเวอร์หรือ CDN ของคุณเพิ่มเฮดเดอร์เหล่านี้ด้วย เบราว์เซอร์จึงได้รับสองชุด บางครั้งมีค่าต่างกัน",
+    "Remove them from the web server or CDN, or add their names to NUVABILL_SERVER_HEADERS in .env.": "ลบออกจากเว็บเซิร์ฟเวอร์หรือ CDN หรือเพิ่มชื่อของเฮดเดอร์ใน NUVABILL_SERVER_HEADERS ในไฟล์ .env",
+    "Browsers keep design files for a year": "เบราว์เซอร์เก็บไฟล์ดีไซน์ไว้หนึ่งปี",
+    "The design files are not built yet.": "ยังไม่ได้สร้างไฟล์ดีไซน์",
+    "Browsers are not told how long to keep design files.": "เบราว์เซอร์ไม่ได้รับแจ้งว่าต้องเก็บไฟล์ดีไซน์ไว้นานเท่าใด",
+    "Browsers keep design files for only :hours hours, not a year.": "เบราว์เซอร์เก็บไฟล์ดีไซน์ไว้เพียง :hours ชั่วโมง ไม่ใช่หนึ่งปี",
+    "In Nginx, add a location /build/assets/ block with add_header Cache-Control \"public, max-age=31536000, immutable\". In Cloudflare, set Browser Cache TTL to \"Respect existing headers\". See the installation guide.": "ใน Nginx ให้เพิ่มบล็อก location /build/assets/ ที่มี add_header Cache-Control \"public, max-age=31536000, immutable\" ใน Cloudflare ให้ตั้ง Browser Cache TTL เป็น \"Respect existing headers\" ดูคู่มือการติดตั้ง",
+    "Old WHMCS addresses reach Nuvabill": "ที่อยู่เดิมของ WHMCS มาถึง Nuvabill",
+    "Old WHMCS addresses are not forwarded, so there is nothing to check.": "ไม่มีการส่งต่อที่อยู่เดิมของ WHMCS จึงไม่มีอะไรให้ตรวจ",
+    "Your web server answers old .php addresses itself, so they cannot be forwarded.": "เว็บเซิร์ฟเวอร์ของคุณตอบที่อยู่ .php เดิมเอง จึงส่งต่อไม่ได้",
+    "Send unknown .php addresses to index.php. See the installation guide.": "ส่งที่อยู่ .php ที่ไม่รู้จักไปที่ index.php ดูคู่มือการติดตั้ง"
 }

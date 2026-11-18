@@ -5369,5 +5369,17 @@
     "Make a redirect": "创建重定向",
     "Manage redirects": "管理重定向",
     "Old addresses that forward: :count.": "会转发的旧地址：:count。",
-    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "添加你自己的重定向和旧 WHMCS 地址，并查看人们打不开哪些地址。"
+    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "添加你自己的重定向和旧 WHMCS 地址，并查看人们打不开哪些地址。",
+    "Security headers are sent once": "安全标头只发送一次",
+    "Your web server or CDN adds these headers too. Browsers then get two copies, sometimes with different values.": "你的 Web 服务器或 CDN 也会添加这些标头。浏览器因此收到两份，有时值还不同。",
+    "Remove them from the web server or CDN, or add their names to NUVABILL_SERVER_HEADERS in .env.": "从 Web 服务器或 CDN 中删除它们，或把它们的名称加入 .env 中的 NUVABILL_SERVER_HEADERS。",
+    "Browsers keep design files for a year": "浏览器将设计文件保留一年",
+    "The design files are not built yet.": "设计文件尚未构建。",
+    "Browsers are not told how long to keep design files.": "没有告诉浏览器设计文件要保留多久。",
+    "Browsers keep design files for only :hours hours, not a year.": "浏览器只将设计文件保留 :hours 小时，而不是一年。",
+    "In Nginx, add a location /build/assets/ block with add_header Cache-Control \"public, max-age=31536000, immutable\". In Cloudflare, set Browser Cache TTL to \"Respect existing headers\". See the installation guide.": "在 Nginx 中，添加一个带有 add_header Cache-Control \"public, max-age=31536000, immutable\" 的 location /build/assets/ 块。在 Cloudflare 中，将 Browser Cache TTL 设为 \"Respect existing headers\"。请参阅安装指南。",
+    "Old WHMCS addresses reach Nuvabill": "旧的 WHMCS 地址能到达 Nuvabill",
+    "Old WHMCS addresses are not forwarded, so there is nothing to check.": "旧的 WHMCS 地址没有转发，因此无需检查。",
+    "Your web server answers old .php addresses itself, so they cannot be forwarded.": "你的 Web 服务器自己应答旧的 .php 地址，因此无法转发它们。",
+    "Send unknown .php addresses to index.php. See the installation guide.": "将未知的 .php 地址发送到 index.php。请参阅安装指南。"
 }

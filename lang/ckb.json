@@ -5369,5 +5369,17 @@
     "Make a redirect": "گواستنەوەیەک دروست بکە",
     "Manage redirects": "بەڕێوەبردنی گواستنەوەکان",
     "Old addresses that forward: :count.": "ناونیشانە کۆنەکان کە دەگوازرێنەوە: :count.",
-    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "هی خۆت زیاد بکە، ناونیشانە کۆنەکانی WHMCS زیاد بکە، و ببینە خەڵک نەیانتوانی کام ناونیشان بکەنەوە."
+    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "هی خۆت زیاد بکە، ناونیشانە کۆنەکانی WHMCS زیاد بکە، و ببینە خەڵک نەیانتوانی کام ناونیشان بکەنەوە.",
+    "Security headers are sent once": "سەرپەڕەکانی ئاسایش یەک جار دەنێردرێن",
+    "Your web server or CDN adds these headers too. Browsers then get two copies, sometimes with different values.": "ڕاژەکاری وێب یان CDN ـەکەت ئەم سەرپەڕانەش زیاد دەکات. ئەوکات وێبگەڕەکان دوو کۆپی وەردەگرن، هەندێک جار بە بەهای جیاواز.",
+    "Remove them from the web server or CDN, or add their names to NUVABILL_SERVER_HEADERS in .env.": "لە ڕاژەکاری وێب یان CDN لایانبە، یان ناوەکانیان زیاد بکە بۆ NUVABILL_SERVER_HEADERS لە .env.",
+    "Browsers keep design files for a year": "وێبگەڕەکان فایلەکانی دیزاین بۆ ساڵێک دەهێڵنەوە",
+    "The design files are not built yet.": "فایلەکانی دیزاین هێشتا دروست نەکراون.",
+    "Browsers are not told how long to keep design files.": "بە وێبگەڕەکان نەوتراوە فایلەکانی دیزاین چەند بهێڵنەوە.",
+    "Browsers keep design files for only :hours hours, not a year.": "وێبگەڕەکان فایلەکانی دیزاین تەنها :hours کاتژمێر دەهێڵنەوە، نەک ساڵێک.",
+    "In Nginx, add a location /build/assets/ block with add_header Cache-Control \"public, max-age=31536000, immutable\". In Cloudflare, set Browser Cache TTL to \"Respect existing headers\". See the installation guide.": "لە Nginx، بلۆکی location /build/assets/ زیاد بکە لەگەڵ add_header Cache-Control \"public, max-age=31536000, immutable\". لە Cloudflare، Browser Cache TTL بکە بە \"Respect existing headers\". ڕێنمایی دامەزراندن ببینە.",
+    "Old WHMCS addresses reach Nuvabill": "ناونیشانە کۆنەکانی WHMCS دەگەنە Nuvabill",
+    "Old WHMCS addresses are not forwarded, so there is nothing to check.": "ناونیشانە کۆنەکانی WHMCS ناگوازرێنەوە، بۆیە هیچ شتێک نییە بۆ پشکنین.",
+    "Your web server answers old .php addresses itself, so they cannot be forwarded.": "ڕاژەکاری وێبەکەت خۆی وەڵامی ناونیشانە کۆنەکانی .php دەداتەوە، بۆیە ناتوانرێن بگوازرێنەوە.",
+    "Send unknown .php addresses to index.php. See the installation guide.": "ناونیشانە نەناسراوەکانی .php بنێرە بۆ index.php. ڕێنمایی دامەزراندن ببینە."
 }

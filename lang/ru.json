@@ -5369,5 +5369,17 @@
     "Make a redirect": "Создать перенаправление",
     "Manage redirects": "Управлять перенаправлениями",
     "Old addresses that forward: :count.": "Старых адресов с перенаправлением: :count.",
-    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "Добавьте свои, добавьте старые адреса WHMCS и посмотрите, какие адреса не удалось открыть."
+    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "Добавьте свои, добавьте старые адреса WHMCS и посмотрите, какие адреса не удалось открыть.",
+    "Security headers are sent once": "Заголовки безопасности отправляются один раз",
+    "Your web server or CDN adds these headers too. Browsers then get two copies, sometimes with different values.": "Ваш веб-сервер или CDN тоже добавляет эти заголовки. Браузеры получают две копии, иногда с разными значениями.",
+    "Remove them from the web server or CDN, or add their names to NUVABILL_SERVER_HEADERS in .env.": "Уберите их из веб-сервера или CDN либо добавьте их имена в NUVABILL_SERVER_HEADERS в .env.",
+    "Browsers keep design files for a year": "Браузеры хранят файлы оформления год",
+    "The design files are not built yet.": "Файлы оформления ещё не собраны.",
+    "Browsers are not told how long to keep design files.": "Браузерам не сообщают, как долго хранить файлы оформления.",
+    "Browsers keep design files for only :hours hours, not a year.": "Браузеры хранят файлы оформления только :hours ч., а не год.",
+    "In Nginx, add a location /build/assets/ block with add_header Cache-Control \"public, max-age=31536000, immutable\". In Cloudflare, set Browser Cache TTL to \"Respect existing headers\". See the installation guide.": "В Nginx добавьте блок location /build/assets/ с add_header Cache-Control \"public, max-age=31536000, immutable\". В Cloudflare установите Browser Cache TTL в \"Respect existing headers\". См. руководство по установке.",
+    "Old WHMCS addresses reach Nuvabill": "Старые адреса WHMCS доходят до Nuvabill",
+    "Old WHMCS addresses are not forwarded, so there is nothing to check.": "Старые адреса WHMCS не перенаправляются, поэтому проверять нечего.",
+    "Your web server answers old .php addresses itself, so they cannot be forwarded.": "Ваш веб-сервер сам отвечает на старые адреса .php, поэтому их нельзя перенаправить.",
+    "Send unknown .php addresses to index.php. See the installation guide.": "Отправляйте неизвестные адреса .php на index.php. См. руководство по установке."
 }

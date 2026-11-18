@@ -5369,5 +5369,17 @@
     "Make a redirect": "Чиглүүлэлт үүсгэх",
     "Manage redirects": "Чиглүүлэлтүүдийг удирдах",
     "Old addresses that forward: :count.": "Чиглүүлдэг хуучин хаягууд: :count.",
-    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "Өөрийнхөө чиглүүлэлтийг нэмж, хуучин WHMCS хаягуудыг нэмээд, хүмүүс аль хаягийг нээж чадаагүйг хараарай."
+    "Add your own, add the old WHMCS addresses, and see which addresses people could not open.": "Өөрийнхөө чиглүүлэлтийг нэмж, хуучин WHMCS хаягуудыг нэмээд, хүмүүс аль хаягийг нээж чадаагүйг хараарай.",
+    "Security headers are sent once": "Аюулгүй байдлын толгойнууд нэг удаа илгээгддэг",
+    "Your web server or CDN adds these headers too. Browsers then get two copies, sometimes with different values.": "Таны вэб сервер эсвэл CDN эдгээр толгойг бас нэмдэг. Хөтчүүд хоёр хуулбар авдаг, заримдаа өөр утгатай.",
+    "Remove them from the web server or CDN, or add their names to NUVABILL_SERVER_HEADERS in .env.": "Тэдгээрийг вэб сервер эсвэл CDN-ээс хасах, эсвэл нэрийг нь .env доторх NUVABILL_SERVER_HEADERS-д нэмнэ үү.",
+    "Browsers keep design files for a year": "Хөтчүүд дизайны файлуудыг нэг жил хадгалдаг",
+    "The design files are not built yet.": "Дизайны файлууд хараахан бүтээгдээгүй байна.",
+    "Browsers are not told how long to keep design files.": "Хөтчүүдэд дизайны файлуудыг хэр удаан хадгалахыг хэлдэггүй.",
+    "Browsers keep design files for only :hours hours, not a year.": "Хөтчүүд дизайны файлуудыг нэг жил биш, зөвхөн :hours цаг хадгалдаг.",
+    "In Nginx, add a location /build/assets/ block with add_header Cache-Control \"public, max-age=31536000, immutable\". In Cloudflare, set Browser Cache TTL to \"Respect existing headers\". See the installation guide.": "Nginx-д add_header Cache-Control \"public, max-age=31536000, immutable\" бүхий location /build/assets/ блок нэмнэ үү. Cloudflare-д Browser Cache TTL-ийг \"Respect existing headers\" болгоно уу. Суулгах зааврыг үзнэ үү.",
+    "Old WHMCS addresses reach Nuvabill": "WHMCS-ийн хуучин хаягууд Nuvabill-д хүрдэг",
+    "Old WHMCS addresses are not forwarded, so there is nothing to check.": "WHMCS-ийн хуучин хаягууд дамжуулагддаггүй тул шалгах зүйл алга.",
+    "Your web server answers old .php addresses itself, so they cannot be forwarded.": "Таны вэб сервер хуучин .php хаягуудад өөрөө хариулдаг тул тэдгээрийг дамжуулах боломжгүй.",
+    "Send unknown .php addresses to index.php. See the installation guide.": "Үл мэдэгдэх .php хаягуудыг index.php руу илгээнэ үү. Суулгах зааврыг үзнэ үү."
 }

@@ -63,6 +63,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Security headers
+    |--------------------------------------------------------------------------
+    |
+    | Nuvabill sends its own security headers. When the web server or a CDN
+    | adds some of them too, browsers get two copies, sometimes with different
+    | values. List those headers in NUVABILL_SERVER_HEADERS and Nuvabill leaves
+    | them out. The Content-Security-Policy is always sent by Nuvabill.
+    |
+    */
+
+    'security_headers' => [
+        // Headers the web server or CDN already sends; Nuvabill then leaves them out. Comma list, case does not matter.
+        'from_server' => array_values(array_intersect(
+            ['x-content-type-options', 'x-frame-options', 'referrer-policy', 'permissions-policy', 'strict-transport-security', 'cross-origin-opener-policy'],
+            array_map('trim', explode(',', strtolower((string) env('NUVABILL_SERVER_HEADERS', '')))),
+        )),
+        // The HSTS value. Only "max-age=N" with optional "; includeSubDomains" and "; preload".
+        'hsts' => env('NUVABILL_HSTS', 'max-age=31536000'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Updates
     |--------------------------------------------------------------------------
     |

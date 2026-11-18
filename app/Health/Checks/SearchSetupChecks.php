@@ -4,9 +4,13 @@ namespace App\Health\Checks;
 
 use App\Health\CheckGroup;
 use App\Health\CheckResult;
+use App\Health\PendingCheck;
+use App\Models\SeoRedirect;
 use App\Seo\SiteAddress;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Throwable;
 
 /**
@@ -23,6 +27,26 @@ class SearchSetupChecks extends CheckGroup
      * A few are kept, so one made-up address in a request cannot hide a real second address.
      */
     private const MAX_OTHER_HOSTS = 5;
+
+    /**
+     * The security headers Nuvabill sends itself, besides the Content-Security-Policy.
+     */
+    private const SECURITY_HEADERS = ['X-Content-Type-Options', 'X-Frame-Options', 'Referrer-Policy', 'Permissions-Policy', 'Strict-Transport-Security', 'Cross-Origin-Opener-Policy'];
+
+    /**
+     * Headers whose value never holds a comma, so a comma means two copies joined into one line.
+     */
+    private const SINGLE_VALUE_HEADERS = ['x-content-type-options', 'x-frame-options', 'strict-transport-security', 'cross-origin-opener-policy'];
+
+    /**
+     * 30 days: a shorter cache time for fingerprinted design files is reported.
+     */
+    private const YEAR_CACHE_FLOOR = 2592000;
+
+    /**
+     * @var array<string, Response|string> Answers from outside in this run, or the connection error.
+     */
+    private array $responses = [];
 
     /**
      * "Billing.Example.com." and "billing.example.com" are the same address.
@@ -100,6 +124,8 @@ class SearchSetupChecks extends CheckGroup
 
     public function run(): array
     {
+        $this->responses = [];
+
         return [
             $this->visible(),
             $this->robotsFile(),
@@ -107,6 +133,9 @@ class SearchSetupChecks extends CheckGroup
             $this->address(),
             $this->oneAddress(),
             $this->fromOutside(),
+            $this->headersOnce(),
+            $this->assetCache(),
+            $this->oldAddresses(),
         ];
     }
 
@@ -205,23 +234,21 @@ class SearchSetupChecks extends CheckGroup
         $check = $this->check('seo.outside', 'Search engines can open robots.txt and the sitemap', 3);
         $base = rtrim((string) config('app.url'), '/');
 
-        if (! setting('health.outside_check')) {
-            return $check->skipped('Opening the site from outside is switched off in the site health settings.');
-        }
-
-        if (! SiteAddress::isReal($base)) {
-            return $check->skipped('The site address :url cannot be reached from the internet.', ['url' => $base]);
+        if (($cannot = $this->cannotOpen($check, $base)) !== null) {
+            return $cannot;
         }
 
         if (! setting('seo.visible')) {
             return $check->skipped('Search engines are asked to stay away, so there is nothing for them to open.');
         }
 
-        try {
-            $robots = Http::timeout(10)->withoutRedirecting()->get($base.'/robots.txt');
-            $sitemap = setting('seo.sitemap') ? Http::timeout(10)->withoutRedirecting()->get($base.'/sitemap.xml') : null;
-        } catch (Throwable $exception) {
-            return $check->skipped('The site could not be opened: :error', ['error' => mb_substr($exception->getMessage(), 0, 160)]);
+        $robots = $this->get($base.'/robots.txt');
+        $sitemap = setting('seo.sitemap') ? $this->get($base.'/sitemap.xml') : null;
+
+        foreach ([$robots, $sitemap] as $response) {
+            if (is_string($response)) {
+                return $check->skipped('The site could not be opened: :error', ['error' => $response]);
+            }
         }
 
         $problems = [];
@@ -243,5 +270,195 @@ class SearchSetupChecks extends CheckGroup
             advice: 'A file in the public folder, the web server or a cache like Cloudflare answers instead. Remove the file, or purge the cache for these addresses.',
             items: $problems,
         );
+    }
+
+    /**
+     * A security header that arrives more than once: the web server or a CDN adds it on top of
+     * Nuvabill's own copy. The robots.txt answer is used, as Nuvabill makes it on every site.
+     */
+    private function headersOnce(): CheckResult
+    {
+        $check = $this->check('seo.headers_once', 'Security headers are sent once', 2);
+        $base = rtrim((string) config('app.url'), '/');
+
+        if (($cannot = $this->cannotOpen($check, $base)) !== null) {
+            return $cannot;
+        }
+
+        $robots = $this->get($base.'/robots.txt');
+
+        if (is_string($robots)) {
+            return $check->skipped('The site could not be opened: :error', ['error' => $robots]);
+        }
+
+        $twice = [];
+
+        foreach (self::SECURITY_HEADERS as $name) {
+            $values = $this->headerValues($robots, $name);
+
+            if (count($values) > 1) {
+                $twice[] = ['label' => $name, 'value' => Str::limit(implode(' | ', $values), 200), 'mono' => true];
+            }
+        }
+
+        if ($twice === []) {
+            return $check->passed();
+        }
+
+        return $check->warning(
+            'Your web server or CDN adds these headers too. Browsers then get two copies, sometimes with different values.',
+            advice: 'Remove them from the web server or CDN, or add their names to NUVABILL_SERVER_HEADERS in .env.',
+            items: $twice,
+        );
+    }
+
+    /**
+     * Design files have a fingerprint in their name, so browsers may keep them for a year. Most
+     * often the web server sends no cache time for them, and Cloudflare then sets 4 hours.
+     */
+    private function assetCache(): CheckResult
+    {
+        $check = $this->check('seo.asset_cache', 'Browsers keep design files for a year', 2);
+        $base = rtrim((string) config('app.url'), '/');
+
+        if (($cannot = $this->cannotOpen($check, $base)) !== null) {
+            return $cannot;
+        }
+
+        $file = self::themeStylesheet();
+
+        if ($file === null) {
+            return $check->skipped('The design files are not built yet.');
+        }
+
+        $response = $this->get($base.'/build/'.$file);
+
+        if (is_string($response)) {
+            return $check->skipped('The site could not be opened: :error', ['error' => $response]);
+        }
+
+        if (! $response->successful()) {
+            return $check->skipped('The site could not be opened: :error', ['error' => __('Error :status', ['status' => $response->status()])]);
+        }
+
+        $cache = strtolower(implode(', ', $this->headerValues($response, 'Cache-Control')));
+        $maxAge = preg_match('/(?:^|[\s,])max-age=(\d+)/', $cache, $match) === 1 ? (int) $match[1] : null;
+
+        if (preg_match('/(?:^|[\s,])(no-store|no-cache)(?:$|[\s,])/', $cache) === 1) {
+            $maxAge = 0;
+        }
+
+        if ($maxAge !== null && $maxAge >= self::YEAR_CACHE_FLOOR) {
+            return $check->passed();
+        }
+
+        return $check->warning(
+            $maxAge === null ? 'Browsers are not told how long to keep design files.' : 'Browsers keep design files for only :hours hours, not a year.',
+            $maxAge === null ? [] : ['hours' => (string) round($maxAge / 3600, 1)],
+            'In Nginx, add a location /build/assets/ block with add_header Cache-Control "public, max-age=31536000, immutable". In Cloudflare, set Browser Cache TTL to "Respect existing headers". See the installation guide.',
+            [['label' => '/build/'.$file, 'value' => 'Cache-Control: '.($cache !== '' ? $cache : '—'), 'mono' => true]],
+        );
+    }
+
+    /**
+     * On Nginx, an address like /clientarea.php is answered by the web server itself ("404 Not
+     * Found") unless it sends unknown .php addresses to index.php, so the redirect never runs.
+     */
+    private function oldAddresses(): CheckResult
+    {
+        $check = $this->check('seo.old_addresses', 'Old WHMCS addresses reach Nuvabill', 1);
+        $base = rtrim((string) config('app.url'), '/');
+
+        if (! setting('seo.whmcs_addresses') || SeoRedirect::target('clientarea.php') === null) {
+            return $check->skipped('Old WHMCS addresses are not forwarded, so there is nothing to check.');
+        }
+
+        if (($cannot = $this->cannotOpen($check, $base)) !== null) {
+            return $cannot;
+        }
+
+        $response = $this->get($base.'/clientarea.php');
+
+        if (is_string($response)) {
+            return $check->skipped('The site could not be opened: :error', ['error' => $response]);
+        }
+
+        if ($response->redirect()) {
+            return $check->passed();
+        }
+
+        return $check->warning(
+            'Your web server answers old .php addresses itself, so they cannot be forwarded.',
+            advice: 'Send unknown .php addresses to index.php. See the installation guide.',
+            items: [['label' => '/clientarea.php', 'value' => __('Error :status', ['status' => $response->status()]), 'mono' => true]],
+        );
+    }
+
+    /**
+     * The built stylesheet of the Nova theme, such as "assets/theme-Ab12Cd34.css", from the Vite
+     * manifest, or null when the design files are not built.
+     */
+    private static function themeStylesheet(): ?string
+    {
+        $path = public_path('build/manifest.json');
+        $manifest = is_file($path) ? json_decode((string) file_get_contents($path), true) : null;
+        $file = is_array($manifest) ? ($manifest['themes/nova/assets/theme.css']['file'] ?? null) : null;
+
+        return is_string($file) && preg_match('#^assets/[A-Za-z0-9._-]+\.css$#', $file) === 1 ? $file : null;
+    }
+
+    /**
+     * Why a check that opens the site from outside cannot run, or null when it can.
+     */
+    private function cannotOpen(PendingCheck $check, string $base): ?CheckResult
+    {
+        if (! setting('health.outside_check')) {
+            return $check->skipped('Opening the site from outside is switched off in the site health settings.');
+        }
+
+        if (! SiteAddress::isReal($base)) {
+            return $check->skipped('The site address :url cannot be reached from the internet.', ['url' => $base]);
+        }
+
+        return null;
+    }
+
+    /**
+     * Each copy of a header, also when a proxy joined two copies into one line, such as
+     * "nosniff, nosniff". Only headers whose value never holds a comma are split.
+     *
+     * @return list<string>
+     */
+    private function headerValues(Response $response, string $name): array
+    {
+        $values = [];
+
+        foreach ($response->headers() as $key => $lines) {
+            if (strcasecmp((string) $key, $name) === 0) {
+                array_push($values, ...array_map(fn (mixed $line): string => (string) $line, (array) $lines));
+            }
+        }
+
+        if (in_array(strtolower($name), self::SINGLE_VALUE_HEADERS, true)) {
+            $values = array_merge([], ...array_map(fn (string $value): array => explode(',', $value), $values));
+        }
+
+        return array_values(array_filter(array_map('trim', $values), fn (string $value): bool => $value !== ''));
+    }
+
+    /**
+     * One answer per address for each run, so robots.txt is opened once.
+     */
+    private function get(string $url): Response|string
+    {
+        if (! array_key_exists($url, $this->responses)) {
+            try {
+                $this->responses[$url] = Http::timeout(10)->withoutRedirecting()->get($url);
+            } catch (Throwable $exception) {
+                $this->responses[$url] = mb_substr($exception->getMessage(), 0, 160);
+            }
+        }
+
+        return $this->responses[$url];
     }
 }

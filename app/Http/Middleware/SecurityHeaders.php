@@ -37,19 +37,30 @@ class SecurityHeaders
         }
 
         $headers = $response->headers;
-        $headers->set('X-Content-Type-Options', 'nosniff');
-        $headers->set('X-Frame-Options', 'SAMEORIGIN');
+        // Headers the web server or CDN adds itself are left out, so browsers get one copy. That also
+        // goes for a copy a page set itself, such as nosniff on robots.txt.
+        $fromServer = array_map(fn (mixed $name): string => strtolower(trim((string) $name)), (array) config('nuvabill.security_headers.from_server', []));
+        $set = function (string $name, string $value) use ($headers, $fromServer): void {
+            if (in_array(strtolower($name), $fromServer, true)) {
+                $headers->remove($name);
+            } else {
+                $headers->set($name, $value);
+            }
+        };
+
+        $set('X-Content-Type-Options', 'nosniff');
+        $set('X-Frame-Options', 'SAMEORIGIN');
         // A response that sends no referrer at all, such as a one-time panel sign-in link, keeps that.
         if ($headers->get('Referrer-Policy') !== 'no-referrer') {
-            $headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
+            $set('Referrer-Policy', 'strict-origin-when-cross-origin');
         }
 
-        $headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), browsing-topics=()');
+        $set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), browsing-topics=()');
         // A page opened as a window by another site keeps its link back to that site only without isolation.
-        $headers->set('Cross-Origin-Opener-Policy', $request->attributes->get(self::OPENER_POLICY, 'same-origin-allow-popups'));
+        $set('Cross-Origin-Opener-Policy', $request->attributes->get(self::OPENER_POLICY, 'same-origin-allow-popups'));
 
         if ($request->isSecure()) {
-            $headers->set('Strict-Transport-Security', 'max-age=31536000');
+            $set('Strict-Transport-Security', self::hsts());
         }
 
         if ($this->isHtml($response) && ! $this->vite->isRunningHot()) {
@@ -57,6 +68,17 @@ class SecurityHeaders
         }
 
         return $response;
+    }
+
+    /**
+     * The Strict-Transport-Security value from .env (NUVABILL_HSTS) when it is a plain max-age with
+     * optional includeSubDomains and preload. Anything else falls back to one year.
+     */
+    public static function hsts(): string
+    {
+        $value = trim((string) config('nuvabill.security_headers.hsts'));
+
+        return preg_match('/^max-age=\d{1,9}(;\s?includeSubDomains)?(;\s?preload)?$/i', $value) === 1 ? $value : 'max-age=31536000';
     }
 
     private function isHtml(Response $response): bool
