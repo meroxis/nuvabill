@@ -81,7 +81,8 @@ class SeoLanguagesTest extends TestCase
         $this->get('/store/'.$this->group->slug.'?lang=ar')->assertOk()
             ->assertSee('<html lang="ar"', false)
             ->assertSee('<link rel="canonical" href="'.$this->groupUrl().'">', false)
-            ->assertDontSee('hreflang=', false);
+            // The language menu still links the ready versions (0.7.4), but the head has no language links.
+            ->assertDontSee('<link rel="alternate" hreflang=', false);
     }
 
     public function test_with_one_ready_language_there_are_no_language_links(): void

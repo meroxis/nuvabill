@@ -5322,5 +5322,6 @@
     ":ready of :count ready": ":ready sur :count prêtes",
     "Ready": "Prête",
     "Not offered to search engines": "Non proposée aux moteurs de recherche",
-    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Les champs vides utilisent la langue principale. Une langue est proposée à Google dès que les deux champs sont écrits dans cette langue."
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Les champs vides utilisent la langue principale. Une langue est proposée à Google dès que les deux champs sont écrits dans cette langue.",
+    "Our services": "Nos services"
 }

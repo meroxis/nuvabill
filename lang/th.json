@@ -5322,5 +5322,6 @@
     ":ready of :count ready": "พร้อม :ready จาก :count",
     "Ready": "พร้อม",
     "Not offered to search engines": "ไม่ได้เสนอให้เครื่องมือค้นหา",
-    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "ช่องที่ว่างจะใช้ภาษาหลัก ภาษาจะถูกเสนอให้ Google เมื่อเขียนทั้งสองช่องเป็นภาษานั้นแล้ว"
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "ช่องที่ว่างจะใช้ภาษาหลัก ภาษาจะถูกเสนอให้ Google เมื่อเขียนทั้งสองช่องเป็นภาษานั้นแล้ว",
+    "Our services": "บริการของเรา"
 }

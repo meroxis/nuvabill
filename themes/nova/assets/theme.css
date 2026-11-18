@@ -1209,6 +1209,24 @@
         color: inherit;
     }
 
+    .footer-nav {
+        display: flex;
+        flex-wrap: wrap;
+        flex-basis: 100%;
+        gap: 6px 14px;
+        font-size: 0.82rem;
+    }
+
+    .footer-nav a {
+        color: var(--nb-muted);
+        text-decoration: none;
+    }
+
+    .footer-nav a:hover {
+        color: var(--nb-ink);
+        text-decoration: underline;
+    }
+
     .or-divider {
         display: flex;
         align-items: center;

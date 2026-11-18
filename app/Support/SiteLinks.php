@@ -5,12 +5,16 @@ namespace App\Support;
 use App\Models\Announcement;
 use App\Models\KbArticle;
 use App\Models\NetworkIncident;
+use App\Models\ProductGroup;
 use App\Models\Server;
+use App\Models\TldPrice;
+use Illuminate\Database\Eloquent\Builder;
 
 /**
  * Links to the knowledge base, announcements and network status page, for the menus and footer
  * of client-area themes. A link shows only when its page is switched on and has something in it.
- * Themes can use this so new pages appear without a theme update.
+ * store() gives the store pages (0.7.4+). Themes can use this so new pages appear without a theme
+ * update.
  */
 class SiteLinks
 {
@@ -33,6 +37,42 @@ class SiteLinks
             if (setting('status.enabled') && rescue(fn (): bool => Server::query()->where('is_active', true)->where('status_public', true)->exists()
                 || NetworkIncident::query()->where(fn ($query) => $query->whereNull('resolved_at')->orWhere('resolved_at', '>=', now()->subDays(14)))->exists(), false, report: false)) {
                 $links[] = ['key' => 'status', 'label' => __('Network status'), 'url' => route('network.status'), 'match' => ['network.status']];
+            }
+
+            return $links;
+        });
+    }
+
+    /**
+     * Store pages for menus and footers: each product group with plans that search engines may
+     * show, in store order, and domain search when domains are sold. Empty on the marketplace store.
+     *
+     * @return list<array{key: string, label: string, url: string, match: list<string>}>
+     */
+    public static function store(): array
+    {
+        return self::remember('store', function (): array {
+            if (config('nuvabill.marketplace.store')) {
+                return [];
+            }
+
+            $groups = rescue(fn () => ProductGroup::query()
+                ->visible()
+                ->where('seo_hidden', false)
+                ->whereHas('products', fn (Builder $products) => $products->visible())
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get(['id', 'name', 'slug']), collect(), report: false);
+
+            $links = $groups->map(fn (ProductGroup $group): array => [
+                'key' => 'group:'.$group->slug,
+                'label' => (string) $group->name,
+                'url' => route('store.group', $group),
+                'match' => ['store.group'],
+            ])->values()->all();
+
+            if (rescue(fn (): bool => TldPrice::query()->where('is_enabled', true)->exists(), false, report: false)) {
+                $links[] = ['key' => 'domains', 'label' => __('Domains'), 'url' => route('store.domains'), 'match' => ['store.domains']];
             }
 
             return $links;

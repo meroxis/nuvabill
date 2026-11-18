@@ -126,11 +126,16 @@
 
 <footer class="site-footer">
     <div class="container">
+        @php $footerNav = [...\App\Support\SiteLinks::store(), ...\App\Support\SiteLinks::all()]; @endphp
+        @if ($footerNav !== [])
+            <nav class="footer-nav" aria-label="{{ __('Our services') }}">
+                @foreach ($footerNav as $link)<a href="{{ $link['url'] }}"><bdi>{{ $link['label'] }}</bdi></a>@endforeach
+            </nav>
+        @endif
         <span class="footer-links">
             <span>&copy; {{ date('Y') }} {{ setting('company.name') }}</span>
             @if (filled(setting('orders.accept_terms_url')))<a href="{{ setting('orders.accept_terms_url') }}" target="_blank" rel="noopener">{{ __('Terms of service') }}</a>@endif
             @if (filled(setting('company.privacy_url')))<a href="{{ setting('company.privacy_url') }}" target="_blank" rel="noopener">{{ __('Privacy policy') }}</a>@endif
-            @foreach (\App\Support\SiteLinks::all() as $link)<a href="{{ $link['url'] }}">{{ $link['label'] }}</a>@endforeach
         </span>
         @if (\App\Support\Branding::showPoweredBy())
             <a class="powered" href="{{ \App\Support\Branding::PRODUCT_URL }}" target="_blank" rel="noopener">{{ __('Powered by') }} <b>{{ \App\Support\Branding::PRODUCT_NAME }}</b></a>

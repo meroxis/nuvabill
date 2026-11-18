@@ -5322,5 +5322,6 @@
     ":ready of :count ready": ":count-аас :ready бэлэн",
     "Ready": "Бэлэн",
     "Not offered to search engines": "Хайлтын системд санал болгоогүй",
-    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Хоосон талбарт үндсэн хэл хэрэглэгдэнэ. Хоёр талбарыг хоёуланг нь тухайн хэлээр бичсэн үед уг хэлийг Google-д санал болгоно."
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Хоосон талбарт үндсэн хэл хэрэглэгдэнэ. Хоёр талбарыг хоёуланг нь тухайн хэлээр бичсэн үед уг хэлийг Google-д санал болгоно.",
+    "Our services": "Манай үйлчилгээ"
 }

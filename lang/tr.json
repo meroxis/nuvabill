@@ -5322,5 +5322,6 @@
     ":ready of :count ready": ":count dilden :ready tanesi hazır",
     "Ready": "Hazır",
     "Not offered to search engines": "Arama motorlarına sunulmuyor",
-    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Boş alanlar ana dili kullanır. Bir dil, iki alan da o dilde yazıldığında Google'a sunulur."
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Boş alanlar ana dili kullanır. Bir dil, iki alan da o dilde yazıldığında Google'a sunulur.",
+    "Our services": "Hizmetlerimiz"
 }

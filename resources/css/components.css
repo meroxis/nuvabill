@@ -686,6 +686,7 @@
         color: var(--nb-ink);
         font: inherit;
         text-align: start;
+        text-decoration: none;
         cursor: pointer;
     }
 

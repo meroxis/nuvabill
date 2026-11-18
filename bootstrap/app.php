@@ -13,6 +13,7 @@ use App\Http\Middleware\AddSiteIcon;
 use App\Http\Middleware\ApplyCouponFromLink;
 use App\Http\Middleware\ApplyThemePreview;
 use App\Http\Middleware\AuthenticateApiToken;
+use App\Http\Middleware\CleanPublicAddress;
 use App\Http\Middleware\EnsureAdminPermission;
 use App\Http\Middleware\EnsureClientIsActive;
 use App\Http\Middleware\EnsureClientTwoFactor;
@@ -113,7 +114,12 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->append(SecurityHeaders::class);
 
-        $middleware->web(append: [AddSearchEngineTags::class, AddSiteIcon::class, RedirectToInstaller::class, SetLocale::class, ProtectDemo::class, ApplyThemePreview::class, ApplyCouponFromLink::class, TrackAffiliateLink::class]);
+        // CleanPublicAddress comes first, so an address with a language the site does not offer is
+        // sent on before any cookie is set.
+        $middleware->web(
+            append: [AddSearchEngineTags::class, AddSiteIcon::class, RedirectToInstaller::class, SetLocale::class, ProtectDemo::class, ApplyThemePreview::class, ApplyCouponFromLink::class, TrackAffiliateLink::class],
+            prepend: [CleanPublicAddress::class],
+        );
 
         // The proxy list comes from config/trustedproxy.php. Only the visitor IP and HTTPS headers are
         // read, never X-Forwarded-Host. Links and emails use APP_URL for any other host name a visitor

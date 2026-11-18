@@ -79,7 +79,9 @@ class LocaleTest extends TestCase
         $this->assertArrayNotHasKey('mn', Locales::enabled());
         $this->assertCount(11, Locales::enabled());
         $this->post(route('language.update'), ['locale' => 'mn'])->assertSessionHasErrors('locale');
-        $this->get(route('client.login', ['lang' => 'mn']))->assertSee('lang="en"', false)->assertDontSee('value="mn"', false);
+        // A link to it goes to the address without the language (0.7.4).
+        $this->get(route('client.login', ['lang' => 'mn']))->assertStatus(301)->assertRedirect(route('client.login'));
+        $this->get(route('client.login'))->assertSee('lang="en"', false)->assertDontSee('value="mn"', false);
         $this->assertSame('en', Locales::forClient(Client::factory()->create(['language' => 'mn'])));
 
         // The 0.7.0 update step never switches it on, whether staff saved their languages or not.

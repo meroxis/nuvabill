@@ -5322,5 +5322,6 @@
     ":ready of :count ready": ":ready de :count prontos",
     "Ready": "Pronto",
     "Not offered to search engines": "Não oferecido aos buscadores",
-    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Campos vazios usam o idioma principal. Um idioma é oferecido ao Google quando os dois campos estão escritos nesse idioma."
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Campos vazios usam o idioma principal. Um idioma é oferecido ao Google quando os dois campos estão escritos nesse idioma.",
+    "Our services": "Nossos serviços"
 }

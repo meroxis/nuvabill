@@ -5322,5 +5322,6 @@
     ":ready of :count ready": "Готово :ready из :count",
     "Ready": "Готово",
     "Not offered to search engines": "Не предлагается поисковым системам",
-    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Пустые поля используют основной язык. Язык предлагается Google, когда оба поля заполнены на этом языке."
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "Пустые поля используют основной язык. Язык предлагается Google, когда оба поля заполнены на этом языке.",
+    "Our services": "Наши услуги"
 }

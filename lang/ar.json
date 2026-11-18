@@ -5322,5 +5322,6 @@
     ":ready of :count ready": ":ready من :count جاهزة",
     "Ready": "جاهزة",
     "Not offered to search engines": "غير معروضة على محركات البحث",
-    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "الحقول الفارغة تستخدم اللغة الرئيسية. تُعرض اللغة على Google عندما يُكتب الحقلان بتلك اللغة."
+    "Empty fields use the main language. A language is offered to Google once both are written in that language.": "الحقول الفارغة تستخدم اللغة الرئيسية. تُعرض اللغة على Google عندما يُكتب الحقلان بتلك اللغة.",
+    "Our services": "خدماتنا"
 }

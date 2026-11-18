@@ -81,7 +81,8 @@ class SearchEnginesTest extends TestCase
     {
         Exceptions::fake();
 
-        $this->get('/?lang[]=1')->assertOk()->assertSee('<link rel="canonical" href="'.url('/').'/">', false);
+        // Sent to the clean address (0.7.4), so search engines never keep the odd one.
+        $this->get('/?lang[]=1')->assertStatus(301)->assertRedirect(url('/'));
 
         Exceptions::assertNothingReported();
     }
