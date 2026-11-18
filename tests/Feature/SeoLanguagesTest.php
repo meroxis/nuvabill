@@ -15,9 +15,12 @@ use App\Seo\SeoTranslations;
 use App\Seo\Sitemap;
 use App\Support\Settings;
 use Database\Seeders\DefaultDataSeeder;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\View;
 use Tests\TestCase;
 
 /**
@@ -183,6 +186,147 @@ class SeoLanguagesTest extends TestCase
         $this->assertStringContainsString('hreflang="ar"', $this->sitemapEntry($xml, $categoryUrl));
         $this->assertStringContainsString('hreflang="ar"', $this->sitemapEntry($xml, $newsUrl));
         $this->assertStringNotContainsString('hreflang="de"', $this->sitemapEntry($xml, $newsUrl));
+    }
+
+    public function test_the_sitemap_reads_no_help_texts_but_still_knows_which_languages_are_ready(): void
+    {
+        $article = KbArticle::factory()->create();
+        $article->saveTranslation('de', 'Wie ändere ich das?', 'Öffnen Sie den Kundenbereich.');
+        // A text of only spaces and line breaks is no text.
+        $article->saveTranslation('ar', 'كيف أغير ذلك؟', " \n\t\r ");
+        $other = KbArticle::factory()->create(['kb_category_id' => $article->kb_category_id]);
+        $other->saveTranslation('ar', 'سؤال آخر', "\n<p>جواب</p>\n");
+        $article->category->saveTranslation('de', 'Hilfe', null);
+        $news = Announcement::factory()->create();
+        $news->saveTranslation('ar', 'خبر', 'نص الخبر.');
+        $news->saveTranslation('de', 'Neuigkeit', '');
+        // A language that is switched off is never offered.
+        app(Settings::class)->setMany(['locale.enabled' => ['en', 'de', 'ar', 'fr']]);
+        $article->saveTranslation('fr', 'Comment changer cela ?', 'Ouvrez votre espace client.');
+        app(Settings::class)->setMany(['locale.enabled' => ['en', 'de', 'ar']]);
+
+        // What each page says itself, read one by one with the whole texts.
+        $expected = [
+            'knowledgebase/'.$article->category->slug.'/'.$article->slug => $article->fresh()->readyLocales(),
+            'knowledgebase/'.$article->category->slug.'/'.$other->slug => $other->fresh()->readyLocales(),
+            'knowledgebase/'.$article->category->slug => $article->category->fresh()->readyLocales(false),
+            'announcements/'.$news->slug => $news->fresh()->readyLocales(),
+        ];
+        $this->assertSame(['de'], $expected['knowledgebase/'.$article->category->slug.'/'.$article->slug]);
+        $this->assertSame(['ar'], $expected['knowledgebase/'.$article->category->slug.'/'.$other->slug]);
+        $this->assertSame(['de'], $expected['knowledgebase/'.$article->category->slug]);
+        $this->assertSame(['ar'], $expected['announcements/'.$news->slug]);
+
+        $queries = [];
+        DB::listen(function (QueryExecuted $query) use (&$queries): void {
+            // MySQL and MariaDB quote names with ` instead of ".
+            $queries[] = str_replace('`', '"', $query->sql);
+        });
+        $pages = collect(app(Sitemap::class)->pages())->keyBy('path');
+
+        foreach ($expected as $path => $locales) {
+            $this->assertSame($locales, $pages[$path]['languages'] ?? null, $path);
+        }
+
+        $help = array_values(array_filter($queries, fn (string $sql): bool => str_contains($sql, 'content_translations') || str_contains($sql, 'from "kb_articles"') || str_contains($sql, 'from "announcements"')));
+        $this->assertNotEmpty($help);
+
+        foreach ($help as $sql) {
+            // Neither the translated texts nor the articles' own texts are read.
+            $this->assertDoesNotMatchRegularExpression('/^\s*select \*|"body"|"(content_translations|kb_articles|announcements)"\.\*/i', $sql, $sql);
+        }
+    }
+
+    public function test_a_group_whose_plans_are_all_kept_out_of_search_results_stays_in_the_sitemap(): void
+    {
+        $product = $this->group->products()->firstOrFail();
+        $product->update(['seo_hidden' => true]);
+        Sitemap::forget();
+
+        // The group page is still a page search engines may show, and the plan points to it.
+        $this->get('/store/'.$this->group->slug)->assertOk()->assertDontSee('noindex', false);
+        $xml = app(Sitemap::class)->xml();
+        $this->sitemapEntry($xml, $this->groupUrl());
+        $this->assertStringNotContainsString('/'.$product->slug.'<', $xml);
+
+        // With plan pages of their own, the hidden plan still gets no entry, but its group does.
+        app(Settings::class)->setMany(['seo.product_pages' => true]);
+        Sitemap::forget();
+        $xml = app(Sitemap::class)->xml();
+        $this->sitemapEntry($xml, $this->groupUrl());
+        $this->assertStringNotContainsString('/'.$product->slug.'<', $xml);
+
+        // A plan visitors cannot order at all still leaves its group out.
+        $product->update(['is_visible' => false]);
+        Sitemap::forget();
+        $this->assertStringNotContainsString('store/'.$this->group->slug.'<', app(Sitemap::class)->xml());
+    }
+
+    public function test_search_texts_are_read_once_per_request(): void
+    {
+        $this->translateGroupToGerman();
+        $subject = SeoTranslations::subject($this->group);
+        $reads = 0;
+        DB::listen(function (QueryExecuted $query) use (&$reads, $subject): void {
+            // The reads of the texts, not the look-up save() does before it writes.
+            if (str_contains(str_replace('`', '"', $query->sql), 'from "seo_translations" where "subject" in') && in_array($subject, $query->bindings, true)) {
+                $reads++;
+            }
+        });
+
+        SeoTranslations::all($this->group);
+        SeoTranslations::title($this->group, 'de');
+        SeoTranslations::description($this->group, 'de');
+        SeoTranslations::readyLocales($this->group, 'Fast web hosting', 'Web hosting with free SSL and daily backups.');
+        $this->assertSame(1, $reads);
+
+        // Saving forgets what was read.
+        SeoTranslations::save($this->group, ['de' => ['title' => 'Webhosting', 'description' => 'Neue Beschreibung.']]);
+        $this->assertSame('Webhosting', SeoTranslations::title($this->group, 'de'));
+        $this->assertSame(2, $reads);
+        SeoTranslations::forget($this->group);
+        $this->assertSame([], SeoTranslations::all($this->group));
+        $this->assertSame(3, $reads);
+
+        // A store page reads its texts once, and the next request reads them again.
+        SeoTranslations::save($this->group, ['de' => ['title' => 'Schnelles Webhosting', 'description' => 'Webhosting mit kostenlosem SSL.']]);
+        $reads = 0;
+        $this->get('/store/'.$this->group->slug.'?lang=de')->assertOk()->assertSee('<title>Schnelles Webhosting</title>', false);
+        $this->assertSame(1, $reads);
+
+        SeoTranslation::query()->where('subject', $subject)->update(['title' => 'Webhosting für alle']);
+        $this->get('/store/'.$this->group->slug.'?lang=de')->assertOk()->assertSee('<title>Webhosting für alle</title>', false);
+        $this->assertSame(2, $reads);
+    }
+
+    public function test_a_page_can_offer_no_language_versions(): void
+    {
+        $this->translateGroupToGerman();
+        SeoTranslations::save(SeoTranslations::HOME, ['de' => ['title' => 'Webhosting für alle', 'description' => 'Schnelles Webhosting mit kostenlosem SSL.']]);
+
+        // Without it, the page links its German version.
+        $this->get('/')->assertOk()->assertSee('hreflang="de"', false);
+
+        // A page whose main address is on another site, such as a website page.
+        View::composer('theme::layouts.*', fn () => app(Seo::class)->withoutLanguageVersions());
+
+        foreach ([true, false] as $readyOnly) {
+            app(Settings::class)->setMany(['seo.ready_languages_only' => $readyOnly]);
+            app()->forgetInstance(Seo::class);
+
+            $html = $this->get('/')->assertOk()->getContent();
+            $this->assertStringNotContainsString('hreflang=', $html);
+            $this->assertStringNotContainsString('?lang=', $html);
+            // Visitors can still pick a language.
+            $this->assertStringContainsString('name="locale" value="de"', $html);
+        }
+
+        $page = '<html><head><title>x</title></head><body></body></html>';
+        $request = Request::create('/store/'.$this->group->slug);
+        $seo = (new Seo)->allowIndexing();
+        $this->assertStringContainsString('hreflang="x-default"', (new HeadTags($seo))->apply($page, $request));
+        $seo->withoutLanguageVersions();
+        $this->assertStringNotContainsString('hreflang=', (new HeadTags($seo))->apply($page, $request));
     }
 
     public function test_an_addon_page_can_say_which_languages_are_ready(): void

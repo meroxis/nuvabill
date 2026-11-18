@@ -4,6 +4,7 @@ namespace App\Seo;
 
 use App\Extensions\ExtensionManager;
 use App\Models\Announcement;
+use App\Models\ContentTranslation;
 use App\Models\KbArticle;
 use App\Models\MarketplaceItem;
 use App\Models\Product;
@@ -31,8 +32,11 @@ class Sitemap
         $store = (bool) config('nuvabill.marketplace.store');
         $pages = [];
         $groups = ProductGroup::query()->visible()->where('seo_hidden', false)->orderBy('sort_order')->orderBy('id')->get();
-        $products = Product::query()->visible()->where('seo_hidden', false)->whereIn('product_group_id', $groups->pluck('id'))
+        // Every plan visitors can order. A group is listed when it has one, as its page and the
+        // menus decide; plans kept out of search results only lose their own entry.
+        $visible = Product::query()->visible()->whereIn('product_group_id', $groups->pluck('id'))
             ->with('group')->orderBy('sort_order')->orderBy('id')->get();
+        $products = $visible->where('seo_hidden', false)->values();
         // Plan pages are listed only when they are pages of their own. Otherwise they send search
         // engines to their group page, which is listed instead.
         $productPages = (bool) setting('seo.product_pages');
@@ -68,7 +72,7 @@ class Sitemap
         }
 
         foreach ($groups as $group) {
-            $inGroup = $products->where('product_group_id', $group->id);
+            $inGroup = $visible->where('product_group_id', $group->id);
 
             if ($inGroup->isNotEmpty()) {
                 $pages[] = [
@@ -116,7 +120,11 @@ class Sitemap
         $pages = [];
 
         if (setting('knowledgebase.enabled')) {
-            $articles = KbArticle::query()->public()->with(['allTranslations', 'category.allTranslations'])->orderBy('kb_category_id')->orderBy('sort_order')->orderBy('id')->limit(5000)->get();
+            // Only the addresses, and of the translations only the languages, titles and whether a
+            // text is written: never thousands of texts.
+            $readiness = fn ($translations) => ContentTranslation::onlyReadiness($translations);
+            $articles = KbArticle::query()->public()->with(['allTranslations' => $readiness, 'category.allTranslations' => $readiness])
+                ->orderBy('kb_category_id')->orderBy('sort_order')->orderBy('id')->limit(5000)->get(['id', 'kb_category_id', 'slug', 'updated_at']);
 
             if ($articles->isNotEmpty()) {
                 $pages[] = ['path' => 'knowledgebase', 'updated' => $articles->max('updated_at')];
@@ -133,7 +141,9 @@ class Sitemap
         }
 
         if (setting('announcements.enabled')) {
-            $news = Announcement::query()->public()->newestFirst()->limit(1000)->with('allTranslations')->get(['id', 'slug', 'published_at', 'updated_at']);
+            $news = Announcement::query()->public()->newestFirst()->limit(1000)
+                ->with(['allTranslations' => fn ($translations) => ContentTranslation::onlyReadiness($translations)])
+                ->get(['id', 'slug', 'published_at', 'updated_at']);
 
             if ($news->isNotEmpty()) {
                 $pages[] = ['path' => 'announcements', 'updated' => $news->first()->published_at];

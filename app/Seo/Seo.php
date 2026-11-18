@@ -13,7 +13,8 @@ use Illuminate\Http\Request;
  *
  * Add-ons with public pages call allowIndexing() on it: every page that is not on the list
  * below is hidden from search engines unless it asks. Public lists split into pages also call
- * paginated(). Pages translated into only some languages call setReadyLanguages() (0.7.4+).
+ * paginated(). Pages translated into only some languages call setReadyLanguages() (0.7.4+), and
+ * pages whose main address is on another site call withoutLanguageVersions() (0.7.4+).
  */
 class Seo
 {
@@ -80,6 +81,11 @@ class Seo
      * The page this one is a copy of, as a path on this site.
      */
     private ?string $canonicalPath = null;
+
+    /**
+     * withoutLanguageVersions() was called: the page offers search engines no language versions.
+     */
+    private bool $languageVersions = true;
 
     private bool $followLinks = false;
 
@@ -198,6 +204,26 @@ class Seo
     public function canonicalPath(): ?string
     {
         return $this->canonicalPath;
+    }
+
+    /**
+     * This page offers search engines no language versions: no hreflang links, no x-default and
+     * no language links they can follow in the language menu, whatever "Only link languages that
+     * are translated" says. For a page whose main address is on another site, which says itself
+     * which language versions there are. Visitors can still pick a language. Lasts for this
+     * request only.
+     */
+    public function withoutLanguageVersions(): void
+    {
+        $this->languageVersions = false;
+    }
+
+    /**
+     * Whether the page may offer search engines its language versions; see withoutLanguageVersions().
+     */
+    public function offersLanguageVersions(): bool
+    {
+        return $this->languageVersions;
     }
 
     public function allowIndexing(): static

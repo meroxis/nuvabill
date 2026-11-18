@@ -26,7 +26,8 @@ trait Translatable
 
     /**
      * Every language, for lists that need them all at once, such as the sitemap. Eager-load this
-     * one (not "translations", which pages load for one language only) before readyLocales().
+     * one (not "translations", which pages load for one language only) before readyLocales(),
+     * with ContentTranslation::onlyReadiness() when the texts themselves are not needed.
      *
      * @return MorphMany<ContentTranslation, $this>
      */
@@ -53,8 +54,13 @@ trait Translatable
             ? $this->getRelation('allTranslations')
             : $this->translations()->whereIn('locale', $others)->get(['locale', 'title', 'body']);
 
+        // Lists such as the sitemap load only whether a text is written; see ContentTranslation::onlyReadiness().
+        $hasBody = fn (ContentTranslation $row): bool => array_key_exists('has_body', $row->getAttributes())
+            ? (bool) $row->getAttribute('has_body')
+            : filled($row->body);
+
         $complete = $rows
-            ->filter(fn (ContentTranslation $row): bool => filled($row->title) && (! $needsBody || filled($row->body)))
+            ->filter(fn (ContentTranslation $row): bool => filled($row->title) && (! $needsBody || $hasBody($row)))
             ->pluck('locale')
             ->all();
 

@@ -125,8 +125,9 @@ redirect manager with the old WHMCS addresses, and fewer copies of the same stor
 
 **For developers**
 
-- New for add-ons: `Seo::setReadyLanguages()`, `Seo::setCanonicalPath()`, `Seo::hideButFollowLinks()`, a
-  `languages` key in `sitemapPages()`, and `SiteLinks::store()`. See the add-on guide.
+- New for add-ons: `Seo::setReadyLanguages()`, `Seo::setCanonicalPath()`, `Seo::hideButFollowLinks()`,
+  `Seo::withoutLanguageVersions()`, a `languages` key in `sitemapPages()`, and `SiteLinks::store()`. See the add-on
+  guide.
 
 ## 0.7.3
 

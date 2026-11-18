@@ -113,7 +113,8 @@ class HeadTags
             $tags[] = '<link rel="canonical" href="'.e($canonical).'">';
         }
 
-        $offered = $copyOf === null && $own ? LanguageVersions::offered($ready) : [];
+        // A page whose main address is on another site leaves its language versions to that site.
+        $offered = $copyOf === null && $own && $this->seo->offersLanguageVersions() ? LanguageVersions::offered($ready) : [];
 
         if ($offered !== [] && ! $has('hreflang=')) {
             foreach ($offered as $locale) {

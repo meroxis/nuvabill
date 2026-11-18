@@ -7,9 +7,11 @@ use App\Models\ProductGroup;
 use App\Models\SeoTranslation;
 use App\Support\ContentLanguages;
 use App\Support\Locales;
+use ArrayObject;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Str;
+use WeakMap;
 
 /**
  * Search titles and descriptions in the site's other languages, for the home page, store groups
@@ -25,6 +27,9 @@ class SeoTranslations
     public const TITLE_LIMIT = 120;
 
     public const DESCRIPTION_LIMIT = 320;
+
+    /** The container name of the texts read in this request; see memo(). */
+    private const MEMO = 'seo.translations.read';
 
     /**
      * Form rules for the "Other languages" fields (seo_translations[de][title] and so on). Only the
@@ -117,10 +122,15 @@ class SeoTranslations
             return [];
         }
 
+        // Pages read before in this request are not read again: a store page asks several times.
+        $memo = self::memo();
+        $languages = implode(',', array_keys($others));
+        $known = $memo[$languages] ?? [];
+        $missing = array_values(array_filter($subjects, fn (string $subject): bool => ! array_key_exists($subject, $known)));
         $result = [];
 
         try {
-            foreach (array_chunk($subjects, 500) as $chunk) {
+            foreach (array_chunk($missing, 500) as $chunk) {
                 $rows = SeoTranslation::query()->whereIn('subject', $chunk)->whereIn('locale', array_keys($others))
                     ->get(['subject', 'locale', 'title', 'description']);
 
@@ -132,7 +142,53 @@ class SeoTranslations
             return [];
         }
 
-        return $result;
+        foreach ($missing as $subject) {
+            $known[$subject] = $result[$subject] ?? [];
+        }
+
+        if ($memo !== null) {
+            $memo[$languages] = $known;
+        }
+
+        // Only pages with texts, as before: the sitemap checks isset() to find them.
+        return array_filter(
+            array_intersect_key($known, array_flip($subjects)),
+            fn (array $texts): bool => $texts !== [],
+        );
+    }
+
+    /**
+     * Texts already read in this request, by the switched-on languages they were read for. Kept
+     * with the request, and dropped between queue jobs, so a new request or job reads the
+     * database again. Null when there is no request.
+     *
+     * @return ArrayObject<string, array<string, array<string, array{title: string, description: string}>>>|null
+     */
+    private static function memo(): ?ArrayObject
+    {
+        $app = app();
+
+        if (! $app->bound('request')) {
+            return null;
+        }
+
+        if (! $app->bound(self::MEMO)) {
+            $app->scoped(self::MEMO, fn (): WeakMap => new WeakMap);
+        }
+
+        /** @var WeakMap<object, ArrayObject> $byRequest */
+        $byRequest = $app->make(self::MEMO);
+        $request = $app->make('request');
+
+        return $byRequest[$request] ??= new ArrayObject;
+    }
+
+    /**
+     * Forgets what this request read, after texts were saved or removed.
+     */
+    private static function forgetMemo(): void
+    {
+        self::memo()?->exchangeArray([]);
     }
 
     /**
@@ -181,6 +237,7 @@ class SeoTranslations
             report($exception);
         }
 
+        self::forgetMemo();
         Sitemap::forget();
     }
 
@@ -194,6 +251,8 @@ class SeoTranslations
         } catch (QueryException) {
             // No table yet: nothing to remove.
         }
+
+        self::forgetMemo();
     }
 
     /**

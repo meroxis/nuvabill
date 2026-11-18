@@ -549,6 +549,7 @@ if (method_exists($seo, 'setReadyLanguages')) {
 |---|---|
 | `setReadyLanguages(?array $locales)` | The other languages this page is really translated into. `null` (the default) means all. |
 | `setCanonicalPath(?string $path)` | This page is a copy of another page of this site, such as `store/web-hosting`. Search engines are sent there, and the page gets no language links. Only paths on this site are accepted. |
+| `withoutLanguageVersions()` | This page offers search engines no language versions: no `hreflang` links, no `x-default` and no language links in the language menu, whatever "Only link languages that are translated" says. For a page whose main address is on another site. Visitors can still pick a language. Lasts for this request only. |
 | `hideButFollowLinks()` | Keeps the page out of search results, but lets search engines follow its links (`noindex, follow`), for empty lists or overview pages. `hide()` wins when both are called. |
 
 Give the same `languages` in `sitemapPages()`, so the sitemap and the page agree.

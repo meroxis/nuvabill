@@ -6,7 +6,7 @@
     // On pages search engines may show, the language versions they may also show are plain links
     // they can follow. A click still goes through the form, so signed-in clients keep their choice.
     $seo = app(\App\Seo\Seo::class);
-    $linked = count($locales) > 1 && ! request()->routeIs('admin.*') && $seo->canonicalPath() === null && $seo->isIndexable(request())
+    $linked = count($locales) > 1 && ! request()->routeIs('admin.*') && $seo->canonicalPath() === null && $seo->offersLanguageVersions() && $seo->isIndexable(request())
         ? array_intersect(\App\Seo\LanguageVersions::offered($seo->readyLanguages()), array_keys($locales))
         : [];
 @endphp
