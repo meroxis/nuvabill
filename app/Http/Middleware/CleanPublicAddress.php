@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Seo\OldAddresses;
 use App\Support\Installation;
 use App\Support\Locales;
 use Closure;
@@ -11,7 +12,8 @@ use Symfony\Component\HttpFoundation\Response;
 /**
  * Sends visitors and search engines from an address with a language the site does not offer,
  * such as /?lang=da or a language staff switched off, to the same page without it. Runs before
- * the session starts, so the redirect sets no cookies.
+ * the session starts, so the redirect sets no cookies. Old WHMCS ?rp= links on the home page are
+ * forwarded here too, once staff added the WHMCS addresses.
  */
 class CleanPublicAddress
 {
@@ -19,6 +21,15 @@ class CleanPublicAddress
     {
         if (! $request->isMethod('GET') && ! $request->isMethod('HEAD')) {
             return $next($request);
+        }
+
+        // An old WHMCS friendly address on the home page, such as /?rp=/knowledgebase/1/x.
+        if ($request->query->has('rp') && trim($request->path(), '/') === '') {
+            $forward = rescue(fn (): ?Response => Installation::isInstalled() ? OldAddresses::forRp($request) : null, null, report: false);
+
+            if ($forward !== null) {
+                return $forward;
+            }
         }
 
         if (! $request->query->has('lang') || $this->isPrivateArea($request)) {

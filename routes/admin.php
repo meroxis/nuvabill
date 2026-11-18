@@ -51,6 +51,7 @@ use App\Http\Controllers\Admin\RegistrarController;
 use App\Http\Controllers\Admin\ResourceOptionController;
 use App\Http\Controllers\Admin\RoleController;
 use App\Http\Controllers\Admin\SecurityController;
+use App\Http\Controllers\Admin\SeoRedirectController;
 use App\Http\Controllers\Admin\SeoSettingsController;
 use App\Http\Controllers\Admin\ServerController;
 use App\Http\Controllers\Admin\ServiceAccessController;
@@ -388,7 +389,13 @@ Route::middleware(['auth:admin', 'auth.session', 'admin.can', 'admin.two-factor'
         Route::get('search-engines', [SeoSettingsController::class, 'edit'])->name('seo.edit');
         Route::put('search-engines', [SeoSettingsController::class, 'update'])->name('seo.update');
         Route::delete('search-engines/share-image', [SeoSettingsController::class, 'removeImage'])->name('seo.image.destroy');
+        Route::get('search-engines/redirects', [SeoRedirectController::class, 'index'])->name('seo.redirects.index');
+        Route::post('search-engines/redirects', [SeoRedirectController::class, 'store'])->name('seo.redirects.store');
+        Route::post('search-engines/redirects/whmcs', [SeoRedirectController::class, 'whmcs'])->name('seo.redirects.whmcs');
+        Route::put('search-engines/redirects/{redirect}', [SeoRedirectController::class, 'update'])->name('seo.redirects.update');
         Route::delete('search-engines/redirects/{redirect}', [SeoSettingsController::class, 'removeRedirect'])->name('seo.redirects.destroy');
+        Route::delete('search-engines/missing/{missingPage}', [SeoRedirectController::class, 'dismiss'])->name('seo.missing.destroy');
+        Route::delete('search-engines/missing', [SeoRedirectController::class, 'clear'])->name('seo.missing.clear');
 
         Route::get('taxes', [TaxController::class, 'index'])->name('taxes.index');
         Route::put('taxes', [TaxController::class, 'settings'])->name('taxes.settings');

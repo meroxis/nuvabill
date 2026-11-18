@@ -85,30 +85,21 @@
                 </form>
             @endif
 
-            <section class="card card-flush">
-                <div class="card-header"><h2>{{ __('Old addresses that forward') }}</h2></div>
-                @if ($redirects->isEmpty())
-                    <p class="muted" style="margin:0;padding:0 1.1rem 1.1rem;font-size:.88rem">{{ __('When you change the web address of a product or group, its old address sends visitors and search engines to the new one. They show up here.') }}</p>
-                @else
-                    <div class="table-wrap"><table class="table">
-                        <thead><tr><th>{{ __('Old address') }}</th><th>{{ __('Goes to') }}</th><th class="num">{{ __('Visits') }}</th><th aria-label="{{ __('Actions') }}"></th></tr></thead>
-                        <tbody>
+            <section class="card" style="display:grid;gap:.8rem">
+                <div class="card-header" style="margin:0;flex-wrap:wrap;gap:8px">
+                    <h2>{{ __('Redirects') }}</h2>
+                    <a class="btn btn-sm" href="{{ route('admin.settings.seo.redirects.index') }}">{{ __('Manage redirects') }}</a>
+                </div>
+                <p class="muted" style="margin:0;font-size:.88rem">
+                    {{ __('Old addresses that forward: :count.', ['count' => number_format($redirectCount)]) }}
+                    {{ __('Add your own, add the old WHMCS addresses, and see which addresses people could not open.') }}
+                </p>
+                @if ($redirects->isNotEmpty())
+                    <ul style="margin:0;padding:0;list-style:none;display:grid;gap:4px;font-size:.88rem">
                         @foreach ($redirects as $redirect)
-                            <tr>
-                                <td class="mono" dir="ltr">/{{ $redirect->from_path }}</td>
-                                <td class="mono" dir="ltr"><a href="{{ url($redirect->to_path) }}" target="_blank" rel="noopener">/{{ $redirect->to_path }}</a></td>
-                                <td class="num">{{ number_format($redirect->hits) }}</td>
-                                <td class="end">
-                                    <form method="POST" action="{{ route('admin.settings.seo.redirects.destroy', $redirect) }}" data-confirm="{{ __('Stop forwarding this old address?') }}">
-                                        @csrf
-                                        @method('DELETE')
-                                        <button class="btn btn-ghost btn-sm" type="submit">{{ __('Remove') }}</button>
-                                    </form>
-                                </td>
-                            </tr>
+                            <li class="mono" dir="ltr" style="overflow-wrap:anywhere">/{{ $redirect->from_path }} → /{{ $redirect->to_path }} <span class="faint">({{ __('Visits') }}: {{ number_format($redirect->hits) }})</span></li>
                         @endforeach
-                        </tbody>
-                    </table></div>
+                    </ul>
                 @endif
             </section>
         </div>

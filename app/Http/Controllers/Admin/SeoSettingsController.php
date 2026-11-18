@@ -30,7 +30,8 @@ class SeoSettingsController extends Controller
             'robots' => $robots->content(),
             'shareImage' => ShareImage::url(),
             'shareImageSize' => ShareImage::size(),
-            'redirects' => SeoRedirect::query()->latest()->limit(50)->get(),
+            'redirects' => SeoRedirect::query()->orderByDesc('hits')->latest('id')->limit(3)->get(),
+            'redirectCount' => SeoRedirect::query()->count(),
             'siteUrl' => SiteAddress::url(''),
             'homeTranslations' => SeoTranslations::form(SeoTranslations::HOME, SeoText::homeTitle(), SeoText::homeDescription()),
         ]);

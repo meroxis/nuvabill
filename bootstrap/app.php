@@ -29,6 +29,8 @@ use App\Http\Middleware\TrackAffiliateLink;
 use App\Http\Middleware\VerifyCaptcha;
 use App\Http\SecretInput;
 use App\Models\SeoRedirect;
+use App\Seo\MissingPages;
+use App\Seo\OldAddresses;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -161,21 +163,40 @@ return Application::configure(basePath: dirname(__DIR__))
         // App\Http\SecretInput, so the CAPTCHA check leaves out the same fields.
         $exceptions->dontFlash(SecretInput::names());
 
-        // A store page that got a new web address: send visitors and search engines to it.
+        // An address that moved: send visitors and search engines to the new one. Otherwise an
+        // old WHMCS ?rp= link, or else the address goes on the list of pages people could not open.
         $exceptions->render(function (NotFoundHttpException $exception, Request $request) {
-            if (! $request->isMethod('GET') || $request->is('api/*')) {
+            if (! $request->isMethod('GET') && ! $request->isMethod('HEAD')) {
+                return null;
+            }
+
+            if ($request->is('api/*')) {
                 return null;
             }
 
             $redirect = rescue(fn () => SeoRedirect::target($request->path()), report: false);
 
             if ($redirect === null) {
+                if ($request->path() === 'index.php' && ($forward = rescue(fn () => OldAddresses::forRp($request), report: false))) {
+                    return $forward;
+                }
+
+                rescue(fn () => MissingPages::record($request), report: false);
+
                 return null;
             }
 
-            $redirect->increment('hits');
-            $query = $request->getQueryString();
+            $counted = rescue(fn () => SeoRedirect::query()->whereKey($redirect->getKey())->increment('hits', 1, ['last_hit_at' => now()]), false, report: false);
 
-            return redirect(url($redirect->to_path).($query ? '?'.$query : ''), 301);
+            if ($counted === false) {
+                // During an update, before the new columns are there.
+                rescue(fn () => $redirect->increment('hits'), report: false);
+            }
+
+            $status = in_array($redirect->status, SeoRedirect::STATUSES, true) ? $redirect->status : 301;
+            $query = $redirect->keep_query === false ? null : $request->getQueryString();
+            $target = url($redirect->to_path);
+
+            return redirect($query ? $target.(str_contains($target, '?') ? '&' : '?').$query : $target, $status);
         });
     })->create();

@@ -257,6 +257,8 @@ class Settings
         'seo.product_pages' => false,
         'seo.robots_extra' => '',
         'seo.share_image' => null,
+        // On after staff add the old WHMCS addresses: ?rp= links (WHMCS friendly addresses) then forward too.
+        'seo.whmcs_addresses' => false,
         'backups.last_at' => null,
         'backups.last_type' => null,
         'backups.last_encrypted' => false,
